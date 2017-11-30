@@ -67,7 +67,9 @@ solution "resacred_solution"
 		"EnableAVX2",
 	}
 	
-	--defines {}
+	defines {
+    --    "LOGGER_DONT_WRITE",
+    }
 	
 	-- disable exception related warnings
 	buildoptions{ "/wd4577", "/wd4530" }

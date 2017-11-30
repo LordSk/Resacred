@@ -155,6 +155,7 @@ struct Renderer
                         glBindTexture(GL_TEXTURE_2D, 0);
 
                         *out_texture = texture;
+                        LOG("Renderer> created texture %d", texture);
 
                         break; }
 

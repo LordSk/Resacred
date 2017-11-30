@@ -30,10 +30,16 @@ bool Window::create(const i32 width_, const i32 height_)
 
 void Window::handleInput()
 {
+    //TODO: better handle imgui input
+    imguiMutex.lock();
+
     SDL_Event event;
     while(SDL_PollEvent(&event)) {
-        //imguiHandleInput(imguiSetup, event);
-
+#ifdef CONF_DEBUG
+        if(imguiSetup) {
+            imguiHandleInput(imguiSetup, event);
+        }
+#endif
         if(event.type == SDL_QUIT) {
             running = false;
         }
@@ -44,6 +50,8 @@ void Window::handleInput()
             }
         }
     }
+
+    imguiMutex.unlock();
 }
 
 void Window::swapBuffers()
@@ -69,13 +77,20 @@ void Window::dbguiInit()
 #endif
 }
 
-void Window::dbguiNewFrame()
+void Window::dbguiNewFrameBegin()
 {
 #ifdef CONF_DEBUG
     if(imguiSetup) {
         imguiMutex.lock();
         imguiUpdate(imguiSetup, 0);
-        ImGui::ShowTestWindow();
+    }
+#endif
+}
+
+void Window::dbguiNewFrameEnd()
+{
+#ifdef CONF_DEBUG
+    if(imguiSetup) {
         imguiMutex.unlock();
     }
 #endif

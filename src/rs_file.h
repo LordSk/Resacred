@@ -43,3 +43,32 @@ bool fileReadWholeCopy(const char* path, char* out_pFileBuff, u32 buffSize, i32*
  * @return success
  */
 bool fileWriteBuffer(const char* path, const char* pBuffer, u32 buffSize);
+
+// Pak header (size=256)
+struct PakHeader
+{
+    char typeString[3];
+    u8 version;
+    i32 entryCount;
+    u8 _unkown[248];
+};
+
+static_assert(sizeof(PakHeader) == 256, "sizeof(PakHeader) != 256");
+
+
+struct PakTexture
+{
+    char filename[32];
+    u16 width;
+    u16 height;
+    u8 typeId;
+    u32 compressedSize;
+    u8 unknown1;
+    u32 offset; // set by Sacred after being loaded
+    u8 null[39];
+    // -- header size = 80
+    u8* data;
+};
+
+bool pak_tilesRead(const char* filepath, void** tiles);
+bool pak_texturesRead(const char* filepath, PakTexture** textures);

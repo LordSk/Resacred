@@ -79,9 +79,11 @@ void Logger::logf(u32 typeColor, const char* filename, i32 lineNumber, const cha
 
     _write(STDOUT, logLineStr.c_str(), logLineStr.len());
 
+#ifndef LOGGER_DONT_WRITE
     assert_msg(_pFile, "Logger was not initialized, yet used");
     fwrite(logLineStr.c_str() + colorOffset, sizeof(char), logLineStr.len() - colorOffset, _pFile);
     fflush(_pFile); // TODO: do this in another thread?
+#endif
 
     _mutex.unlock();
 }

@@ -2,6 +2,8 @@
 #include "rs_base.h"
 #include "rs_thread.h"
 
+typedef void (*FuncUI)(void*);
+
 struct Window
 {
     struct SDL_Window* window;
@@ -18,7 +20,8 @@ struct Window
     void cleanup();
 
     void dbguiInit();
-    void dbguiNewFrame();
+    void dbguiNewFrameBegin();
+    void dbguiNewFrameEnd();
     void dbguiRender();
     void dbguiWaitForInit();
 };
