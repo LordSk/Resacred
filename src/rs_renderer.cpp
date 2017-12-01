@@ -159,6 +159,13 @@ struct Renderer
 
                         break; }
 
+                    case CommandList::CT_DESTROY_TEXTURE: {
+                        GLuint texture = (GLuint)(intptr_t)cmd.param[0];
+                        glDeleteTextures(1, &texture);
+                        //LOG("Renderer> destroyed texture %d", texture);
+
+                        break; }
+
                     case CommandList::CT_ENABLE_VERTEX_ATTRIB_ARRAY: {
                         const i32* indexes = (const i32*)cmd.param[0];
                         const i32 count = (i32)(intptr_t)cmd.param[1];

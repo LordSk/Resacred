@@ -194,7 +194,7 @@ bool pak_texturesRead(const char* filepath, DiskTextures* textures)
 
     u8* top = (u8*)fb.block.ptr;
     PakHeader* header = (PakHeader*)top;
-    const i32 entryCount = header->entryCount;
+    const i32 entryCount = min(header->entryCount, 3000);
     SubFileDesc* fileDesc = (SubFileDesc*)(top + sizeof(PakHeader));
 
     u64 blockSize = entryCount * (sizeof(void*) + sizeof(DiskTextures::TexName) +
@@ -234,7 +234,7 @@ bool pak_texturesRead(const char* filepath, DiskTextures* textures)
         i32 offset = fileDesc[i].offset;
         PakTexture& tex = *(PakTexture*)(top + offset);
 
-        textures->textureInfo[i].type = tex.typeId;
+        textures->textureInfo[i].type = (DiskTextures::TexType)tex.typeId;
         textures->textureInfo[i].width = tex.width;
         textures->textureInfo[i].height = tex.height;
         memmove(&textures->textureName[i], tex.filename, sizeof(DiskTextures::TexName));

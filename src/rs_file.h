@@ -72,13 +72,18 @@ struct PakTexture
 
 struct DiskTextures
 {
+    typedef enum: u16 {
+        TYPE_RGBA8 = 6,
+        TYPE_ARGB4 = 4
+    } TexType;
+
     struct TexName {
         char data[32];
     };
     struct TexInfo {
         u16 width;
         u16 height;
-        u16 type;
+        TexType type;
     };
 
     u8** textureData;

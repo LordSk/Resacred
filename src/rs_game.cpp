@@ -5,57 +5,55 @@
 #include "rs_file.h"
 #include "imgui.h"
 #include "stb_image.h"
+#include "rs_gpu_resources.h"
 
 #define GPU_TEXTURES_COUNT 500
-static GLuint gpu_textures[GPU_TEXTURES_COUNT];
+static GLuint* gpu_textures[GPU_TEXTURES_COUNT];
 static TextureDesc2D texDescs[GPU_TEXTURES_COUNT];
 
 i32 thread_game(void* data)
 {
     LOG("Game> initialization...");
-
-    //pak_tilesRead("../sacred_data/tiles.pak", nullptr);
-    DiskTextures diskTextures;
-    assert(pak_texturesRead("../sacred_data/texture.pak", &diskTextures));
-    defer(MEM_DEALLOC(diskTextures.block));
-
     Window& client = *get_clientWindow();
     renderer_waitForInit();
     client.dbguiWaitForInit();
 
+
+    //pak_tilesRead("../sacred_data/tiles.pak", nullptr);
+    DiskTextures diskTextures;
+    bool texResult = pak_texturesRead("../sacred_data/texture.pak", &diskTextures);
+    assert(texResult);
+    defer(MEM_DEALLOC(diskTextures.block));
+
+    GPUres_init(&diskTextures);
+
+    if(!texResult) {
+        LOG_ERR("thread_game> pak_texturesRead() failed");
+        return 0;
+    }
+
     const i32 VIEW_ID_OFFSET = 2000;
 
     // upload textures to gpu
-    CommandList cmds;
+    i32 texDiskIds[GPU_TEXTURES_COUNT];
     for(int i = 0; i < GPU_TEXTURES_COUNT; ++i) {
-        i32 id = i + VIEW_ID_OFFSET;
-        texDescs[i].width = diskTextures.textureInfo[id].width;
-        texDescs[i].height = diskTextures.textureInfo[id].height;
-        texDescs[i].data =  diskTextures.textureData[id];
-
-        if(diskTextures.textureInfo[id].type == 6) {
-            texDescs[i].internalFormat = GL_RGBA8;
-            texDescs[i].dataFormat = GL_RGBA;
-            texDescs[i].dataPixelCompType = GL_UNSIGNED_BYTE;
-        }
-        else {
-            texDescs[i].internalFormat = GL_RGBA8;
-            texDescs[i].dataFormat = GL_BGRA;
-            texDescs[i].dataPixelCompType = GL_UNSIGNED_SHORT_4_4_4_4_REV;
-        }
-
-        cmds.createTexture2D(&texDescs[i], &gpu_textures[i]);
+        texDiskIds[i] = i + VIEW_ID_OFFSET;
     }
-    cmds.execute();
-    renderer_pushCommandList(cmds);
 
-    while(1) {
+    GPUres_requestTextures(texDiskIds, gpu_textures, GPU_TEXTURES_COUNT);
+
+    while(client.running) {
+        GPUres_newFrame();
+
         client.dbguiNewFrameBegin();
+#ifdef CONF_DEBUG
         if(client.imguiSetup) {
+            GPUres_requestTextures(texDiskIds, gpu_textures, GPU_TEXTURES_COUNT);
+
             ImGui::Begin("Textures");
             for(int i = 0; i < GPU_TEXTURES_COUNT; ++i) {
-                ImGui::Image((ImTextureID)(intptr_t)gpu_textures[i],
-                             ImVec2(texDescs[i].width, texDescs[i].height));
+                ImGui::Image((ImTextureID)(intptr_t)*gpu_textures[i],
+                             ImVec2(256, 256));
                 ImGui::SameLine();
                 ImGui::Text("%32s %d", diskTextures.textureName[i + VIEW_ID_OFFSET].data,
                         diskTextures.textureInfo[i + VIEW_ID_OFFSET].type);
@@ -63,6 +61,7 @@ i32 thread_game(void* data)
             ImGui::End();
             //ImGui::ShowTestWindow();
         }
+#endif
         client.dbguiNewFrameEnd();
 
         CommandList list;
@@ -71,5 +70,9 @@ i32 thread_game(void* data)
         renderer_pushCommandList(list);
     }
 
+    // TODO: wait for deinit
+    GPUres_deinit();
+
     LOG("Game> initializated.");
+    return 0;
 }

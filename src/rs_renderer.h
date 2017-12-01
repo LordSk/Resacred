@@ -44,6 +44,7 @@ struct CommandList
 
         CT_CREATE_SHADER_COMPILE,
         CT_CREATE_TEXTURE2D,
+        CT_DESTROY_TEXTURE,
         CT_GET_UNIFORM_LOCATION,
         CT_ENABLE_VERTEX_ATTRIB_ARRAY,
         CT_VERTEX_ATTRIB_POINTER,
@@ -119,6 +120,13 @@ struct CommandList
         cmd.type = CT_CREATE_TEXTURE2D;
         cmd.param[0] = (void*)desc;
         cmd.param[1] = out_texture;
+        cmds.pushPOD(&cmd, 1);
+    }
+
+    inline void destroyTexture(GLuint texture) {
+        Cmd cmd;
+        cmd.type = CT_DESTROY_TEXTURE;
+        cmd.param[0] = (void*)(intptr_t)texture;
         cmds.pushPOD(&cmd, 1);
     }
 
