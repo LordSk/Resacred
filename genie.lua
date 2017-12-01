@@ -87,6 +87,7 @@ project "resacred_client"
 	
 	includedirs {
 		SDL2_include,
+		ZLIB_include,
 	}
 	
 	links {
@@ -94,4 +95,5 @@ project "resacred_client"
 		"glu32",
 		"opengl32",
 		SDL2_lib,
+		ZLIB_lib,
 	}

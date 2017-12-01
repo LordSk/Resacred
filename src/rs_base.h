@@ -60,13 +60,17 @@ __privDefer<F> __defer_func(F f) {
 
 #define forceinline __forceinline
 
+
 #ifndef NDEBUG
-    #define assert(expr) if(!(expr)) { __debugbreak(); }
+    #ifndef assert
+        #define assert(expr) if(!(expr)) { __debugbreak(); }
+    #endif
     #define assert_msg(expr, msg) assert((expr) && (msg))
 #else
     #define assert(expr)
     #define assert_msg(expr, msg)
 #endif
+
 
 
 #include <chrono>

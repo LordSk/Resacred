@@ -134,18 +134,20 @@ bool pak_texturesRead(const char* filepath, PakTexture** textures)
     PakTexture* outTex = (PakTexture*)MEM_ALLOC(sizeof(PakTexture) * entryCount).ptr;
     *textures = outTex;
 
-    for(i32 i = 1; i < entryCount; ++i) { // first one is fucked offset is 0
+    i32 outIt = 0;
+    for(i32 i = 1; i < entryCount; ++i, ++outIt) { // first one is fucked offset is 0
         i32 offset = fileDesc[i].offset;
         /*LOG("[%d] 1=%d off=0x%x 3=%d", i, fileDesc[i].vint1,
             fileDesc[i].offset, fileDesc[i].vint1);*/
 
         PakTexture& tex = *(PakTexture*)(top + offset);
-        /*LOG("[%d] off=0x%x width=%d height=%d offset=%d ", i, offset,
-            tex.width, tex.height, tex.offset);*/
-        outTex[i] = tex;
-        outTex[i].data = (u8*)(&tex) + 80;
+        tex.offset = offset;
+        /*LOG("[%d] off=0x%x width=%d height=%d offset=%d compressedSize=%d", i, offset,
+            tex.width, tex.height, tex.offset, tex.compressedSize);*/
+        outTex[outIt] = tex;
+        outTex[outIt].data = (u8*)(&tex) + 80;
 
-        TGAHeader& tga = *(TGAHeader*)outTex[i].data;
+        TGAHeader& tga = *(TGAHeader*)outTex[outIt].data;
         /*LOG("imageLength=%d colorMapType=%d imageType=%d originX=%d originY=%d width=%d "
             "height=%d pixelDepth=%d imageDescriptor=%x",
             tga.imageLength, tga.colorMapType, tga.imageType, tga.originX, tga.originY,

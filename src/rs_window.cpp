@@ -80,8 +80,8 @@ void Window::dbguiInit()
 void Window::dbguiNewFrameBegin()
 {
 #ifdef CONF_DEBUG
+    imguiMutex.lock();
     if(imguiSetup) {
-        imguiMutex.lock();
         imguiUpdate(imguiSetup, 0);
     }
 #endif
@@ -90,20 +90,18 @@ void Window::dbguiNewFrameBegin()
 void Window::dbguiNewFrameEnd()
 {
 #ifdef CONF_DEBUG
-    if(imguiSetup) {
-        imguiMutex.unlock();
-    }
+    imguiMutex.unlock();
 #endif
 }
 
 void Window::dbguiRender()
 {
 #ifdef CONF_DEBUG
+    imguiMutex.lock();
     if(imguiSetup) {
-        imguiMutex.lock();
         ImGui::Render();
-        imguiMutex.unlock();
     }
+    imguiMutex.unlock();
 #endif
 }
 
