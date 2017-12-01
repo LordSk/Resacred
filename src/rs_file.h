@@ -70,5 +70,24 @@ struct PakTexture
     u8* data;
 };
 
+struct DiskTextures
+{
+    struct TexName {
+        char data[32];
+    };
+    struct TexInfo {
+        u16 width;
+        u16 height;
+        u16 type;
+    };
+
+    u8** textureData;
+    TexName* textureName;
+    TexInfo* textureInfo;
+    u8* totalPixelData;
+    MemBlock block;
+    i32 textureCount = 0;
+};
+
 bool pak_tilesRead(const char* filepath, void** tiles);
-bool pak_texturesRead(const char* filepath, PakTexture** textures);
+bool pak_texturesRead(const char* filepath, DiskTextures* textures);

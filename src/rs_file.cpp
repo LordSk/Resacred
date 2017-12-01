@@ -3,6 +3,7 @@
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <stdio.h>
+#include "zlib.h"
 
 FileBuffer fileReadWhole(const char* path, IAllocator* pAlloc)
 {
@@ -118,41 +119,147 @@ struct TGAHeader
     u8 imageDescriptor;
 };
 
-bool pak_texturesRead(const char* filepath, PakTexture** textures)
+i32 zlib_decompress(const char* input, const i32 inputSize, u8* output, const i32 outputMaxSize)
+{
+    constexpr i32 CHUNK = 16384;
+    i32 ret;
+    u32 have;
+    z_stream strm;
+    u8 in[CHUNK];
+    u8 out[CHUNK];
+    i32 inCursor = 0;
+    i32 outCursor = 0;
+
+    /* allocate inflate state */
+    strm.zalloc = Z_NULL;
+    strm.zfree = Z_NULL;
+    strm.opaque = Z_NULL;
+    strm.avail_in = 0;
+    strm.next_in = Z_NULL;
+    ret = inflateInit(&strm);
+    if(ret != Z_OK) {
+        return ret;
+    }
+
+    /* decompress until deflate stream ends or end of file */
+    do {
+        i32 copySize = CHUNK;
+        if(inputSize > 0 && inputSize - inCursor < CHUNK) {
+            copySize = inputSize - inCursor;
+        }
+        strm.avail_in = copySize;
+        if(copySize <= 0) {
+            break;
+        }
+        memmove(in, input + inCursor, copySize);
+        inCursor += copySize;
+        strm.next_in = in;
+
+        /* run inflate() on input until output buffer not full */
+        do {
+            strm.avail_out = CHUNK;
+            strm.next_out = out;
+            ret = inflate(&strm, Z_NO_FLUSH);
+            assert(ret != Z_STREAM_ERROR);  /* state not clobbered */
+            switch (ret) {
+                case Z_NEED_DICT:
+                    ret = Z_DATA_ERROR;     /* and fall through */
+                case Z_DATA_ERROR:
+                case Z_MEM_ERROR:
+                    (void)inflateEnd(&strm);
+                    return ret;
+            }
+            have = CHUNK - strm.avail_out;
+            memmove(output + outCursor, out, have);
+            outCursor += have;
+            if(outCursor > outputMaxSize) {
+                inflateEnd(&strm);
+                return Z_ERRNO;
+            }
+        } while(strm.avail_out == 0);
+    } while(ret != Z_STREAM_END);
+
+    /* clean up and return */
+    inflateEnd(&strm);
+    return ret == Z_STREAM_END ? Z_OK : Z_DATA_ERROR;
+}
+
+bool pak_texturesRead(const char* filepath, DiskTextures* textures)
 {
     FileBuffer fb = fileReadWhole(filepath);
     if(fb.error != FileError::NO_FILE_ERROR) {
         return false;
     }
-    //defer(fb.block.dealloc());
+    defer(fb.block.dealloc());
 
     u8* top = (u8*)fb.block.ptr;
     PakHeader* header = (PakHeader*)top;
     const i32 entryCount = header->entryCount;
     SubFileDesc* fileDesc = (SubFileDesc*)(top + sizeof(PakHeader));
 
-    PakTexture* outTex = (PakTexture*)MEM_ALLOC(sizeof(PakTexture) * entryCount).ptr;
-    *textures = outTex;
+    u64 blockSize = entryCount * (sizeof(void*) + sizeof(DiskTextures::TexName) +
+                                  sizeof(DiskTextures::TexInfo));
 
-    i32 outIt = 0;
-    for(i32 i = 1; i < entryCount; ++i, ++outIt) { // first one is fucked offset is 0
+    for(i32 i = 0; i < entryCount; ++i) {
         i32 offset = fileDesc[i].offset;
-        /*LOG("[%d] 1=%d off=0x%x 3=%d", i, fileDesc[i].vint1,
-            fileDesc[i].offset, fileDesc[i].vint1);*/
-
         PakTexture& tex = *(PakTexture*)(top + offset);
-        tex.offset = offset;
-        /*LOG("[%d] off=0x%x width=%d height=%d offset=%d compressedSize=%d", i, offset,
-            tex.width, tex.height, tex.offset, tex.compressedSize);*/
-        outTex[outIt] = tex;
-        outTex[outIt].data = (u8*)(&tex) + 80;
 
-        TGAHeader& tga = *(TGAHeader*)outTex[outIt].data;
-        /*LOG("imageLength=%d colorMapType=%d imageType=%d originX=%d originY=%d width=%d "
-            "height=%d pixelDepth=%d imageDescriptor=%x",
-            tga.imageLength, tga.colorMapType, tga.imageType, tga.originX, tga.originY,
-            tga.width, tga.height, tga.pixelDepth, tga.imageDescriptor);*/
+        // 32 bits
+        if(tex.typeId == 6) {
+            blockSize += tex.width * tex.height * 4;
+        }
+        // 16 bits
+        else {
+            blockSize += tex.width * tex.height * 2;
+        }
     }
+
+    LOG("pak_texturesRead> entryCount=%d block_size=%llumb", entryCount, blockSize/1024/1024);
+
+    // allocate data block
+    textures->block = MEM_ALLOC(blockSize, 4);
+    assert(textures->block.ptr);
+    u8* cursor = (u8*)textures->block.ptr;
+    textures->textureCount = entryCount;
+    textures->textureData = (u8**)cursor;
+    cursor += sizeof(void*) * entryCount;
+    textures->textureName = (DiskTextures::TexName*)cursor;
+    cursor += sizeof(DiskTextures::TexName) * entryCount;
+    textures->textureInfo = (DiskTextures::TexInfo*)cursor;
+    cursor += sizeof(DiskTextures::TexInfo) * entryCount;
+    textures->totalPixelData = cursor;
+    u32 pixelDataCursor = 0;
+
+    for(i32 i = 1; i < entryCount; ++i) {
+        i32 offset = fileDesc[i].offset;
+        PakTexture& tex = *(PakTexture*)(top + offset);
+
+        textures->textureInfo[i].type = tex.typeId;
+        textures->textureInfo[i].width = tex.width;
+        textures->textureInfo[i].height = tex.height;
+        memmove(&textures->textureName[i], tex.filename, sizeof(DiskTextures::TexName));
+
+        u8* dataDest = textures->totalPixelData + pixelDataCursor;
+        textures->textureData[i] = dataDest;
+
+        if(tex.typeId == 6) {
+            i32 texSize = tex.width * tex.height * 4;
+            memmove(dataDest, top + offset + 80, texSize);
+            pixelDataCursor += texSize;
+        }
+        else {
+            i32 compressedSize = fb.fileSize - fileDesc[i].offset;
+            if(i + 1 < entryCount) {
+                compressedSize = fileDesc[i + 1].offset - fileDesc[i].offset;
+            }
+            i32 texSize = tex.width * tex.height * 2;
+            i32 ret = zlib_decompress((const char*)top + offset + 80, compressedSize, dataDest, texSize);
+            assert(ret == Z_OK);
+            pixelDataCursor += texSize;
+        }
+    }
+
+    LOG_SUCC("pak_texturesRead> all textures have been loaded to RAM");
 
     return true;
 }
