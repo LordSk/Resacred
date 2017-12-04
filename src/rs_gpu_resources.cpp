@@ -93,14 +93,13 @@ struct GPUResources
                 texDesc[newId].dataPixelCompType = GL_UNSIGNED_BYTE;
             }
             else {
-                texDesc[newId].internalFormat = GL_RGBA8;
+                texDesc[newId].internalFormat = GL_RGBA4;
                 texDesc[newId].dataFormat = GL_BGRA;
                 texDesc[newId].dataPixelCompType = GL_UNSIGNED_SHORT_4_4_4_4_REV;
             }
 
             cmds.createTexture2D(&texDesc[newId], &texGpuId[newId]);
         }
-        cmds.execute();
         renderer_pushCommandList(cmds);
     }
 

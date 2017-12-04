@@ -9,6 +9,15 @@
 #include <assert.h>
 #include <SDL2/SDL.h>
 
+#ifdef CONF_DEBUG
+    #define OGL_DBG_GROUP_BEGIN(name) \
+        glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, -(__COUNTER__*__LINE__), strLen(#name), #name)
+    #define OGL_DBG_GROUP_END(name) glPopDebugGroup()
+#else
+    #define OGL_DBG_GROUP_BEGIN(name)
+    #define OGL_DBG_GROUP_END(name)
+#endif
+
 void RBarrier::_create(const char* name_)
 {
     name = name_;
@@ -26,6 +35,11 @@ void RBarrier::_wait()
         _mm_pause();
     }
 }
+
+// defined futher down
+void APIENTRY debugCallback(GLenum source, GLenum type, GLuint id,
+                            GLenum severity, GLsizei length, const GLchar* message,
+                            const void* userParam);
 
 #define FRAME_COUNT 3
 
@@ -76,6 +90,12 @@ struct Renderer
 
         glClearColor(0.15f, 0.15f, 0.15f, 1.0f);
 
+#ifdef CONF_DEBUG
+        glEnable(GL_DEBUG_OUTPUT);
+        glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
+        glDebugMessageCallback(debugCallback, this);
+#endif
+
         LOG("Renderer> initialized.");
         initialized = true;
         return true;
@@ -94,6 +114,8 @@ struct Renderer
             i32& _cmdListCount = cmdListCount[frameRenderId];
 
             SDL_LockMutex(_cmdListMutex);
+
+            OGL_DBG_GROUP_BEGIN(RENDERER_COMMAND_EXEC);
 
             for(i32 i = 0; i < _cmdListCount; ++i) {
                 CommandList::Cmd& cmd = _cmdList[i];
@@ -235,13 +257,17 @@ struct Renderer
                         //LOG_DBG("barrier(%s) released", barrier->name);
                         break; }
 
-                    case CommandList::CT_END_FRAME:
+                    case CommandList::CT_END_FRAME: {
+                        OGL_DBG_GROUP_BEGIN(IMGUI_GROUP);
+
                         client.dbguiRender();
+
+                        OGL_DBG_GROUP_END(IMGUI_GROUP);
 
                         client.swapBuffers();
                         frameReady[frameRenderId] = false;
                         frameRenderId = (frameRenderId + 1) % FRAME_COUNT;
-                        break;
+                        break; }
 
                     case CommandList::CT_EXECUTE:
                         frameReady[frameRenderId] = false;
@@ -249,6 +275,8 @@ struct Renderer
                         break;
                 }
             }
+
+            OGL_DBG_GROUP_END(RENDERER_COMMAND_EXEC);
 
             _cmdListCount = 0;
             SDL_UnlockMutex(_cmdListMutex);
@@ -311,4 +339,129 @@ void renderer_waitForInit()
     while(!g_rendererPtr || !g_rendererPtr->initialized) {
         _mm_pause();
     }
+}
+
+void APIENTRY debugCallback(GLenum source, GLenum type, GLuint id,
+                            GLenum severity, GLsizei length, const GLchar* message,
+                            const void* userParam)
+{
+    static i32 currentGroupId = 0;
+    static char currentGroupName[256];
+
+    if(severity == GL_DEBUG_SEVERITY_NOTIFICATION && (*(i32*)&id) < 0) {
+        if(type == GL_DEBUG_TYPE_PUSH_GROUP) {
+            currentGroupId = id;
+            memmove(currentGroupName, message, length);
+            currentGroupName[length] = 0;
+        }
+        else if(type == GL_DEBUG_TYPE_POP_GROUP) {
+            currentGroupId = 0;
+            currentGroupName[0] = 0;
+        }
+    }
+
+    switch(source) {
+        case GL_DEBUG_SOURCE_API:
+            source = 0;
+        break;
+        case GL_DEBUG_SOURCE_APPLICATION:
+            source = 1;
+        break;
+        case GL_DEBUG_SOURCE_OTHER:
+            source = 2;
+        break;
+        case GL_DEBUG_SOURCE_SHADER_COMPILER:
+            source = 3;
+        break;
+        case GL_DEBUG_SOURCE_THIRD_PARTY:
+            source = 4;
+        break;
+        case GL_DEBUG_SOURCE_WINDOW_SYSTEM:
+            source = 5;
+        break;
+    }
+    constexpr const char* sourceStr[] = {
+        "SRC_API",
+        "SRC_APPLICATION",
+        "SRC_OTHER",
+        "SRC_SHADER_COMPILER",
+        "SRC_THIRD_PARTY",
+        "SRC_WINDOW_SYSTEM"
+    };
+
+    switch(type) {
+        case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR:
+            type = 0;
+        break;
+        case GL_DEBUG_TYPE_ERROR:
+            type = 1;
+        break;
+        case GL_DEBUG_TYPE_MARKER:
+            type = 2;
+        break;
+        case GL_DEBUG_TYPE_OTHER:
+            type = 3;
+        break;
+        case GL_DEBUG_TYPE_PERFORMANCE:
+            type = 4;
+        break;
+        case GL_DEBUG_TYPE_POP_GROUP:
+            type = 5;
+        break;
+        case GL_DEBUG_TYPE_PORTABILITY:
+            type = 6;
+        break;
+        case GL_DEBUG_TYPE_PUSH_GROUP:
+            type = 7;
+        break;
+        case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR:
+            type = 8;
+        break;
+    }
+    constexpr const char* typeStr[] = {
+        "TYPE_DEPRECATED_BEHAVIOR",
+        "TYPE_ERROR",
+        "TYPE_MARKER",
+        "TYPE_OTHER",
+        "TYPE_PERFORMANCE",
+        "TYPE_POP_GROUP",
+        "TYPE_PORTABILITY",
+        "TYPE_PUSH_GROUP",
+        "TYPE_UNDEFINED_BEHAVIOR"
+    };
+
+    switch(severity) {
+        case GL_DEBUG_SEVERITY_NOTIFICATION:
+            severity = 0;
+        break;
+        case GL_DEBUG_SEVERITY_LOW:
+            severity = 1;
+        break;
+        case GL_DEBUG_SEVERITY_MEDIUM:
+            severity = 2;
+        break;
+        case GL_DEBUG_SEVERITY_HIGH:
+            severity = 3;
+        break;
+    }
+    constexpr const char* severityStr[] = {
+        "SEV_NOTIFICATION",
+        "SEV_LOW",
+        "SEV_MEDIUM",
+        "SEV_HIGH",
+    };
+
+    if(severity < 2) {
+        return;
+    }
+
+    i32 color = LOG_COLOR_WARN;
+    if(severity > 2) {
+        color = LOG_COLOR_ERROR;
+    }
+    getGlobalLogger().logf(color, __FILE__, __LINE__,
+                           "OGL> {%s|%s|%s} id=%x group=%s \"%s\"",
+                           sourceStr[source], typeStr[type],
+                           severityStr[severity], id, currentGroupName, message);
+
 }

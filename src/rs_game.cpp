@@ -7,6 +7,14 @@
 #include "stb_image.h"
 #include "rs_gpu_resources.h"
 
+
+// TODO:
+// Investigate textures not loading (GPUres)
+
+
+
+
+
 #define GPU_TEXTURES_COUNT 500
 static GLuint* gpu_textures[GPU_TEXTURES_COUNT];
 static TextureDesc2D texDescs[GPU_TEXTURES_COUNT];
@@ -18,6 +26,7 @@ i32 thread_game(void* data)
     renderer_waitForInit();
     client.dbguiWaitForInit();
 
+    memset(gpu_textures, 0, sizeof(gpu_textures));
 
     //pak_tilesRead("../sacred_data/tiles.pak", nullptr);
     DiskTextures diskTextures;
@@ -32,15 +41,8 @@ i32 thread_game(void* data)
         return 0;
     }
 
-    const i32 VIEW_ID_OFFSET = 2000;
-
-    // upload textures to gpu
+    i32 viewIdOffset = 0;
     i32 texDiskIds[GPU_TEXTURES_COUNT];
-    for(int i = 0; i < GPU_TEXTURES_COUNT; ++i) {
-        texDiskIds[i] = i + VIEW_ID_OFFSET;
-    }
-
-    GPUres_requestTextures(texDiskIds, gpu_textures, GPU_TEXTURES_COUNT);
 
     while(client.running) {
         GPUres_newFrame();
@@ -48,18 +50,28 @@ i32 thread_game(void* data)
         client.dbguiNewFrameBegin();
 #ifdef CONF_DEBUG
         if(client.imguiSetup) {
+            ImGui::Begin("Textures");
+            ImGui::SliderInt("offset", &viewIdOffset, 0, 2500);
+
+            ImGui::BeginChild("texture_list");
+
+            for(int i = 0; i < GPU_TEXTURES_COUNT; ++i) {
+                texDiskIds[i] = i + viewIdOffset + 1;
+            }
             GPUres_requestTextures(texDiskIds, gpu_textures, GPU_TEXTURES_COUNT);
 
-            ImGui::Begin("Textures");
+
             for(int i = 0; i < GPU_TEXTURES_COUNT; ++i) {
                 ImGui::Image((ImTextureID)(intptr_t)*gpu_textures[i],
                              ImVec2(256, 256));
-                ImGui::SameLine();
-                ImGui::Text("%32s %d", diskTextures.textureName[i + VIEW_ID_OFFSET].data,
-                        diskTextures.textureInfo[i + VIEW_ID_OFFSET].type);
+                if((i + 1)%4 != 0) {
+                    ImGui::SameLine();
+                }
             }
+            ImGui::EndChild();
+
             ImGui::End();
-            //ImGui::ShowTestWindow();
+            ImGui::ShowTestWindow();
         }
 #endif
         client.dbguiNewFrameEnd();
