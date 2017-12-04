@@ -57,6 +57,8 @@ static void renderUI(ImDrawData* pDrawData)
     GLboolean last_enable_depth_test = glIsEnabled(GL_DEPTH_TEST);
     GLboolean last_enable_scissor_test = glIsEnabled(GL_SCISSOR_TEST);
 
+    OGL_DBG_GROUP_BEGIN(IMGUI_RENDER_SETUP);
+
     // Setup render state: alpha-blending enabled, no face culling, no depth testing, scissor enabled
     glEnable(GL_BLEND);
     glBlendEquation(GL_FUNC_ADD);
@@ -70,13 +72,17 @@ static void renderUI(ImDrawData* pDrawData)
     const ImGuiGLSetup& ui = *(ImGuiGLSetup*)io.UserData;
     glUseProgram(ui.shaderProgram);
     glUniformMatrix4fv(ui.shaderViewUni, 1, GL_FALSE, ui.viewMatrix);
-    glUniform1i(ui.shaderViewUni, 0);
+    glUniform1i(ui.shaderTextureUni, 0);
 
     glBindVertexArray(ui.shaderVao);
+
+    OGL_DBG_GROUP_END(IMGUI_RENDER_SETUP);
 
     for(i32 n = 0; n < pDrawData->CmdListsCount; ++n) {
         const ImDrawList* cmd_list = pDrawData->CmdLists[n];
         const ImDrawIdx* idx_buffer_offset = 0;
+
+        OGL_DBG_GROUP_BEGIN(IMGUI_RENDER_BUFFER_BINDING);
 
         glBindBuffer(GL_ARRAY_BUFFER, ui.shaderVertexBuff);
         glBufferData(GL_ARRAY_BUFFER, (GLsizeiptr)cmd_list->VtxBuffer.size() * sizeof(ImDrawVert),
@@ -85,6 +91,8 @@ static void renderUI(ImDrawData* pDrawData)
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ui.shaderElementsBuff);
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, (GLsizeiptr)cmd_list->IdxBuffer.size() * sizeof(ImDrawIdx),
                      (GLvoid*)&cmd_list->IdxBuffer.front(), GL_STREAM_DRAW);
+
+        OGL_DBG_GROUP_END(IMGUI_RENDER_BUFFER_BINDING);
 
         for(const ImDrawCmd* pcmd = cmd_list->CmdBuffer.begin();
             pcmd != cmd_list->CmdBuffer.end(); pcmd++) {

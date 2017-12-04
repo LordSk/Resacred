@@ -4,6 +4,15 @@
 #include "rs_array.h"
 #include "rs_thread.h"
 
+#ifdef CONF_DEBUG
+    #define OGL_DBG_GROUP_BEGIN(name) \
+        glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, -(__COUNTER__^(__LINE__*1337)), strLen(#name), #name)
+    #define OGL_DBG_GROUP_END(name) glPopDebugGroup()
+#else
+    #define OGL_DBG_GROUP_BEGIN(name)
+    #define OGL_DBG_GROUP_END(name)
+#endif
+
 struct RBarrier
 {
     String32 name;
@@ -52,6 +61,8 @@ struct CommandList
         CT_GEN_VERTEX_ARRAYS,
         CT_BIND_BUFFER,
         CT_BIND_VERTEX_ARRAY,
+
+        CT_QUERY_VRAM_INFO,
 
         CT_BARRIER,
         CT_END_FRAME,
@@ -190,6 +201,18 @@ struct CommandList
         Cmd cmd;
         cmd.type = CT_BIND_VERTEX_ARRAY;
         cmd.param[0] = (void*)vao;
+        cmds.pushPOD(&cmd, 1);
+    }
+
+    inline void queryVramInfo(i32* dedicated, i32* availMemory, i32* availVidMem,
+                              i32* evictionCount, i32* evictedMem) {
+        Cmd cmd;
+        cmd.type = CT_QUERY_VRAM_INFO;
+        cmd.param[0] = dedicated;
+        cmd.param[1] = availMemory;
+        cmd.param[2] = availVidMem;
+        cmd.param[3] = evictionCount;
+        cmd.param[4] = evictedMem;
         cmds.pushPOD(&cmd, 1);
     }
 };

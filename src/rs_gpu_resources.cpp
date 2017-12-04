@@ -10,7 +10,7 @@ struct GPUResources
     u32 texGpuId[MAX_TEXTURE_IDS];
     i32 texDiskId[MAX_TEXTURE_IDS];
     i32 texFramesNotRequested[MAX_TEXTURE_IDS];
-    u8 texSlotTaken[MAX_TEXTURE_IDS];
+    u8 texSlotOccupied[MAX_TEXTURE_IDS];
     TextureDesc2D texDesc[MAX_TEXTURE_IDS];
     i32 textureCount = 0;
 
@@ -18,7 +18,7 @@ struct GPUResources
     {
         textureCount = 0;
         memset(texFramesNotRequested, 0, sizeof(texFramesNotRequested));
-        memset(texSlotTaken, 0, sizeof(texSlotTaken));
+        memset(texSlotOccupied, 0, sizeof(texSlotOccupied));
         return true;
     }
 
@@ -28,14 +28,14 @@ struct GPUResources
 
         // find unused textures and destroy them
         for(i32 i = 0; i < MAX_TEXTURE_IDS; ++i) {
-            if(texSlotTaken[i]) {
+            if(texSlotOccupied[i]) {
                 texFramesNotRequested[i]++;
 
                 if(texFramesNotRequested[i] > 10) {
                     cmds.destroyTexture(texGpuId[i]);
                     texGpuId[i] = 0;
                     texDiskId[i] = 0;
-                    texSlotTaken[i] = false;
+                    texSlotOccupied[i] = false;
                 }
             }
         }
@@ -46,8 +46,8 @@ struct GPUResources
     i32 _occupyNextTextureSlot()
     {
         for(i32 i = 0; i < MAX_TEXTURE_IDS; ++i) {
-            if(texSlotTaken[i] == false) {
-                texSlotTaken[i] = true;
+            if(texSlotOccupied[i] == false) {
+                texSlotOccupied[i] = true;
                 return i;
             }
         }
@@ -63,7 +63,7 @@ struct GPUResources
         for(i32 r = 0; r < requestCount; ++r) {
             assert(pakTextureIds[r] > 0 && pakTextureIds[r] < diskTextures->textureCount);
             for(i32 i = 0; i < MAX_TEXTURE_IDS; ++i) {
-                if(texSlotTaken[i] && texDiskId[i] == pakTextureIds[r]) {
+                if(texSlotOccupied[i] && texDiskId[i] == pakTextureIds[r]) {
                     outGpuTexHandles[r] = &texGpuId[i];
                     texFramesNotRequested[i] = 0;
                 }
@@ -107,7 +107,7 @@ struct GPUResources
     {
         CommandList cmds;
         for(i32 i = 0; i < MAX_TEXTURE_IDS; ++i) {
-            if(texSlotTaken[i]) {
+            if(texSlotOccupied[i]) {
                 cmds.destroyTexture(texGpuId[i]);
             }
         }

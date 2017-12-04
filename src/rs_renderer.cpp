@@ -9,14 +9,11 @@
 #include <assert.h>
 #include <SDL2/SDL.h>
 
-#ifdef CONF_DEBUG
-    #define OGL_DBG_GROUP_BEGIN(name) \
-        glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, -(__COUNTER__*__LINE__), strLen(#name), #name)
-    #define OGL_DBG_GROUP_END(name) glPopDebugGroup()
-#else
-    #define OGL_DBG_GROUP_BEGIN(name)
-    #define OGL_DBG_GROUP_END(name)
-#endif
+#define GL_GPU_MEMORY_INFO_DEDICATED_VIDMEM_NVX          0x9047
+#define GL_GPU_MEMORY_INFO_TOTAL_AVAILABLE_MEMORY_NVX    0x9048
+#define GL_GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX  0x9049
+#define GL_GPU_MEMORY_INFO_EVICTION_COUNT_NVX            0x904A
+#define GL_GPU_MEMORY_INFO_EVICTED_MEMORY_NVX            0x904B
 
 void RBarrier::_create(const char* name_)
 {
@@ -251,6 +248,15 @@ struct Renderer
                         glBindVertexArray(vao);
                         break; }
 
+                    case CommandList::CT_QUERY_VRAM_INFO: {
+                        glGetIntegerv(GL_GPU_MEMORY_INFO_DEDICATED_VIDMEM_NVX, (GLint*)cmd.param[0]);
+                        glGetIntegerv(GL_GPU_MEMORY_INFO_TOTAL_AVAILABLE_MEMORY_NVX, (GLint*)cmd.param[1]);
+                        glGetIntegerv(GL_GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX, (GLint*)cmd.param[2]);
+                        glGetIntegerv(GL_GPU_MEMORY_INFO_EVICTION_COUNT_NVX, (GLint*)cmd.param[3]);
+                        glGetIntegerv(GL_GPU_MEMORY_INFO_EVICTED_MEMORY_NVX, (GLint*)cmd.param[4]);
+
+                        break; }
+
                     case CommandList::CT_BARRIER: {
                         RBarrier* barrier = (RBarrier*)cmd.param[0];
                         barrier->_release();
@@ -345,18 +351,22 @@ void APIENTRY debugCallback(GLenum source, GLenum type, GLuint id,
                             GLenum severity, GLsizei length, const GLchar* message,
                             const void* userParam)
 {
-    static i32 currentGroupId = 0;
-    static char currentGroupName[256];
+    constexpr i32 MAX_SCOPES = 8;
+    static i32 currentScopeId = -1;
+    static char currentGroupName[MAX_SCOPES][256];
 
     if(severity == GL_DEBUG_SEVERITY_NOTIFICATION && (*(i32*)&id) < 0) {
         if(type == GL_DEBUG_TYPE_PUSH_GROUP) {
-            currentGroupId = id;
-            memmove(currentGroupName, message, length);
-            currentGroupName[length] = 0;
+            currentScopeId++;
+            assert(currentScopeId < MAX_SCOPES);
+            memmove(currentGroupName[currentScopeId], message, length);
+            currentGroupName[currentScopeId][length] = 0;
+            //LOG_DBG("push: %s id=%d", message, id);
         }
         else if(type == GL_DEBUG_TYPE_POP_GROUP) {
-            currentGroupId = 0;
-            currentGroupName[0] = 0;
+            currentGroupName[currentScopeId][0] = 0;
+            currentScopeId--;
+            assert(currentScopeId >= -1);
         }
     }
 
@@ -451,7 +461,7 @@ void APIENTRY debugCallback(GLenum source, GLenum type, GLuint id,
         "SEV_HIGH",
     };
 
-    if(severity < 2) {
+    if(severity < 1) {
         return;
     }
 
@@ -462,6 +472,6 @@ void APIENTRY debugCallback(GLenum source, GLenum type, GLuint id,
     getGlobalLogger().logf(color, __FILE__, __LINE__,
                            "OGL> {%s|%s|%s} id=%x group=%s \"%s\"",
                            sourceStr[source], typeStr[type],
-                           severityStr[severity], id, currentGroupName, message);
+                           severityStr[severity], id, currentGroupName[currentScopeId], message);
 
 }

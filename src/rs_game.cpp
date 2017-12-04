@@ -19,6 +19,22 @@
 static GLuint* gpu_textures[GPU_TEXTURES_COUNT];
 static TextureDesc2D texDescs[GPU_TEXTURES_COUNT];
 
+void ui_videoInfo()
+{
+    static i32 dedicated, availMemory, currentAvailMem, evictionCount, evictedMem;
+    CommandList list;
+    list.queryVramInfo(&dedicated, &availMemory, &currentAvailMem, &evictionCount, &evictedMem);
+    renderer_pushCommandList(list);
+
+    ImGui::Begin("Video info");
+
+    ImGui::Text("Total available: %dkb", availMemory);
+    ImGui::Text("Current Avilable: %dkb", currentAvailMem);
+    ImGui::ProgressBar(1.0 - (currentAvailMem / (f64)availMemory));
+
+    ImGui::End();
+}
+
 i32 thread_game(void* data)
 {
     LOG("Game> initialization...");
@@ -71,6 +87,9 @@ i32 thread_game(void* data)
             ImGui::EndChild();
 
             ImGui::End();
+
+            ui_videoInfo();
+
             ImGui::ShowTestWindow();
         }
 #endif
