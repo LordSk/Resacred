@@ -257,6 +257,16 @@ struct Renderer
 
                         break; }
 
+                    case CommandList::CT_COUNTER_INCREMENT: {
+                        AtomicCounter* counter = (AtomicCounter*)cmd.param[0];
+                        counter->increment();
+                        break; }
+
+                    case CommandList::CT_COUNTER_DECREMENT: {
+                        AtomicCounter* counter = (AtomicCounter*)cmd.param[0];
+                        counter->decrement();
+                        break; }
+
                     case CommandList::CT_BARRIER: {
                         RBarrier* barrier = (RBarrier*)cmd.param[0];
                         barrier->_release();

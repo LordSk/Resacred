@@ -64,6 +64,8 @@ struct CommandList
 
         CT_QUERY_VRAM_INFO,
 
+        CT_COUNTER_INCREMENT,
+        CT_COUNTER_DECREMENT,
         CT_BARRIER,
         CT_END_FRAME,
         CT_EXECUTE,
@@ -130,7 +132,7 @@ struct CommandList
         Cmd cmd;
         cmd.type = CT_CREATE_TEXTURE2D;
         cmd.param[0] = (void*)desc;
-        cmd.param[1] = out_texture;
+        cmd.param[1] = (void*)out_texture;
         cmds.pushPOD(&cmd, 1);
     }
 
@@ -213,6 +215,20 @@ struct CommandList
         cmd.param[2] = availVidMem;
         cmd.param[3] = evictionCount;
         cmd.param[4] = evictedMem;
+        cmds.pushPOD(&cmd, 1);
+    }
+
+    inline void counterIncrement(AtomicCounter* counter) {
+        Cmd cmd;
+        cmd.type = CT_COUNTER_INCREMENT;
+        cmd.param[0] = counter;
+        cmds.pushPOD(&cmd, 1);
+    }
+
+    inline void counterDecrement(AtomicCounter* counter) {
+        Cmd cmd;
+        cmd.type = CT_COUNTER_DECREMENT;
+        cmd.param[0] = counter;
         cmds.pushPOD(&cmd, 1);
     }
 };

@@ -14,7 +14,8 @@ typedef int64_t i64;
 typedef float f32;
 typedef double f64;
 
-#define I16_MAX 32767
+#define I16_MAX 0x7FFF
+#define I32_MAX 0x7FFFFFFF
 #define I64_MAX 0x7FFFFFFFFFFFFFFF
 
 // http://www.gingerbill.org/article/defer-in-cpp.html

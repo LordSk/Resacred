@@ -35,6 +35,7 @@ void ui_videoInfo()
     ImGui::End();
 }
 
+
 i32 thread_game(void* data)
 {
     LOG("Game> initialization...");
@@ -76,10 +77,15 @@ i32 thread_game(void* data)
             }
             GPUres_requestTextures(texDiskIds, gpu_textures, GPU_TEXTURES_COUNT);
 
-
+            intptr_t top = GPUres_debugGetGpuIdArryPtr();
             for(int i = 0; i < GPU_TEXTURES_COUNT; ++i) {
+                ImGui::BeginGroup();
                 ImGui::Image((ImTextureID)(intptr_t)*gpu_textures[i],
                              ImVec2(256, 256));
+                ImGui::Text("slot=%d hndl=%d req=%d", ((intptr_t)gpu_textures[i] - top) / 4,
+                            *gpu_textures[i], i + viewIdOffset + 1);
+                ImGui::EndGroup();
+
                 if((i + 1)%4 != 0) {
                     ImGui::SameLine();
                 }
@@ -89,8 +95,9 @@ i32 thread_game(void* data)
             ImGui::End();
 
             ui_videoInfo();
+            GPUres_debugUi();
 
-            ImGui::ShowTestWindow();
+            //ImGui::ShowTestWindow();
         }
 #endif
         client.dbguiNewFrameEnd();
