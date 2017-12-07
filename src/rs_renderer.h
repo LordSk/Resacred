@@ -49,20 +49,20 @@ struct CommandList
 
     typedef enum {
         CT_CLEAR=0,
-        CT_CLEAR_COLOR,
+        CT_CLEAR_COLOR,                 // 1
 
-        CT_CREATE_SHADER_COMPILE,
-        CT_CREATE_TEXTURE2D,
-        CT_DESTROY_TEXTURE,
-        CT_GET_UNIFORM_LOCATION,
-        CT_ENABLE_VERTEX_ATTRIB_ARRAY,
-        CT_VERTEX_ATTRIB_POINTER,
-        CT_GEN_BUFFERS,
-        CT_GEN_VERTEX_ARRAYS,
-        CT_BIND_BUFFER,
-        CT_BIND_VERTEX_ARRAY,
+        CT_CREATE_SHADER_COMPILE,       // 2
+        CT_CREATE_TEXTURE2D,            // 3
+        CT_DESTROY_TEXTURE,             // 4
+        CT_GET_UNIFORM_LOCATION,        // 5
+        CT_ENABLE_VERTEX_ATTRIB_ARRAY,  // 6
+        CT_VERTEX_ATTRIB_POINTER,       // 7
+        CT_GEN_BUFFERS,                 // 8
+        CT_GEN_VERTEX_ARRAYS,           // 9
+        CT_BIND_BUFFER,                 // 10
+        CT_BIND_VERTEX_ARRAY,           // 11
 
-        CT_QUERY_VRAM_INFO,
+        CT_QUERY_VRAM_INFO,             // 12
 
         CT_COUNTER_INCREMENT,
         CT_COUNTER_DECREMENT,

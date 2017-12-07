@@ -96,3 +96,4 @@ struct DiskTextures
 
 bool pak_tilesRead(const char* filepath, void** tiles);
 bool pak_texturesRead(const char* filepath, DiskTextures* textures);
+bool bin_WorldRead(const char* filepath);

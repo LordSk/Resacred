@@ -197,6 +197,8 @@ bool pak_texturesRead(const char* filepath, DiskTextures* textures)
     const i32 entryCount = min(header->entryCount, 3000);
     SubFileDesc* fileDesc = (SubFileDesc*)(top + sizeof(PakHeader));
 
+    fileDesc++; // skip first (invalid)
+
     u64 blockSize = entryCount * (sizeof(void*) + sizeof(DiskTextures::TexName) +
                                   sizeof(DiskTextures::TexInfo));
 
@@ -230,7 +232,9 @@ bool pak_texturesRead(const char* filepath, DiskTextures* textures)
     textures->totalPixelData = cursor;
     u32 pixelDataCursor = 0;
 
-    for(i32 i = 1; i < entryCount; ++i) {
+
+
+    for(i32 i = 0; i < entryCount; ++i) {
         i32 offset = fileDesc[i].offset;
         PakTexture& tex = *(PakTexture*)(top + offset);
 
@@ -260,6 +264,38 @@ bool pak_texturesRead(const char* filepath, DiskTextures* textures)
     }
 
     LOG_SUCC("pak_texturesRead> all textures have been loaded to RAM");
+
+    return true;
+}
+
+struct WorldBinEntry
+{
+    i32 varA;
+    i32 varB;
+    i32 varC;
+};
+
+bool bin_WorldRead(const char* filepath)
+{
+    FileBuffer fb = fileReadWhole(filepath);
+    if(fb.error != FileError::NO_FILE_ERROR) {
+        return false;
+    }
+    defer(fb.block.dealloc());
+
+    u8* cursor = (u8*)fb.block.ptr;
+    u8* start = cursor;
+    const u32 count = *(u32*)cursor;
+    cursor += 4;
+
+    for(i32 i = 0; i < count; ++i) {
+        assert(cursor < (start + fb.fileSize));
+        WorldBinEntry& entry = *(WorldBinEntry*)cursor;
+        cursor += sizeof(WorldBinEntry);
+        LOG_DBG("[%d] a=%d b=%d c=%d", i, entry.varA, entry.varB, entry.varC);
+    }
+
+    LOG_DBG("bin_WorldRead> done");
 
     return true;
 }

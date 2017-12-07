@@ -255,6 +255,8 @@ struct Renderer
                         glGetIntegerv(GL_GPU_MEMORY_INFO_EVICTION_COUNT_NVX, (GLint*)cmd.param[3]);
                         glGetIntegerv(GL_GPU_MEMORY_INFO_EVICTED_MEMORY_NVX, (GLint*)cmd.param[4]);
 
+                        //LOG_DBG("Renderer> CT_QUERY_VRAM_INFO done");
+
                         break; }
 
                     case CommandList::CT_COUNTER_INCREMENT: {
@@ -270,7 +272,7 @@ struct Renderer
                     case CommandList::CT_BARRIER: {
                         RBarrier* barrier = (RBarrier*)cmd.param[0];
                         barrier->_release();
-                        //LOG_DBG("barrier(%s) released", barrier->name);
+                        //LOG_DBG("Renderer> barrier(%s) released", barrier->name);
                         break; }
 
                     case CommandList::CT_END_FRAME: {
@@ -283,11 +285,13 @@ struct Renderer
                         client.swapBuffers();
                         frameReady[frameRenderId] = false;
                         frameRenderId = (frameRenderId + 1) % FRAME_COUNT;
+                        //LOG_DBG("Renderer> CT_END_FRAME");
                         break; }
 
                     case CommandList::CT_EXECUTE:
                         frameReady[frameRenderId] = false;
                         frameRenderId = (frameRenderId + 1) % FRAME_COUNT;
+                        //LOG_DBG("Renderer> CT_EXECUTE");
                         break;
                 }
             }
@@ -318,7 +322,7 @@ i32 thread_renderer(void* data)
 
 void renderer_pushCommandList(const CommandList& list)
 {
-    while(!g_rendererPtr || !g_rendererPtr->initialized) { // TODO: remove this
+    if(!g_rendererPtr || !g_rendererPtr->initialized) { // TODO: remove this
         return;
     }
 

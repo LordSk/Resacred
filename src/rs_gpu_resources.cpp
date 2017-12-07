@@ -85,7 +85,7 @@ struct GPUResources
         // assign already loaded/loading textures
         for(i32 r = 0; r < requestCount; ++r) {
             const i32 pakTexId = inPakTextureIds[r];
-            assert(pakTexId > 0 && pakTexId < diskTextures->textureCount);
+            assert(pakTexId >= 0 && pakTexId < diskTextures->textureCount);
 
             for(i32 i = 0; i < MAX_GPU_TEXTURES; ++i) {
                 if(texSlotOccupied[i] && texDiskId[i] == pakTexId) {
@@ -208,10 +208,4 @@ void GPUres_debugUi()
 {
     assert(g_gpuResourcesPtr);
     g_gpuResourcesPtr->debugUi();
-}
-
-intptr_t GPUres_debugGetGpuIdArryPtr()
-{
-    assert(g_gpuResourcesPtr);
-    return (intptr_t)g_gpuResourcesPtr->texGpuId;
 }

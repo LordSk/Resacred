@@ -30,15 +30,15 @@ bool Window::create(const i32 width_, const i32 height_)
 
 void Window::handleInput()
 {
-    //TODO: better handle imgui input
-    imguiMutex.lock();
-
     SDL_Event event;
     while(SDL_PollEvent(&event)) {
 #ifdef CONF_DEBUG
+        //TODO: better handle imgui input
+        imguiMutex.lock();
         if(imguiSetup) {
             imguiHandleInput(imguiSetup, event);
         }
+        imguiMutex.unlock();
 #endif
         if(event.type == SDL_QUIT) {
             running = false;
@@ -50,8 +50,6 @@ void Window::handleInput()
             }
         }
     }
-
-    imguiMutex.unlock();
 }
 
 void Window::swapBuffers()
