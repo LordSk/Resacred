@@ -62,8 +62,12 @@ i32 thread_game(void* data)
 
     memset(gpu_textures, 0, sizeof(gpu_textures));
 
-    bin_WorldRead("../sacred_data/World.bin");
-    pak_tilesRead("../sacred_data/tiles.pak", nullptr);
+    DiskSectors diskSectors;
+    keyx_SectorsRead("../sacred_data/sectors.keyx", "../sacred_data/sectors.wldx", &diskSectors);
+
+    //pak_FloorRead("../sacred_data/Floor.pak");
+    //bin_WorldRead("../sacred_data/World.bin");
+    /*pak_tilesRead("../sacred_data/tiles.pak", nullptr);
     bool texResult = pak_texturesRead("../sacred_data/texture.pak", &diskTextures);
     assert(texResult);
     defer(MEM_DEALLOC(diskTextures.block));
@@ -72,20 +76,20 @@ i32 thread_game(void* data)
     if(!texResult) {
         LOG_ERR("thread_game> pak_texturesRead() failed");
         return 0;
-    }
+    }*/
 
     while(client.running) {
-        GPUres_newFrame();
+        /*GPUres_newFrame();
         for(int i = 0; i < PAGE_TEXTURES_COUNT; ++i) {
             texDiskIds[i] = i + (pageId * PAGE_TEXTURES_COUNT);
         }
-        GPUres_requestTextures(texDiskIds, gpu_textures, PAGE_TEXTURES_COUNT);
+        GPUres_requestTextures(texDiskIds, gpu_textures, PAGE_TEXTURES_COUNT);*/
 
         // NOTE: dont push render command inside UI code
 #ifdef CONF_DEBUG
         client.dbguiNewFrameBegin();
         if(client.imguiSetup) {
-            ui_textureBrowser();
+            //ui_textureBrowser();
             ui_videoInfo();
             //GPUres_debugUi();
             //ImGui::ShowTestWindow();

@@ -1,6 +1,7 @@
 #pragma once
 #include "rs_base.h"
 #include "rs_allocator.h"
+#include "rs_array.h"
 
 typedef enum: i32 {
     NO_FILE_ERROR=0,
@@ -94,6 +95,22 @@ struct DiskTextures
     i32 textureCount = 0;
 };
 
+struct DiskSectors
+{
+    struct Sector {
+        i32 posX;
+        i32 posY;
+        i32 width;
+        i32 height;
+        u8* data1;
+        u8* data2;
+    };
+
+    Array<Sector,6050> sectors;
+};
+
 bool pak_tilesRead(const char* filepath, void** tiles);
 bool pak_texturesRead(const char* filepath, DiskTextures* textures);
 bool bin_WorldRead(const char* filepath);
+bool pak_FloorRead(const char* filepath);
+bool keyx_SectorsRead(const char* keyx_filepath, const char* wldx_filepath, DiskSectors* diskSectors);

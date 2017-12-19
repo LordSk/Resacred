@@ -299,3 +299,113 @@ bool bin_WorldRead(const char* filepath)
 
     return true;
 }
+
+struct FloorEntry
+{
+    i32 id;
+    i32 pakTileIds;
+    i32 varC;
+    i32 nextTileId; // maybe?
+};
+
+bool pak_FloorRead(const char* filepath)
+{
+    FileBuffer fb = fileReadWhole(filepath);
+    if(fb.error != FileError::NO_FILE_ERROR) {
+        return false;
+    }
+    defer(fb.block.dealloc());
+
+    u8* top = (u8*)fb.block.ptr;
+    PakHeader* header = (PakHeader*)top;
+    i32 entryCount = min(header->entryCount, 10000);
+    //const i32 entryCount = header->entryCount;
+    SubFileDesc* fileDesc = (SubFileDesc*)(top + sizeof(PakHeader));
+
+    fileDesc++;
+    entryCount--;
+
+    for(i32 i = 0; i < entryCount; ++i) {
+        i32 offset = fileDesc[i].offset;
+        FloorEntry& fe = *(FloorEntry*)(top + offset);
+        i32 pakTileId1 = fe.pakTileIds & 0x1FFFF;
+        i32 pakTileId2 = fe.pakTileIds >> 17;
+
+        LOG_DBG("[%d] %d %d %08x %d", i, pakTileId1, pakTileId2, fe.varC, fe.nextTileId);
+    }
+
+
+    LOG_DBG("pak_FloorRead> done");
+
+    return true;
+}
+
+struct KeyxSub
+{
+    i32 int0;
+    i32 fileOffset;
+    i32 size;
+};
+
+struct KeyxSector
+{
+    char name32[32];
+    i32 int0;
+    i32 sectorId;
+//40
+    i32 beforeNbs;
+    u16 neighbourIds[8];
+//60
+    i32 posX;
+    i32 posY;
+    i32 width;
+    i32 height;
+    KeyxSub subs[32];
+    u8 data[308];
+};
+
+static_assert(sizeof(KeyxSector) == 0x300, "sizeof(KeyxSector) := 0x300");
+
+bool keyx_SectorsRead(const char* keyx_filepath, const char* wldx_filepath, DiskSectors* diskSectors)
+{
+    // read keyx file
+    FileBuffer fbKeyx = fileReadWhole(keyx_filepath);
+    if(fbKeyx.error != FileError::NO_FILE_ERROR) {
+        return false;
+    }
+    defer(fbKeyx.block.dealloc());
+
+    // read wldx file
+    FileBuffer fbWldx = fileReadWhole(wldx_filepath);
+    if(fbWldx.error != FileError::NO_FILE_ERROR) {
+        return false;
+    }
+    defer(fbWldx.block.dealloc());
+
+    u8* top = (u8*)fbKeyx.block.ptr;
+    PakHeader* header = (PakHeader*)top;
+    const i32 entryCount = header->entryCount;
+
+    const u8* wldxData = (const u8*)fbWldx.block.ptr;
+
+    static u8 deflateOutput[Megabyte(2)];
+
+    i32 offset = sizeof(PakHeader);
+    for(i32 i = 0; i < entryCount; ++i) {
+        KeyxSector& ks = *(KeyxSector*)(top + offset);
+        offset += sizeof(KeyxSector);
+
+        LOG_DBG("[%d] %d posX=%d posY=%d, width=%d height=%d", i,
+                ks.sectorId, ks.posX, ks.posY, ks.width, ks.height);
+        LOG_DBG("sub_13={%d, %d, %d}", ks.subs[13].int0, ks.subs[13].fileOffset, ks.subs[13].size);
+
+        const char* compData = (const char*)(wldxData + ks.subs[13].fileOffset);
+        const i32 compSize = ks.subs[13].size;
+        i32 ret = zlib_decompress(compData, compSize, deflateOutput, sizeof(deflateOutput));
+        assert(ret == Z_OK);
+    }
+
+    LOG_DBG("keyx_SectorsRead> done");
+
+    return true;
+}
