@@ -97,20 +97,56 @@ struct DiskTextures
 
 struct DiskSectors
 {
-    struct Sector {
-        i32 posX;
-        i32 posY;
-        i32 width;
-        i32 height;
-        u8* data1;
-        u8* data2;
+    struct WldxEntry
+    {
+        i32 tileId;
+        i32 staticId;
+        i32 entityId;
+        i32 posInfo;
+        u8 rest[8];
+        i8 smthX; // probably color related
+        i8 smthY;
+        i8 smthZ;
+        i8 smthW;
+        u8 unk1;
+        u8 unk2;
+        u8 unk3;
+        u8 someTypeId; // 0-15
+    };
+
+    struct Sector
+    {
+        i32 posX1;
+        i32 posX2;
+        i32 posY1;
+        i32 posY2;
+        WldxEntry* wldxEntries;
+        i32 wldxEntryCount;
     };
 
     Array<Sector,6050> sectors;
+    WldxEntry* entryData;
+    MemBlock block;
 };
 
-bool pak_tilesRead(const char* filepath, void** tiles);
+static_assert(sizeof(DiskSectors::WldxEntry) == 32, "sizeof(WldxEntry) != 32");
+
+struct DiskTiles
+{
+    struct Tile
+    {
+        i16 textureId;
+        u8 localId;
+        u8 _pad;
+    };
+
+    Tile* tiles;
+    i32 tileCount;
+    MemBlock block;
+};
+
+bool pak_tilesRead(const char* filepath, DiskTiles* diskTiles);
 bool pak_texturesRead(const char* filepath, DiskTextures* textures);
 bool bin_WorldRead(const char* filepath);
 bool pak_FloorRead(const char* filepath);
-bool keyx_SectorsRead(const char* keyx_filepath, const char* wldx_filepath, DiskSectors* diskSectors);
+bool keyx_sectorsRead(const char* keyx_filepath, const char* wldx_filepath, DiskSectors* diskSectors);

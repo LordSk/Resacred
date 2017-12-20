@@ -78,7 +78,7 @@ struct SubFileDesc
 
 static_assert(sizeof(PakTile) == 64, "sizeof(Tile) != 64");
 
-bool pak_tilesRead(const char* filepath, void** tiles)
+bool pak_tilesRead(const char* filepath, DiskTiles* diskTiles)
 {
     FileBuffer fb = fileReadWhole(filepath);
     if(fb.error != FileError::NO_FILE_ERROR) {
@@ -91,6 +91,11 @@ bool pak_tilesRead(const char* filepath, void** tiles)
     const i32 entryCount = header->entryCount;
     SubFileDesc* fileDesc = (SubFileDesc*)(top + sizeof(PakHeader));
 
+    diskTiles->block = MEM_ALLOC(entryCount * sizeof(DiskTiles::Tile));
+    assert(diskTiles->block.ptr);
+    diskTiles->tiles = (DiskTiles::Tile*)diskTiles->block.ptr;
+    diskTiles->tileCount = entryCount;
+
     for(i32 i = 0; i < entryCount; ++i) {
         i32 offset = fileDesc[i].offset;
         PakTile* tile = (PakTile*)(top + offset);
@@ -98,6 +103,8 @@ bool pak_tilesRead(const char* filepath, void** tiles)
             tile->filename, tile->textureId, tile->tileId,
             tile->_unknown[0], tile->_unknown[1], tile->_unknown[2], tile->_unknown[3], tile->_unknown[4],
             tile->_unknown[5]);*/
+        diskTiles->tiles[i].textureId = tile->textureId;
+        diskTiles->tiles[i].localId = tile->tileId;
     }
 
     return true;
@@ -119,7 +126,8 @@ struct TGAHeader
     u8 imageDescriptor;
 };
 
-i32 zlib_decompress(const char* input, const i32 inputSize, u8* output, const i32 outputMaxSize)
+i32 zlib_decompress(const char* input, const i32 inputSize, u8* output, const i32 outputMaxSize,
+                    i32* outputSize = nullptr)
 {
     constexpr i32 CHUNK = 16384;
     i32 ret;
@@ -181,6 +189,7 @@ i32 zlib_decompress(const char* input, const i32 inputSize, u8* output, const i3
 
     /* clean up and return */
     inflateEnd(&strm);
+    if(outputSize) *outputSize = outCursor;
     return ret == Z_STREAM_END ? Z_OK : Z_DATA_ERROR;
 }
 
@@ -356,18 +365,20 @@ struct KeyxSector
     i32 beforeNbs;
     u16 neighbourIds[8];
 //60
-    i32 posX;
-    i32 posY;
-    i32 width;
-    i32 height;
+    i32 posX1;
+    i32 posY1;
+    i32 posX2;
+    i32 posY2;
     KeyxSub subs[32];
     u8 data[308];
 };
 
 static_assert(sizeof(KeyxSector) == 0x300, "sizeof(KeyxSector) := 0x300");
 
-bool keyx_SectorsRead(const char* keyx_filepath, const char* wldx_filepath, DiskSectors* diskSectors)
+bool keyx_sectorsRead(const char* keyx_filepath, const char* wldx_filepath, DiskSectors* diskSectors)
 {
+    LOG_DBG("keyx_SectorsRead> start reading data...");
+
     // read keyx file
     FileBuffer fbKeyx = fileReadWhole(keyx_filepath);
     if(fbKeyx.error != FileError::NO_FILE_ERROR) {
@@ -382,27 +393,61 @@ bool keyx_SectorsRead(const char* keyx_filepath, const char* wldx_filepath, Disk
     }
     defer(fbWldx.block.dealloc());
 
-    u8* top = (u8*)fbKeyx.block.ptr;
-    PakHeader* header = (PakHeader*)top;
-    const i32 entryCount = header->entryCount;
-
+    const u8* keyxData = (const u8*)fbKeyx.block.ptr;
     const u8* wldxData = (const u8*)fbWldx.block.ptr;
 
-    static u8 deflateOutput[Megabyte(2)];
+    PakHeader* header = (PakHeader*)keyxData;
+    const i32 entryCount = header->entryCount;
+    static u8 s_deflateOutput[Megabyte(2)];
 
-    i32 offset = sizeof(PakHeader);
+    u64 deflatedDataTotalSize = 0;
+
+    i32 keyxDataOffset = sizeof(PakHeader);
     for(i32 i = 0; i < entryCount; ++i) {
-        KeyxSector& ks = *(KeyxSector*)(top + offset);
-        offset += sizeof(KeyxSector);
+        KeyxSector& ks = *(KeyxSector*)(keyxData + keyxDataOffset);
+        keyxDataOffset += sizeof(KeyxSector);
+        const i32 uncompressedSize = ks.subs[15].size;
+        deflatedDataTotalSize += uncompressedSize;
+    }
 
-        LOG_DBG("[%d] %d posX=%d posY=%d, width=%d height=%d", i,
-                ks.sectorId, ks.posX, ks.posY, ks.width, ks.height);
+    LOG_DBG("deflatedDataTotalSize=%llukb", deflatedDataTotalSize/1024);
+
+    diskSectors->block = MEM_ALLOC(deflatedDataTotalSize);
+    assert(diskSectors->block.ptr);
+    diskSectors->entryData = (DiskSectors::WldxEntry*)diskSectors->block.ptr;
+    u64 entryDataOffset = 0;
+
+    keyxDataOffset = sizeof(PakHeader);
+    for(i32 i = 0; i < entryCount; ++i) {
+        KeyxSector& ks = *(KeyxSector*)(keyxData + keyxDataOffset);
+        keyxDataOffset += sizeof(KeyxSector);
+
+        /*LOG_DBG("[%d] %d px1=%d py1=%d, px2=%d py2=%d", i,
+                ks.sectorId, ks.posX1, ks.posY1, ks.posX2, ks.posY2);
         LOG_DBG("sub_13={%d, %d, %d}", ks.subs[13].int0, ks.subs[13].fileOffset, ks.subs[13].size);
+        LOG_DBG("uncompressedSize=%d deflatedDataCount=%d ucOff1=%d ucOff2=%d",
+                ks.subs[15].size, ks.subs[2].size, ks.subs[11].fileOffset, ks.subs[12].fileOffset);*/
 
         const char* compData = (const char*)(wldxData + ks.subs[13].fileOffset);
         const i32 compSize = ks.subs[13].size;
-        i32 ret = zlib_decompress(compData, compSize, deflateOutput, sizeof(deflateOutput));
+        const i32 uncompressedSize = ks.subs[15].size;
+        i32 ret = zlib_decompress(compData, compSize, s_deflateOutput, uncompressedSize);
         assert(ret == Z_OK);
+
+        u8* entryDataNext = (u8*)diskSectors->entryData + entryDataOffset;
+
+        DiskSectors::Sector sector;
+        sector.posX1 = ks.posX1;
+        sector.posX2 = ks.posX2;
+        sector.posY1 = ks.posY1;
+        sector.posY2 = ks.posY2;
+        sector.wldxEntries = (DiskSectors::WldxEntry*)entryDataNext;
+        sector.wldxEntryCount = uncompressedSize / sizeof(DiskSectors::WldxEntry);
+
+        memmove((u8*)diskSectors->entryData + entryDataOffset, s_deflateOutput, uncompressedSize);
+        entryDataOffset += uncompressedSize;
+
+        diskSectors->sectors.pushPOD(&sector);
     }
 
     LOG_DBG("keyx_SectorsRead> done");
