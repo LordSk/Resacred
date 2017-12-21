@@ -8,33 +8,38 @@
 #include "stb_image.h"
 #include "rs_gpu_resources.h"
 
-
 #define PAGE_TEXTURES_COUNT 500
 static i32 dedicated = 0, availMemory = 0, currentAvailMem = 0, evictionCount = 0, evictedMem = 0;
 
-static const vec2f tileUV[18][4] = {
-    // 0
-    { vec2f(0, 24/256.f), vec2f(50/256.f, -1/256.f),
-      vec2f(100/256.f, 24/256.f), vec2f(50/256.f, 50/256.f) },
+static vec2f tileUV[18][4];
 
-    { vec2f(0, 0), vec2f(0, 0), vec2f(0, 0), vec2f(0, 0) }, // 1
-    { vec2f(0, 0), vec2f(0, 0), vec2f(0, 0), vec2f(0, 0) }, // 2
-    { vec2f(0, 0), vec2f(0, 0), vec2f(0, 0), vec2f(0, 0) }, // 3
-    { vec2f(0, 0), vec2f(0, 0), vec2f(0, 0), vec2f(0, 0) }, // 4
-    { vec2f(0, 0), vec2f(0, 0), vec2f(0, 0), vec2f(0, 0) }, // 5
-    { vec2f(0, 0), vec2f(0, 0), vec2f(0, 0), vec2f(0, 0) }, // 6
-    { vec2f(0, 0), vec2f(0, 0), vec2f(0, 0), vec2f(0, 0) }, // 7
-    { vec2f(0, 0), vec2f(0, 0), vec2f(0, 0), vec2f(0, 0) }, // 8
-    { vec2f(0, 0), vec2f(0, 0), vec2f(0, 0), vec2f(0, 0) }, // 9
-    { vec2f(0, 0), vec2f(0, 0), vec2f(0, 0), vec2f(0, 0) }, // 10
-    { vec2f(0, 0), vec2f(0, 0), vec2f(0, 0), vec2f(0, 0) }, // 11
-    { vec2f(0, 0), vec2f(0, 0), vec2f(0, 0), vec2f(0, 0) }, // 12
-    { vec2f(0, 0), vec2f(0, 0), vec2f(0, 0), vec2f(0, 0) }, // 13
-    { vec2f(0, 0), vec2f(0, 0), vec2f(0, 0), vec2f(0, 0) }, // 14
-    { vec2f(0, 0), vec2f(0, 0), vec2f(0, 0), vec2f(0, 0) }, // 15
-    { vec2f(0, 0), vec2f(0, 0), vec2f(0, 0), vec2f(0, 0) }, // 16
-    { vec2f(0, 0), vec2f(0, 0), vec2f(0, 0), vec2f(0, 0) }  // 17
-};
+void initTileUVs()
+{
+    tileUV[0][0] = vec2f(0, 25/256.f);
+    tileUV[0][1] = vec2f(50/256.f, 0/256.f);
+    tileUV[0][2] = vec2f(100/256.f, 25/256.f);
+    tileUV[0][3] = vec2f(50/256.f, 50/256.f);
+
+    tileUV[1][0] = vec2f(104/256.f, 25/256.f);
+    tileUV[1][1] = vec2f(154/256.f, 0/256.f);
+    tileUV[1][2] = vec2f(204/256.f, 25/256.f);
+    tileUV[1][3] = vec2f(154/256.f, 50/256.f);
+
+    for(i32 i = 2; i < 18; i += 2) {
+        i32 line = i / 2;
+        f32 offsetX = (line & 1) * 52/256.f;
+
+        tileUV[i][0] = vec2fAdd(tileUV[0][0], vec2f(offsetX, 25/256.f * line));
+        tileUV[i][1] = vec2fAdd(tileUV[0][1], vec2f(offsetX, 25/256.f * line));
+        tileUV[i][2] = vec2fAdd(tileUV[0][2], vec2f(offsetX, 25/256.f * line));
+        tileUV[i][3] = vec2fAdd(tileUV[0][3], vec2f(offsetX, 25/256.f * line));
+
+        tileUV[i+1][0] = vec2fAdd(tileUV[1][0], vec2f(offsetX, 25/256.f * line));
+        tileUV[i+1][1] = vec2fAdd(tileUV[1][1], vec2f(offsetX, 25/256.f * line));
+        tileUV[i+1][2] = vec2fAdd(tileUV[1][2], vec2f(offsetX, 25/256.f * line));
+        tileUV[i+1][3] = vec2fAdd(tileUV[1][3], vec2f(offsetX, 25/256.f * line));
+    }
+}
 
 #define OFFSETOF(TYPE, ELEMENT) ((size_t)&(((TYPE *)0)->ELEMENT))
 
@@ -51,6 +56,25 @@ struct TileVertex
         v = _v;
     }
 };
+
+void makeTileMesh(TileVertex* mesh, i32 localTileId)
+{
+    /*
+    mesh[0] = TileVertex(0, 0.25,     tileUV[localTileId][0].x, tileUV[localTileId][0].y);
+    mesh[1] = TileVertex(0.5, 0,      tileUV[localTileId][1].x, tileUV[localTileId][1].y);
+    mesh[2] = TileVertex(1, 0.25,     tileUV[localTileId][2].x, tileUV[localTileId][2].y);
+    mesh[3] = TileVertex(0, 0.25,     tileUV[localTileId][0].x, tileUV[localTileId][0].y);
+    mesh[4] = TileVertex(1, 0.25,     tileUV[localTileId][2].x, tileUV[localTileId][2].y);
+    mesh[5] = TileVertex(0.5, 0.5,    tileUV[localTileId][3].x, tileUV[localTileId][3].y);
+    */
+
+    mesh[0] = TileVertex(0.0, 0.0,     tileUV[localTileId][0].x, tileUV[localTileId][0].y);
+    mesh[1] = TileVertex(1.0, 0.0,     tileUV[localTileId][1].x, tileUV[localTileId][1].y);
+    mesh[2] = TileVertex(1.0, 1.0,     tileUV[localTileId][2].x, tileUV[localTileId][2].y);
+    mesh[3] = TileVertex(0.0, 0.0,     tileUV[localTileId][0].x, tileUV[localTileId][0].y);
+    mesh[4] = TileVertex(1.0, 1.0,     tileUV[localTileId][2].x, tileUV[localTileId][2].y);
+    mesh[5] = TileVertex(0.0, 1.0,     tileUV[localTileId][3].x, tileUV[localTileId][3].y);
+}
 
 struct TileShader
 {
@@ -146,6 +170,8 @@ struct Game
     i32 texDiskIds[PAGE_TEXTURES_COUNT];
     GLuint* gpu_textures[PAGE_TEXTURES_COUNT];
     i32 pageId = 0;
+    i32 testTileLocalId = 0;
+    TileVertex testTileData[6];
 
     TileShader tileShader;
 
@@ -189,7 +215,7 @@ struct Game
         GPUres_init(&diskTextures);
     }
 
-    void requestTextures()
+    void requestTexBrowserTextures()
     {
         for(int i = 0; i < PAGE_TEXTURES_COUNT; ++i) {
             texDiskIds[i] = i + (pageId * PAGE_TEXTURES_COUNT);
@@ -209,9 +235,10 @@ struct Game
             ImGui::Image((ImTextureID)(intptr_t)*gpu_textures[i],
                          ImVec2(256, 256));
             i32 diskTexId = texDiskIds[i];
-            ImGui::Text("%s (%d/%d)", diskTextures.textureName[diskTexId],
+            ImGui::Text("%s (%d/%d) #%d", diskTextures.textureName[diskTexId],
                         diskTextures.textureInfo[diskTexId].width,
-                        diskTextures.textureInfo[diskTexId].height);
+                        diskTextures.textureInfo[diskTexId].height,
+                        diskTexId);
             ImGui::EndGroup();
 
             if((i + 1)%4 != 0) {
@@ -223,16 +250,18 @@ struct Game
         ImGui::End();
     }
 
+    void ui_tileTest()
+    {
+        ImGui::Begin("Test tile");
+
+        ImGui::SliderInt("tileId", &testTileLocalId, 0, 17);
+
+        ImGui::End();
+    }
+
     void uploadTestTileData()
     {
-        static const TileVertex testTileData[] = {
-            TileVertex(0, 0.25, tileUV[0][0].x, tileUV[0][0].y),
-            TileVertex(0.5, 0, tileUV[0][1].x, tileUV[0][1].y),
-            TileVertex(1, 0.25, tileUV[0][2].x, tileUV[0][2].y),
-            TileVertex(0, 0.25, tileUV[0][0].x, tileUV[0][0].y),
-            TileVertex(1, 0.25, tileUV[0][2].x, tileUV[0][2].y),
-            TileVertex(0.5, 0.5, tileUV[0][3].x, tileUV[0][3].y)
-        };
+        makeTileMesh(testTileData, testTileLocalId);
 
         CommandList list;
         list.arrayBufferData(&tileShader.vertexBuffer, testTileData, sizeof(testTileData), GL_STATIC_DRAW);
@@ -240,7 +269,7 @@ struct Game
         list.useProgram(&tileShader.program);
         static const mat4 orth = mat4Orthographic(0, 1600, 900, 0, -1.f, 1.f);
         list.uniformMat4(tileShader.uViewMatrix, &orth);
-        static const mat4 scale = mat4Scale(vec3f(500, 500, 1));
+        static const mat4 scale = mat4Scale(vec3f(250, 250, 1));
         list.uniformMat4(tileShader.uModelMatrix, &scale);
 
         renderer_pushCommandList(list);
@@ -249,7 +278,8 @@ struct Game
     void drawTestTiles()
     {
         GLuint* gpuTexture;
-        i32 tileTexId = diskTiles.tiles[diskSectors.sectors[1].wldxEntries[1].tileId].textureId;
+        //i32 tileTexId = diskTiles.tiles[diskSectors.sectors[1].wldxEntries[1].tileId].textureId;
+        i32 tileTexId = 1493;
         GPUres_requestTextures(&tileTexId, &gpuTexture, 1);
 
         CommandList list;
@@ -289,6 +319,8 @@ i32 thread_game(void*)
 {
     LOG("Game> initialization...");
     Window& client = *get_clientWindow();
+    initTileUVs();
+
     renderer_waitForInit();
     client.dbguiWaitForInit();
 
@@ -305,13 +337,14 @@ i32 thread_game(void*)
 
     while(client.running) {
         GPUres_newFrame();
-        game.requestTextures();
+        //game.requestTexBrowserTextures();
 
         // NOTE: dont push render command inside UI code
 #ifdef CONF_DEBUG
         client.dbguiNewFrameBegin();
-        if(client.imguiSetup && 0) {
-            game.ui_textureBrowser();
+        if(client.imguiSetup) {
+            //game.ui_textureBrowser();
+            game.ui_tileTest();
             ui_videoInfo();
             //GPUres_debugUi();
             //ImGui::ShowTestWindow();
@@ -322,6 +355,7 @@ i32 thread_game(void*)
         list.clear();
         renderer_pushCommandList(list);
 
+        game.uploadTestTileData();
         game.drawTestTiles();
 
         list = {};
