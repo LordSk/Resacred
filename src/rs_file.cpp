@@ -203,7 +203,7 @@ bool pak_texturesRead(const char* filepath, DiskTextures* textures)
 
     u8* top = (u8*)fb.block.ptr;
     PakHeader* header = (PakHeader*)top;
-    const i32 entryCount = min(header->entryCount, 3000);
+    const i32 entryCount = min(header->entryCount, 6000);
     SubFileDesc* fileDesc = (SubFileDesc*)(top + sizeof(PakHeader));
 
     fileDesc++; // skip first (invalid)

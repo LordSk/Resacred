@@ -45,8 +45,6 @@ struct PipelineState
 
 struct CommandList
 {
-    PipelineState pipelineState;
-
     typedef enum {
         CT_CLEAR=0,
         CT_CLEAR_COLOR,                 // 1
@@ -61,8 +59,15 @@ struct CommandList
         CT_GEN_VERTEX_ARRAYS,           // 9
         CT_BIND_BUFFER,                 // 10
         CT_BIND_VERTEX_ARRAY,           // 11
+        CT_ARRAY_BUFFER_DATA,           // 12
+        CT_DRAW_TRIANGLES,              // 13
+        CT_USE_PROGRAM,                 // 14
+        CT_UNIFORM_INT,                 // 15
+        CT_UNIFORM_4FV,                 // 16
+        CT_UNIFORM_MAT4,                // 17
+        CT_TEXTURE_SLOT,                // 18
 
-        CT_QUERY_VRAM_INFO,             // 12
+        CT_QUERY_VRAM_INFO,
 
         CT_COUNTER_INCREMENT,
         CT_COUNTER_DECREMENT,
@@ -203,6 +208,65 @@ struct CommandList
         Cmd cmd;
         cmd.type = CT_BIND_VERTEX_ARRAY;
         cmd.param[0] = (void*)vao;
+        cmds.pushPOD(&cmd, 1);
+    }
+
+    inline void arrayBufferData(GLuint* buffer, const void* data, i32 dataSize, GLenum usage) {
+        Cmd cmd;
+        cmd.type = CT_ARRAY_BUFFER_DATA;
+        cmd.param[0] = (void*)buffer;
+        cmd.param[1] = (void*)data;
+        cmd.param[2] = (void*)(intptr_t)dataSize;
+        cmd.param[3] = (void*)(intptr_t)usage;
+        cmds.pushPOD(&cmd, 1);
+    }
+
+    inline void drawTriangles(i32 offset, i32 vertCount) {
+        Cmd cmd;
+        cmd.type = CT_DRAW_TRIANGLES;
+        cmd.param[0] = (void*)(intptr_t)offset;
+        cmd.param[1] = (void*)(intptr_t)vertCount;
+        cmds.pushPOD(&cmd, 1);
+    }
+
+    inline void useProgram(GLuint* program) {
+        Cmd cmd;
+        cmd.type = CT_USE_PROGRAM;
+        cmd.param[0] = (void*)program;
+        cmds.pushPOD(&cmd, 1);
+    }
+
+    inline void uniformInt(i32 location, i32* value) {
+        assert(value);
+        Cmd cmd;
+        cmd.type = CT_UNIFORM_INT;
+        cmd.param[0] = (void*)(intptr_t)location;
+        cmd.param[1] = (void*)value;
+        cmds.pushPOD(&cmd, 1);
+    }
+
+    inline void uniform4fv(i32 location, i32* value) {
+        Cmd cmd;
+        cmd.type = CT_UNIFORM_4FV;
+        cmd.param[0] = (void*)(intptr_t)location;
+        cmd.param[1] = (void*)value;
+        cmds.pushPOD(&cmd, 1);
+    }
+
+    inline void uniformMat4(i32 location, const void* matrix4x4) {
+        Cmd cmd;
+        cmd.type = CT_UNIFORM_MAT4;
+        cmd.param[0] = (void*)(intptr_t)location;
+        cmd.param[1] = (void*)matrix4x4;
+        cmds.pushPOD(&cmd, 1);
+    }
+
+    // TODO: make slot a pointer?
+    inline void textureSlot(GLuint* gpuTex, i32 slot) {
+        Cmd cmd;
+        cmd.type = CT_TEXTURE_SLOT;
+        cmd.param[0] = (void*)gpuTex;
+        cmd.param[1] = (void*)(intptr_t)slot;
         cmds.pushPOD(&cmd, 1);
     }
 

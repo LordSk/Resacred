@@ -128,6 +128,11 @@ struct GPUResources
                 desc.dataPixelCompType = GL_UNSIGNED_SHORT_4_4_4_4_REV;
             }
 
+            /*
+            desc.minFilter = GL_NEAREST;
+            desc.magFilter = GL_NEAREST;
+            */
+
             cmds.createTexture2D(&desc, &texGpuId[newId]);
             cmds.counterIncrement(&texLoaded[newId]);
         }

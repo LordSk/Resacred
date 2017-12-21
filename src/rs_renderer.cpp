@@ -53,6 +53,8 @@ struct Renderer
 
     bool initialized = false;
 
+    PipelineState pipelineState;
+
     bool init()
     {
         LOG("Renderer> initialization...");
@@ -86,6 +88,7 @@ struct Renderer
         framePrepareId = 0;
 
         glClearColor(0.15f, 0.15f, 0.15f, 1.0f);
+        glDisable(GL_CULL_FACE);
 
 #ifdef CONF_DEBUG
         glEnable(GL_DEBUG_OUTPUT);
@@ -228,6 +231,7 @@ struct Renderer
                     case CommandList::CT_GEN_BUFFERS: {
                         GLuint* buffers = (GLuint*)cmd.param[0];
                         i32 count = (i32)(intptr_t)cmd.param[1];
+                        assert(buffers);
                         glGenBuffers(count, buffers);
                         break; }
 
@@ -240,12 +244,57 @@ struct Renderer
                     case CommandList::CT_BIND_BUFFER: {
                         i32 type = (i32)(intptr_t)cmd.param[0];
                         GLuint buffer = *(GLuint*)cmd.param[1];
+                        assert(buffer != 0);
                         glBindBuffer(type, buffer);
                         break; }
 
                     case CommandList::CT_BIND_VERTEX_ARRAY: {
                         GLuint vao = *(GLuint*)cmd.param[0];
                         glBindVertexArray(vao);
+                        break; }
+
+                    case CommandList::CT_ARRAY_BUFFER_DATA: {
+                        GLuint buffer = *(GLuint*)cmd.param[0];
+                        void* data = cmd.param[1];
+                        i32 dataSize = (i32)(intptr_t)cmd.param[2];
+                        i32 usage = (i32)(intptr_t)cmd.param[3];
+                        assert(buffer != 0);
+                        glBindBuffer(GL_ARRAY_BUFFER, buffer);
+                        glBufferData(GL_ARRAY_BUFFER, dataSize, data, usage);
+                        break; }
+
+                    case CommandList::CT_DRAW_TRIANGLES: {
+                        i32 offset = (i32)(intptr_t)cmd.param[0];
+                        i32 vertCount = (i32)(intptr_t)cmd.param[1];
+                        glDrawArrays(GL_TRIANGLES, offset, vertCount);
+                        break; }
+
+                    case CommandList::CT_USE_PROGRAM: {
+                        GLuint program = *(GLuint*)cmd.param[0];
+                        glUseProgram(program);
+                        break; }
+
+                    case CommandList::CT_UNIFORM_INT: {
+                        i32 location = (i32)(intptr_t)cmd.param[0];
+                        i32 value = *(i32*)cmd.param[1];
+                        glUniform1i(location, value);
+                        break; }
+
+                    case CommandList::CT_UNIFORM_4FV: {
+                        assert(false);
+                        break; }
+
+                    case CommandList::CT_UNIFORM_MAT4: {
+                        i32 location = (i32)(intptr_t)cmd.param[0];
+                        f32* matrixData = (f32*)cmd.param[1];
+                        glUniformMatrix4fv(location, 1, GL_FALSE, matrixData);
+                        break; }
+
+                    case CommandList::CT_TEXTURE_SLOT: {
+                        GLuint textureId = *(GLuint*)cmd.param[0];
+                        i32 slot = (i32)(intptr_t)cmd.param[1];
+                        glActiveTexture(GL_TEXTURE0 + slot);
+                        glBindTexture(GL_TEXTURE_2D, textureId);
                         break; }
 
                     case CommandList::CT_QUERY_VRAM_INFO: {
