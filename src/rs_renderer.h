@@ -60,15 +60,18 @@ struct CommandList
         CT_BIND_BUFFER,                 // 10
         CT_BIND_VERTEX_ARRAY,           // 11
         CT_ARRAY_BUFFER_DATA,           // 12
-        CT_DRAW_TRIANGLES,              // 13
-        CT_USE_PROGRAM,                 // 14
-        CT_UNIFORM_INT,                 // 15
-        CT_UNIFORM_4FV,                 // 16
-        CT_UNIFORM_MAT4,                // 17
-        CT_TEXTURE_SLOT,                // 18
+        CT_BUFFER_SUB_DATA,       // 13
+        CT_DRAW_TRIANGLES,              // 14
+        CT_USE_PROGRAM,                 // 15
+        CT_UNIFORM_INT,                 // 16
+        CT_UNIFORM_4FV,                 // 17
+        CT_UNIFORM_MAT4,                // 18
+        CT_TEXTURE_SLOT,                // 19
 
         CT_QUERY_VRAM_INFO,
 
+        CT_LOCK,
+        CT_UNLOCK,
         CT_COUNTER_INCREMENT,
         CT_COUNTER_DECREMENT,
         CT_BARRIER,
@@ -211,7 +214,7 @@ struct CommandList
         cmds.pushPOD(&cmd, 1);
     }
 
-    inline void arrayBufferData(GLuint* buffer, const void* data, i32 dataSize, GLenum usage) {
+    inline void bufferData(GLuint* buffer, const void* data, i32 dataSize, GLenum usage) {
         Cmd cmd;
         cmd.type = CT_ARRAY_BUFFER_DATA;
         cmd.param[0] = (void*)buffer;
@@ -219,6 +222,21 @@ struct CommandList
         cmd.param[2] = (void*)(intptr_t)dataSize;
         cmd.param[3] = (void*)(intptr_t)usage;
         cmds.pushPOD(&cmd, 1);
+    }
+
+    inline void bufferSubData(GLenum type, GLuint* buffer, i32 offset, const void* data, i32 dataSize) {
+        Cmd cmd;
+        cmd.type = CT_BUFFER_SUB_DATA;
+        cmd.param[0] = (void*)(intptr_t)type;
+        cmd.param[1] = (void*)buffer;
+        cmd.param[2] = (void*)(intptr_t)offset;
+        cmd.param[3] = (void*)data;
+        cmd.param[4] = (void*)(intptr_t)dataSize;
+        cmds.pushPOD(&cmd, 1);
+    }
+
+    inline void arrayBufferSubData(GLuint* buffer, i32 offset, const void* data, i32 dataSize) {
+        bufferSubData(GL_ARRAY_BUFFER, buffer, offset, data, dataSize);
     }
 
     inline void drawTriangles(i32 offset, i32 vertCount) {
@@ -279,6 +297,20 @@ struct CommandList
         cmd.param[2] = availVidMem;
         cmd.param[3] = evictionCount;
         cmd.param[4] = evictedMem;
+        cmds.pushPOD(&cmd, 1);
+    }
+
+    inline void lock(MutexSpin* mutex) {
+        Cmd cmd;
+        cmd.type = CT_LOCK;
+        cmd.param[0] = mutex;
+        cmds.pushPOD(&cmd, 1);
+    }
+
+    inline void unlock(MutexSpin* mutex) {
+        Cmd cmd;
+        cmd.type = CT_UNLOCK;
+        cmd.param[0] = mutex;
         cmds.pushPOD(&cmd, 1);
     }
 

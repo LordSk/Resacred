@@ -2,6 +2,7 @@
 #include "rs_window.h"
 #include "rs_logger.h"
 #include "rs_gl_utils.h"
+#include "rs_array.h"
 #include "gl3w.h"
 #include "imgui.h"
 #include "imgui_sdl2_setup.h"
@@ -44,8 +45,7 @@ struct Renderer
 {
     SDL_GLContext glContext;
     SDL_mutex* cmdListMutex[FRAME_COUNT];
-    CommandList::Cmd cmdList[FRAME_COUNT][2048];
-    i32 cmdListCount[FRAME_COUNT];
+    Array<CommandList::Cmd,2048> cmdList[FRAME_COUNT];
     u8 frameReady[FRAME_COUNT];
 
     i32 frameRenderId = 0;
@@ -78,7 +78,6 @@ struct Renderer
 
         for(i32 i = 0; i < FRAME_COUNT; ++i) {
             frameReady[i] = false;
-            cmdListCount[i] = 0;
             cmdListMutex[i] = SDL_CreateMutex();
         }
 
@@ -109,9 +108,10 @@ struct Renderer
                 continue;
             }
 
-            CommandList::Cmd* _cmdList = cmdList[frameRenderId];
+            CommandList::Cmd* _cmdList = cmdList[frameRenderId].data();
+            auto& cmdListArr = cmdList[frameRenderId];
             SDL_mutex* _cmdListMutex = cmdListMutex[frameRenderId];
-            i32& _cmdListCount = cmdListCount[frameRenderId];
+            const i32 _cmdListCount = cmdList[frameRenderId].count();
 
             SDL_LockMutex(_cmdListMutex);
 
@@ -258,9 +258,28 @@ struct Renderer
                         void* data = cmd.param[1];
                         i32 dataSize = (i32)(intptr_t)cmd.param[2];
                         i32 usage = (i32)(intptr_t)cmd.param[3];
+
+                        /*LOG_DBG("CT_ARRAY_BUFFER_DATA> buffer=%d data=%x dataSize=%d",
+                                buffer, data, dataSize);*/
+
                         assert(buffer != 0);
                         glBindBuffer(GL_ARRAY_BUFFER, buffer);
                         glBufferData(GL_ARRAY_BUFFER, dataSize, data, usage);
+                        break; }
+
+                    case CommandList::CT_BUFFER_SUB_DATA: {
+                        GLenum type = (GLenum)(intptr_t)cmd.param[0];
+                        GLuint buffer = *(GLuint*)cmd.param[1];
+                        i32 offset = (i32)(intptr_t)cmd.param[2];
+                        void* data = cmd.param[3];
+                        i32 dataSize = (i32)(intptr_t)cmd.param[4];
+
+                        /*LOG_DBG("CT_BUFFER_SUB_DATA> type=%d buffer=%d offset=%d data=%x dataSize=%d",
+                                type, buffer, offset, data, dataSize);*/
+
+                        assert(buffer != 0);
+                        glBindBuffer(type, buffer);
+                        glBufferSubData(type, offset, dataSize, data);
                         break; }
 
                     case CommandList::CT_DRAW_TRIANGLES: {
@@ -308,6 +327,16 @@ struct Renderer
 
                         break; }
 
+                    case CommandList::CT_LOCK: {
+                        MutexSpin* mutex = (MutexSpin*)cmd.param[0];
+                        mutex->lock();
+                        break; }
+
+                    case CommandList::CT_UNLOCK: {
+                        MutexSpin* mutex = (MutexSpin*)cmd.param[0];
+                        mutex->unlock();
+                        break; }
+
                     case CommandList::CT_COUNTER_INCREMENT: {
                         AtomicCounter* counter = (AtomicCounter*)cmd.param[0];
                         counter->increment();
@@ -347,7 +376,7 @@ struct Renderer
 
             OGL_DBG_GROUP_END(RENDERER_COMMAND_EXEC);
 
-            _cmdListCount = 0;
+            cmdListArr.clearPOD();
             SDL_UnlockMutex(_cmdListMutex);
         }
     }
@@ -376,17 +405,16 @@ void renderer_pushCommandList(const CommandList& list)
     }
 
     Renderer& rdr = *g_rendererPtr;
-    CommandList::Cmd* cmdList = rdr.cmdList[rdr.framePrepareId];
     SDL_mutex* cmdListMutex = rdr.cmdListMutex[rdr.framePrepareId];
-    i32& cmdListCount = rdr.cmdListCount[rdr.framePrepareId];
-
-    assert(cmdListCount + list.cmds.count() < 2048);
+    auto& cmdListArr = rdr.cmdList[rdr.framePrepareId];
+    const i32 oldCount = cmdListArr.count();
 
     SDL_LockMutex(cmdListMutex);
-    memmove(cmdList + cmdListCount, list.cmds.data(), sizeof(CommandList::Cmd) * list.cmds.count());
+    cmdListArr.pushPOD(list.cmds.data(), list.cmds.count());
 
-    const i32 newCount = cmdListCount + list.cmds.count();
-    for(i32 i = cmdListCount; i < newCount; ++i) {
+    CommandList::Cmd* cmdList = cmdListArr.data();
+    const i32 newCount = cmdListArr.count();
+    for(i32 i = oldCount; i < newCount; ++i) {
         if(cmdList[i].type == CommandList::CT_END_FRAME || cmdList[i].type == CommandList::CT_EXECUTE) {
             rdr.frameReady[rdr.framePrepareId] = true;
             rdr.framePrepareId = (rdr.framePrepareId + 1) % FRAME_COUNT;
@@ -394,7 +422,6 @@ void renderer_pushCommandList(const CommandList& list)
         }
     }
 
-    cmdListCount += list.cmds.count();
     SDL_UnlockMutex(cmdListMutex);
 }
 

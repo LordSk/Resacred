@@ -105,7 +105,7 @@ struct Array
 
     T& push(const T* elements, const u32 eltCount = 1) {
         if(_count + eltCount > _capacity) {
-            reserve(max(_capacity * 2, eltCount));
+            reserve(max(_capacity * 2, _count + eltCount));
         }
 
         u32 start = _count;
@@ -118,7 +118,7 @@ struct Array
 
     T& pushPOD(const T* elements, const u32 eltCount = 1) {
         if(_count + eltCount >= _capacity) {
-            reserve(max(_capacity * 2, eltCount));
+            reserve(max(_capacity * 2, _count + eltCount));
         }
 
         u32 start = _count;
@@ -148,6 +148,10 @@ struct Array
         for(u32 i = 0; i < _count; ++i) {
             _data[i].~T();
         }
+        _count = 0;
+    }
+
+    inline void clearPOD() {
         _count = 0;
     }
 

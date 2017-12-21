@@ -9,6 +9,9 @@
 #include "rs_gpu_resources.h"
 
 #define PAGE_TEXTURES_COUNT 500
+#define OFFSETOF(TYPE, ELEMENT) ((size_t)&(((TYPE *)0)->ELEMENT))
+#define VIEW_X_ANGLE rs_radians(53.665)
+
 static i32 dedicated = 0, availMemory = 0, currentAvailMem = 0, evictionCount = 0, evictedMem = 0;
 
 static vec2f tileUV[18][4];
@@ -41,8 +44,6 @@ void initTileUVs()
     }
 }
 
-#define OFFSETOF(TYPE, ELEMENT) ((size_t)&(((TYPE *)0)->ELEMENT))
-
 struct TileVertex
 {
     f32 x, y;
@@ -57,8 +58,9 @@ struct TileVertex
     }
 };
 
-void makeTileMesh(TileVertex* mesh, i32 localTileId)
+void makeTileMesh(TileVertex* mesh, i32 localTileId, f32 offsetX, f32 offsetY)
 {
+    assert(localTileId >= 0 && localTileId < 18);
     /*
     mesh[0] = TileVertex(0, 0.25,     tileUV[localTileId][0].x, tileUV[localTileId][0].y);
     mesh[1] = TileVertex(0.5, 0,      tileUV[localTileId][1].x, tileUV[localTileId][1].y);
@@ -68,12 +70,12 @@ void makeTileMesh(TileVertex* mesh, i32 localTileId)
     mesh[5] = TileVertex(0.5, 0.5,    tileUV[localTileId][3].x, tileUV[localTileId][3].y);
     */
 
-    mesh[0] = TileVertex(0.0, 0.0,     tileUV[localTileId][0].x, tileUV[localTileId][0].y);
-    mesh[1] = TileVertex(1.0, 0.0,     tileUV[localTileId][1].x, tileUV[localTileId][1].y);
-    mesh[2] = TileVertex(1.0, 1.0,     tileUV[localTileId][2].x, tileUV[localTileId][2].y);
-    mesh[3] = TileVertex(0.0, 0.0,     tileUV[localTileId][0].x, tileUV[localTileId][0].y);
-    mesh[4] = TileVertex(1.0, 1.0,     tileUV[localTileId][2].x, tileUV[localTileId][2].y);
-    mesh[5] = TileVertex(0.0, 1.0,     tileUV[localTileId][3].x, tileUV[localTileId][3].y);
+    mesh[0] = TileVertex(0.0 + offsetX, 0.0 + offsetY, tileUV[localTileId][0].x, tileUV[localTileId][0].y);
+    mesh[1] = TileVertex(1.0 + offsetX, 0.0 + offsetY, tileUV[localTileId][1].x, tileUV[localTileId][1].y);
+    mesh[2] = TileVertex(1.0 + offsetX, 1.0 + offsetY, tileUV[localTileId][2].x, tileUV[localTileId][2].y);
+    mesh[3] = TileVertex(0.0 + offsetX, 0.0 + offsetY, tileUV[localTileId][0].x, tileUV[localTileId][0].y);
+    mesh[4] = TileVertex(1.0 + offsetX, 1.0 + offsetY, tileUV[localTileId][2].x, tileUV[localTileId][2].y);
+    mesh[5] = TileVertex(0.0 + offsetX, 1.0 + offsetY, tileUV[localTileId][3].x, tileUV[localTileId][3].y);
 }
 
 struct TileShader
@@ -171,13 +173,28 @@ struct Game
     GLuint* gpu_textures[PAGE_TEXTURES_COUNT];
     i32 pageId = 0;
     i32 testTileLocalId = 0;
-    TileVertex testTileData[6];
+    TileVertex tileVertexData[6 * 64 * 64];
+    MutexSpin tileVertexMutex;
 
     TileShader tileShader;
+
+    bool viewIsIso = true;
+    mat4 viewIso;
+    mat4 testTileModel;
+    i32 viewX = 0;
+    i32 viewY = -500;
+    MutexSpin viewMutex;
+
+    i32 dbgTileDrawCount = 4096;
+    i32 dbgSectorId = 3;
 
     void loadShaders()
     {
         tileShader.loadAndCompile();
+
+        CommandList list;
+        list.bufferData(&tileShader.vertexBuffer, 0, sizeof(tileVertexData), GL_STATIC_DRAW);
+        renderer_pushCommandList(list);
     }
 
     void loadSectors()
@@ -256,42 +273,122 @@ struct Game
 
         ImGui::SliderInt("tileId", &testTileLocalId, 0, 17);
 
+        ImGui::Checkbox("viewIsIso", &viewIsIso);
+        ImGui::SliderInt("viewX", &viewX, -1000, 1000);
+        ImGui::SliderInt("viewY", &viewY, -1000, 1000);
+        ImGui::SliderInt("dbgTileDrawCount", &dbgTileDrawCount, 1, 4096);
+        ImGui::SliderInt("dbgSectorId", &dbgSectorId, 1, 10);
+
         ImGui::End();
     }
 
     void uploadTestTileData()
     {
-        makeTileMesh(testTileData, testTileLocalId);
+        constexpr i32 MAX_SECTOR_TEXTURE_COUNT = 128;
+        i32 diskSectorTexs[MAX_SECTOR_TEXTURE_COUNT] = {};
+        GLuint* gpuSectorTexs[MAX_SECTOR_TEXTURE_COUNT];
+        i32 sectorTextureCount = 0;
+        GLuint* tileGpuTexId[4097];
+
+        for(i32 i = 1; i < 4097; ++i) {
+            i32 texId = diskTiles.tiles[diskSectors.sectors[dbgSectorId].wldxEntries[i].tileId].textureId;
+            assert(texId >= 0 && texId < diskTextures.textureCount);
+
+            bool found = false;
+            for(i32 j = 0; j < sectorTextureCount && !found; ++j) {
+                if(diskSectorTexs[j] == texId) {
+                    found = true;
+                }
+            }
+
+            if(!found) {
+                diskSectorTexs[sectorTextureCount++] = texId;
+                assert(sectorTextureCount <= MAX_SECTOR_TEXTURE_COUNT);
+            }
+        }
+
+        GPUres_requestTextures(diskSectorTexs, gpuSectorTexs, sectorTextureCount);
+
+        // assign gpu textures to tiles
+        for(i32 i = 1; i < 4097; ++i) {
+            i32 texId = diskTiles.tiles[diskSectors.sectors[dbgSectorId].wldxEntries[i].tileId].textureId;
+
+            for(i32 j = 0; j < sectorTextureCount; ++j) {
+                if(diskSectorTexs[j] == texId) {
+                    tileGpuTexId[i] = gpuSectorTexs[j];
+                }
+            }
+        }
 
         CommandList list;
-        list.arrayBufferData(&tileShader.vertexBuffer, testTileData, sizeof(testTileData), GL_STATIC_DRAW);
-
         list.useProgram(&tileShader.program);
-        static const mat4 orth = mat4Orthographic(0, 1600, 900, 0, -1.f, 1.f);
-        list.uniformMat4(tileShader.uViewMatrix, &orth);
-        static const mat4 scale = mat4Scale(vec3f(250, 250, 1));
-        list.uniformMat4(tileShader.uModelMatrix, &scale);
+
+        viewMutex.lock();
+        viewIso = mat4Orthographic(0, 1600, 900, 0, -10000.f, 10000.f);
+        viewIso = mat4Mul(viewIso, mat4Translate(vec3f(-viewX, -viewY, 0)));
+        if(viewIsIso) {
+            viewIso = mat4Mul(viewIso, mat4RotateAxisX(VIEW_X_ANGLE));
+            viewIso = mat4Mul(viewIso, mat4RotateAxisZ(RS_HALFPI/2));
+        }
+        viewMutex.unlock();
+
+        list.lock(&viewMutex);
+        list.uniformMat4(tileShader.uViewMatrix, &viewIso);
+        list.unlock(&viewMutex);
+
+        testTileModel = mat4Scale(vec3f(64, 64, 1));
+        list.uniformMat4(tileShader.uModelMatrix, &testTileModel);
+
+        static i32 slot = 0;
+        list.uniformInt(tileShader.uDiffuse, &slot);
+
+        tileVertexMutex.lock();
+        i32 tileMeshId = 0;
+        for(i32 y = 0; y < 64; ++y) {
+            for(i32 x = 0; x < 64; ++x) {
+                DiskSectors::WldxEntry& we = diskSectors.sectors[dbgSectorId].wldxEntries[y*64 + x + 1];
+                makeTileMesh(&tileVertexData[6 * (tileMeshId++)], we.tileId % 18, x, y);
+            }
+        }
+        tileVertexMutex.unlock();
+
+        list.lock(&tileVertexMutex);
+        list.arrayBufferSubData(&tileShader.vertexBuffer, 0, tileVertexData, sizeof(tileVertexData));
+        list.unlock(&tileVertexMutex);
+
+
+        list.bindVertexArray(&tileShader.vao);
+
+        /*i32 currentDiskTexId = 0;
+        i32 drawQueueFirst = 0;
+        i32 drawQueueCount = 0;
+        for(i32 i = 0; i < dbgTileDrawCount; ++i) {
+            i32 texId = diskTiles.tiles[diskSectors.sectors[1].wldxEntries[i+1].tileId].textureId;
+
+            if(texId != currentDiskTexId) {
+                list.textureSlot(tileGpuTexId[i+1], 0);
+                list.drawTriangles(drawQueueFirst * 6, drawQueueCount * 6);
+                drawQueueFirst = i;
+                drawQueueCount = 1;
+            }
+            else {
+                drawQueueCount++;
+            }
+        }
+
+        list.drawTriangles(drawQueueFirst, drawQueueCount * 6);*/
+
+        // TODO: pack same texture calls or bind more textures
+        for(i32 i = 0; i < dbgTileDrawCount; ++i) {
+            list.textureSlot(tileGpuTexId[i+1], 0);
+            list.drawTriangles(i * 6, 6);
+        }
 
         renderer_pushCommandList(list);
     }
 
     void drawTestTiles()
     {
-        GLuint* gpuTexture;
-        //i32 tileTexId = diskTiles.tiles[diskSectors.sectors[1].wldxEntries[1].tileId].textureId;
-        i32 tileTexId = 1493;
-        GPUres_requestTextures(&tileTexId, &gpuTexture, 1);
-
-        CommandList list;
-        list.useProgram(&tileShader.program);
-
-        static i32 slot = 0;
-        list.textureSlot(gpuTexture, 0);
-        list.uniformInt(tileShader.uDiffuse, &slot);
-        list.bindVertexArray(&tileShader.vao);
-
-        list.drawTriangles(0, 6);
-        renderer_pushCommandList(list);
     }
 
     void deinit()
@@ -326,11 +423,11 @@ i32 thread_game(void*)
 
     Game game;
     pGame = &game;
-    game.loadTextures();
-    game.loadSectors();
 
     game.loadShaders();
-    game.uploadTestTileData();
+
+    game.loadTextures();
+    game.loadSectors();
 
     //pak_FloorRead("../sacred_data/Floor.pak");
     //bin_WorldRead("../sacred_data/World.bin");

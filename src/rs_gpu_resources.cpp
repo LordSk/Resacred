@@ -84,7 +84,7 @@ struct GPUResources
 
         // assign already loaded/loading textures
         for(i32 r = 0; r < requestCount; ++r) {
-            const i32 pakTexId = inPakTextureIds[r];
+            const i32 pakTexId = inPakTextureIds[r] ;
             assert(pakTexId >= 0 && pakTexId < diskTextures->textureCount);
 
             for(i32 i = 0; i < MAX_GPU_TEXTURES; ++i) {
@@ -103,21 +103,25 @@ struct GPUResources
                 continue;
             }
 
-            const i32 pakTexId = inPakTextureIds[r];
+            // FIXME: can somehow bypass first assert??
+            const i32 reqPakTexId = inPakTextureIds[r];
+            assert(reqPakTexId >= 1 && reqPakTexId < diskTextures->textureCount);
+
             i32 newId = _occupyNextTextureSlot();
             outGpuTexHandles[r] = &texGpuId[newId];
-            texDiskId[newId] = pakTexId;
+            texDiskId[newId] = reqPakTexId;
             texFramesNotRequested[newId] = 0;
             texLoaded[newId]._count = 0;
 
             TextureDesc2D& desc = texDesc[newId];
 
             // upload texture to gpu
-            desc.width = diskTextures->textureInfo[pakTexId].width;
-            desc.height = diskTextures->textureInfo[pakTexId].height;
-            desc.data =  diskTextures->textureData[pakTexId];
+            const i32 actualTexId = reqPakTexId - 1;
+            desc.width = diskTextures->textureInfo[actualTexId].width;
+            desc.height = diskTextures->textureInfo[actualTexId].height;
+            desc.data =  diskTextures->textureData[actualTexId];
 
-            if(diskTextures->textureInfo[pakTexId].type == DiskTextures::TYPE_RGBA8) {
+            if(diskTextures->textureInfo[actualTexId].type == DiskTextures::TYPE_RGBA8) {
                 desc.internalFormat = GL_RGBA8;
                 desc.dataFormat = GL_RGBA;
                 desc.dataPixelCompType = GL_UNSIGNED_BYTE;
