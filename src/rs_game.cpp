@@ -181,12 +181,22 @@ struct Game
     bool viewIsIso = true;
     mat4 viewIso;
     mat4 testTileModel;
-    i32 viewX = 0;
-    i32 viewY = -500;
+    f32 viewX = 0;
+    f32 viewY = -500;
+    f32 viewZoom = 1.0f;
     MutexSpin viewMutex;
 
     i32 dbgTileDrawCount = 4096;
     i32 dbgSectorId = 3;
+
+    struct {
+        u8 mouseLeft = 0;
+        u8 mouseRight = 0;
+
+        i32 mouseRelX = 0;
+        i32 mouseRelY = 0;
+        i32 mouseWheelRelY = 0;
+    } input;
 
     void loadShaders()
     {
@@ -278,7 +288,7 @@ struct Game
         ImGui::End();
     }
 
-    void uploadTestTileData()
+    void drawTestTiles()
     {
         constexpr i32 MAX_SECTOR_TEXTURE_COUNT = 128;
         i32 diskSectorTexs[MAX_SECTOR_TEXTURE_COUNT] = {};
@@ -320,7 +330,7 @@ struct Game
         list.useProgram(&tileShader.program);
 
         viewMutex.lock();
-        viewIso = mat4Orthographic(0, 1600, 900, 0, -10000.f, 10000.f);
+        viewIso = mat4Orthographic(0, 1600 * viewZoom, 900 * viewZoom, 0, -10000.f, 10000.f);
         viewIso = mat4Mul(viewIso, mat4Translate(vec3f(-viewX, -viewY, 0)));
         if(viewIsIso) {
             viewIso = mat4Mul(viewIso, mat4RotateAxisX(VIEW_X_ANGLE));
@@ -383,8 +393,44 @@ struct Game
         renderer_pushCommandList(list);
     }
 
-    void drawTestTiles()
+    // NOTE: async (coming from another thread)
+    // TODO: mutex?
+    void receiveInput(const SDL_Event& event)
     {
+        if(event.type == SDL_MOUSEBUTTONDOWN) {
+            input.mouseLeft |= event.button.button == SDL_BUTTON_LEFT;
+            input.mouseRight |= event.button.button == SDL_BUTTON_RIGHT;
+        }
+        else if(event.type == SDL_MOUSEBUTTONUP) {
+            input.mouseLeft &= !(event.button.button == SDL_BUTTON_LEFT);
+            input.mouseRight &= !(event.button.button == SDL_BUTTON_RIGHT);
+        }
+        else if(event.type == SDL_MOUSEMOTION) {
+            input.mouseRelX += event.motion.xrel;
+            input.mouseRelY += event.motion.yrel;
+        }
+        else if(event.type == SDL_MOUSEWHEEL) {
+            input.mouseWheelRelY += event.wheel.y;
+        }
+    }
+
+    void processInput()
+    {
+        if(input.mouseWheelRelY < 0) {
+            viewZoom *= 1.10f;
+        }
+        else if(input.mouseWheelRelY > 0) {
+            viewZoom *= 0.9f;
+        }
+
+        if(input.mouseRight) {
+            viewX -= input.mouseRelX * viewZoom;
+            viewY -= input.mouseRelY * viewZoom;
+        }
+
+        input.mouseRelX = 0;
+        input.mouseRelY = 0;
+        input.mouseWheelRelY = 0;
     }
 
     void deinit()
@@ -396,6 +442,12 @@ struct Game
 };
 
 static Game* pGame = nullptr;
+
+static void receiveGameInput(const SDL_Event& event, void* userData)
+{
+    Game& game = *(Game*)userData;
+    game.receiveInput(event);
+}
 
 void ui_videoInfo()
 {
@@ -420,6 +472,7 @@ i32 thread_game(void*)
     Game game;
     pGame = &game;
 
+    client.addInputCallback(receiveGameInput, &game);
     game.loadShaders();
 
     game.loadTextures();
@@ -431,6 +484,8 @@ i32 thread_game(void*)
     LOG_SUCC("Game> initializated");
 
     while(client.running) {
+        game.processInput();
+
         GPUres_newFrame();
         //game.requestTexBrowserTextures();
 
@@ -450,7 +505,6 @@ i32 thread_game(void*)
         list.clear();
         renderer_pushCommandList(list);
 
-        game.uploadTestTileData();
         game.drawTestTiles();
 
         list = {};

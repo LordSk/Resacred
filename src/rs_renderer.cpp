@@ -400,6 +400,7 @@ i32 thread_renderer(void* data)
 
     renderer.handleQueue();
     renderer.cleanUp();
+    g_rendererPtr = nullptr;
 
     return 0;
 }

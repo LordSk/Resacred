@@ -40,14 +40,21 @@ void Window::handleInput()
         }
         imguiMutex.unlock();
 #endif
+
         if(event.type == SDL_QUIT) {
             running = false;
+            return;
         }
 
         if(event.type == SDL_KEYDOWN) {
             if(event.key.keysym.sym == SDLK_ESCAPE) {
                 running = false;
+                return;
             }
+        }
+
+        for(auto l : inputListeners) {
+            l.callback(event, l.userData);
         }
     }
 }
@@ -66,6 +73,14 @@ void Window::cleanup()
     imguiMutex.unlock();
 
     SDL_DestroyWindow(window);
+}
+
+void Window::addInputCallback(Window::Proc_InputCallback callback, void* userData)
+{
+    InputListenner listenner;
+    listenner.callback = callback;
+    listenner.userData = userData;
+    inputListeners.pushPOD(&listenner);
 }
 
 void Window::dbguiInit()

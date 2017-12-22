@@ -37,8 +37,8 @@ i32 main()
         client.handleInput();
     }
 
-    SDL_WaitThread(threadRenderer, nullptr);
     SDL_WaitThread(threadGame, nullptr);
+    SDL_WaitThread(threadRenderer, nullptr);
 
     client.cleanup();
     SDL_Quit();

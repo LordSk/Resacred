@@ -1,8 +1,8 @@
 #pragma once
 #include "rs_base.h"
 #include "rs_thread.h"
-
-typedef void (*FuncUI)(void*);
+#include "rs_array.h"
+#include <SDL2/SDL_events.h>
 
 struct Window
 {
@@ -11,6 +11,14 @@ struct Window
     i32 width;
     i32 height;
 
+    typedef void (*Proc_InputCallback)(const SDL_Event&, void*);
+    struct InputListenner
+    {
+        Proc_InputCallback callback;
+        void* userData;
+    };
+    Array<InputListenner,16> inputListeners;
+
     struct ImGuiGLSetup* imguiSetup;
     MutexSpin imguiMutex;
 
@@ -18,6 +26,8 @@ struct Window
     void handleInput();
     void swapBuffers();
     void cleanup();
+
+    void addInputCallback(Proc_InputCallback callback, void* userData);
 
     void dbguiInit();
     void dbguiNewFrameBegin();
