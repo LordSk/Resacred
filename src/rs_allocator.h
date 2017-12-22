@@ -273,9 +273,9 @@ inline MemBlock __mem_alloc(const char* filename, i32 line, u64 size, u8 alignme
 
 #define MEM_ALLOC(...) __mem_alloc(__FILE__, __LINE__, ##__VA_ARGS__)
 
-inline void __mem_dealloc(const char* filename, i32 line, const MemBlock& mb)
+inline void __mem_dealloc(const char* filename, i32 line, MemBlock& mb)
 {
-    MEM_CONTEXT.allocator->__dealloc(filename, line, mb);
+    mb.allocator->__dealloc(filename, line, mb);
 }
 
 #define MEM_DEALLOC(mb) __mem_dealloc(__FILE__, __LINE__, mb)

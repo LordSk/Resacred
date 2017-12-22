@@ -271,11 +271,7 @@ struct Game
     {
         ImGui::Begin("Test tile");
 
-        ImGui::SliderInt("tileId", &testTileLocalId, 0, 17);
-
-        ImGui::Checkbox("viewIsIso", &viewIsIso);
-        ImGui::SliderInt("viewX", &viewX, -1000, 1000);
-        ImGui::SliderInt("viewY", &viewY, -1000, 1000);
+        ImGui::Checkbox("Isometric view", &viewIsIso);
         ImGui::SliderInt("dbgTileDrawCount", &dbgTileDrawCount, 1, 4096);
         ImGui::SliderInt("dbgSectorId", &dbgSectorId, 1, 10);
 
@@ -432,6 +428,8 @@ i32 thread_game(void*)
     //pak_FloorRead("../sacred_data/Floor.pak");
     //bin_WorldRead("../sacred_data/World.bin");
 
+    LOG_SUCC("Game> initializated");
+
     while(client.running) {
         GPUres_newFrame();
         //game.requestTexBrowserTextures();
@@ -462,8 +460,9 @@ i32 thread_game(void*)
     }
 
     // TODO: wait for deinit
+    LOG("Game> cleaning up...");
+    game.deinit();
     GPUres_deinit();
 
-    LOG("Game> initializated.");
     return 0;
 }

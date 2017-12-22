@@ -103,7 +103,7 @@ struct Renderer
     void handleQueue()
     {
         Window& client = *get_clientWindow();
-        while(1) {
+        while(client.running) {
             if(!frameReady[frameRenderId]) {
                 continue;
             }
@@ -380,6 +380,11 @@ struct Renderer
             SDL_UnlockMutex(_cmdListMutex);
         }
     }
+
+    void cleanUp()
+    {
+        LOG_DBG("Renderer> cleaning up...");
+    }
 };
 
 Renderer* g_rendererPtr = nullptr;
@@ -394,6 +399,7 @@ i32 thread_renderer(void* data)
     }
 
     renderer.handleQueue();
+    renderer.cleanUp();
 
     return 0;
 }

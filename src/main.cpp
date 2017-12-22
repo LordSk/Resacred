@@ -27,8 +27,8 @@ i32 main()
     Window& client = *init_clientWindow();
     client.create(1600, 900);
 
-    SDL_CreateThread(thread_renderer, "thread_renderer", nullptr);
-    SDL_CreateThread(thread_game, "thread_game", nullptr);
+    auto threadRenderer = SDL_CreateThread(thread_renderer, "thread_renderer", nullptr);
+    auto threadGame = SDL_CreateThread(thread_game, "thread_game", nullptr);
 
     renderer_waitForInit();
     client.dbguiInit();
@@ -36,6 +36,9 @@ i32 main()
     while(client.running) {
         client.handleInput();
     }
+
+    SDL_WaitThread(threadRenderer, nullptr);
+    SDL_WaitThread(threadGame, nullptr);
 
     client.cleanup();
     SDL_Quit();
