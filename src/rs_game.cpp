@@ -8,9 +8,26 @@
 #include "stb_image.h"
 #include "rs_gpu_resources.h"
 
+
+
+// interesting sectors:
+/*
+ * 130
+ * 246
+ * 250
+ * 299
+ * 1360
+ * 1750
+ * 1752
+ * 2123
+ * 4878
+*/
+
+
+
 #define PAGE_TEXTURES_COUNT 500
 #define OFFSETOF(TYPE, ELEMENT) ((size_t)&(((TYPE *)0)->ELEMENT))
-#define VIEW_X_ANGLE rs_radians(53.665)
+#define VIEW_X_ANGLE rs_radians(53.66563)
 
 static i32 dedicated = 0, availMemory = 0, currentAvailMem = 0, evictionCount = 0, evictedMem = 0;
 
@@ -18,15 +35,15 @@ static vec2f tileUV[18][4];
 
 void initTileUVs()
 {
-    tileUV[0][0] = vec2f(0, 25/256.f);
-    tileUV[0][1] = vec2f(50/256.f, 0/256.f);
-    tileUV[0][2] = vec2f(100/256.f, 25/256.f);
-    tileUV[0][3] = vec2f(50/256.f, 50/256.f);
+    tileUV[0][0] = vec2f(0, 24.5/256.f);
+    tileUV[0][1] = vec2f(50.5/256.f, 0/256.f);
+    tileUV[0][2] = vec2f(99.5/256.f, 24.5/256.f);
+    tileUV[0][3] = vec2f(50.5/256.f, 49/256.f);
 
-    tileUV[1][0] = vec2f(104/256.f, 25/256.f);
-    tileUV[1][1] = vec2f(154/256.f, 0/256.f);
-    tileUV[1][2] = vec2f(204/256.f, 25/256.f);
-    tileUV[1][3] = vec2f(154/256.f, 50/256.f);
+    tileUV[1][0] = vec2f(104.5/256.f, 24.5/256.f);
+    tileUV[1][1] = vec2f(153.5/256.f, 0/256.f);
+    tileUV[1][2] = vec2f(204/256.f, 24.5/256.f);
+    tileUV[1][3] = vec2f(153.5/256.f, 49/256.f);
 
     for(i32 i = 2; i < 18; i += 2) {
         i32 line = i / 2;
@@ -70,12 +87,21 @@ void makeTileMesh(TileVertex* mesh, i32 localTileId, f32 offsetX, f32 offsetY)
     mesh[5] = TileVertex(0.5, 0.5,    tileUV[localTileId][3].x, tileUV[localTileId][3].y);
     */
 
+    /*
     mesh[0] = TileVertex(0.0 + offsetX, 0.0 + offsetY, tileUV[localTileId][0].x, tileUV[localTileId][0].y);
     mesh[1] = TileVertex(1.0 + offsetX, 0.0 + offsetY, tileUV[localTileId][1].x, tileUV[localTileId][1].y);
     mesh[2] = TileVertex(1.0 + offsetX, 1.0 + offsetY, tileUV[localTileId][2].x, tileUV[localTileId][2].y);
     mesh[3] = TileVertex(0.0 + offsetX, 0.0 + offsetY, tileUV[localTileId][0].x, tileUV[localTileId][0].y);
     mesh[4] = TileVertex(1.0 + offsetX, 1.0 + offsetY, tileUV[localTileId][2].x, tileUV[localTileId][2].y);
     mesh[5] = TileVertex(0.0 + offsetX, 1.0 + offsetY, tileUV[localTileId][3].x, tileUV[localTileId][3].y);
+    */
+
+    mesh[0] = TileVertex(0.0 + offsetX, 0.0 + offsetY, tileUV[localTileId][1].x, tileUV[localTileId][1].y);
+    mesh[1] = TileVertex(1.0 + offsetX, 0.0 + offsetY, tileUV[localTileId][2].x, tileUV[localTileId][2].y);
+    mesh[2] = TileVertex(1.0 + offsetX, 1.0 + offsetY, tileUV[localTileId][3].x, tileUV[localTileId][3].y);
+    mesh[3] = TileVertex(0.0 + offsetX, 0.0 + offsetY, tileUV[localTileId][1].x, tileUV[localTileId][1].y);
+    mesh[4] = TileVertex(1.0 + offsetX, 1.0 + offsetY, tileUV[localTileId][3].x, tileUV[localTileId][3].y);
+    mesh[5] = TileVertex(0.0 + offsetX, 1.0 + offsetY, tileUV[localTileId][0].x, tileUV[localTileId][0].y);
 }
 
 struct TileShader
@@ -184,10 +210,11 @@ struct Game
     f32 viewX = 0;
     f32 viewY = -500;
     f32 viewZoom = 1.0f;
+    i32 viewZMul = -1;
     MutexSpin viewMutex;
 
     i32 dbgTileDrawCount = 4096;
-    i32 dbgSectorId = 3;
+    i32 dbgSectorId = 130;
 
     struct {
         u8 mouseLeft = 0;
@@ -281,16 +308,23 @@ struct Game
     {
         ImGui::Begin("Test tile");
 
+        ImGui::SliderInt("viewZMul", &viewZMul, -8, 8);
         ImGui::Checkbox("Isometric view", &viewIsIso);
         ImGui::SliderInt("dbgTileDrawCount", &dbgTileDrawCount, 1, 4096);
-        ImGui::SliderInt("dbgSectorId", &dbgSectorId, 1, 10);
+
+
+        if(ImGui::Button("+")) dbgSectorId++;
+        ImGui::SameLine();
+        ImGui::SliderInt("dbgSectorId", &dbgSectorId, 1, 6049);
+        ImGui::SameLine();
+        if(ImGui::Button("-")) dbgSectorId--;
 
         ImGui::End();
     }
 
     void drawTestTiles()
     {
-        constexpr i32 MAX_SECTOR_TEXTURE_COUNT = 128;
+        constexpr i32 MAX_SECTOR_TEXTURE_COUNT = 200;
         i32 diskSectorTexs[MAX_SECTOR_TEXTURE_COUNT] = {};
         GLuint* gpuSectorTexs[MAX_SECTOR_TEXTURE_COUNT];
         i32 sectorTextureCount = 0;
@@ -334,7 +368,7 @@ struct Game
         viewIso = mat4Mul(viewIso, mat4Translate(vec3f(-viewX, -viewY, 0)));
         if(viewIsIso) {
             viewIso = mat4Mul(viewIso, mat4RotateAxisX(VIEW_X_ANGLE));
-            viewIso = mat4Mul(viewIso, mat4RotateAxisZ(RS_HALFPI/2));
+            viewIso = mat4Mul(viewIso, mat4RotateAxisZ(RS_HALFPI/2 * viewZMul));
         }
         viewMutex.unlock();
 
