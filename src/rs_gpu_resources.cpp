@@ -8,6 +8,7 @@
 struct GPUResources
 {
     DiskTextures* diskTextures;
+    u32 gpuTexDefault;
     u32 texGpuId[MAX_GPU_TEXTURES];
     i32 texDiskId[MAX_GPU_TEXTURES];
     i32 texFramesNotRequested[MAX_GPU_TEXTURES];
@@ -20,6 +21,35 @@ struct GPUResources
         memset(texFramesNotRequested, 0, sizeof(texFramesNotRequested));
         memset(texSlotOccupied, 0, sizeof(texSlotOccupied));
         memset(texLoaded, 0, sizeof(texLoaded));
+
+        constexpr i32 texWidth = 16;
+        static u32 textureData[texWidth*texWidth];
+
+        for(i32 i = 0; i < texWidth*texWidth; ++i) {
+            i32 odd = (i/texWidth) & 1;
+            if((i+odd) & 1) {
+                textureData[i] = 0xffff0000;
+            }
+            else {
+                textureData[i] = 0xffff00ff;
+            }
+        }
+
+        static TextureDesc2D desc;
+        desc.internalFormat = GL_RGBA8;
+        desc.dataFormat = GL_RGBA;
+        desc.dataPixelCompType = GL_UNSIGNED_BYTE;
+        desc.data = textureData;
+        desc.height = texWidth;
+        desc.width = texWidth;
+        desc.wrapS = GL_REPEAT;
+        desc.wrapT = GL_REPEAT;
+        desc.minFilter = GL_NEAREST;
+        desc.magFilter = GL_NEAREST;
+
+        CommandList list;
+        list.createTexture2D(&desc, &gpuTexDefault);
+        renderer_pushCommandList(list);
         return true;
     }
 
@@ -34,7 +64,7 @@ struct GPUResources
 
                 if(texFramesNotRequested[i] > 10) {
                     cmds.destroyTexture(texGpuId[i]);
-                    texGpuId[i] = 0;
+                    texGpuId[i] = gpuTexDefault;
                     texDiskId[i] = 0;
                     texSlotOccupied[i] = false;
                 }
@@ -71,7 +101,7 @@ struct GPUResources
         CommandList cmds;
         cmds.destroyTexture(texGpuId[oldestId]);
         renderer_pushCommandList(cmds);
-        texGpuId[oldestId] = 0;
+        texGpuId[oldestId] = gpuTexDefault;
         texDiskId[oldestId] = 0;
         texLoaded[oldestId]._count = 0;
         texSlotOccupied[oldestId] = true;
@@ -109,6 +139,7 @@ struct GPUResources
 
             i32 newId = _occupyNextTextureSlot();
             outGpuTexHandles[r] = &texGpuId[newId];
+            texGpuId[newId] = gpuTexDefault;
             texDiskId[newId] = reqPakTexId;
             texFramesNotRequested[newId] = 0;
             texLoaded[newId]._count = 0;
@@ -217,4 +248,9 @@ void GPUres_debugUi()
 {
     assert(g_gpuResourcesPtr);
     g_gpuResourcesPtr->debugUi();
+}
+
+u32 gpuRes_defaultTexture()
+{
+    return g_gpuResourcesPtr->gpuTexDefault;
 }

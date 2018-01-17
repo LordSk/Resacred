@@ -77,7 +77,11 @@ void Logger::logf(u32 typeColor, const char* filename, i32 lineNumber, const cha
     logLineStr.append(_formatStr, _formattedLen);
     logLineStr.append("\n", 1);
 
+#ifdef CONF_WINDOWS
+    OutputDebugStringA(logLineStr.c_str());
+#else
     _write(STDOUT, logLineStr.c_str(), logLineStr.len());
+#endif
 
 #ifndef LOGGER_DONT_WRITE
     assert_msg(_pFile, "Logger was not initialized, yet used");

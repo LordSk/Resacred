@@ -30,12 +30,14 @@ struct AtomicCounter
 {
     vli32 _count = 0;
 
-    inline void increment() {
+    inline i32 increment() {
         _InterlockedIncrement(&_count);
+        return (i32)_count;
     }
 
-    inline void decrement() {
+    inline i32 decrement() {
         _InterlockedDecrement(&_count);
+        return (i32)_count;
     }
 
     inline vli32 get() const {

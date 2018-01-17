@@ -1,6 +1,11 @@
 #pragma once
 #include <stdint.h>
 
+#ifdef _WIN32
+    #define CONF_WINDOWS
+    #include <windows.h>
+#endif
+
 typedef uint8_t u8;
 typedef uint16_t u16;
 typedef uint32_t u32;

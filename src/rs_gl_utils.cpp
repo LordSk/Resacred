@@ -72,7 +72,7 @@ GLuint glOpenAndMakeShader(const char* filepaths[], const i32 types[], const i32
         }
 
         shaderFbs[i].buff = (const char*)buffs[i].block.ptr;
-        shaderFbs[i].size = buffs[i].fileSize;
+        shaderFbs[i].size = buffs[i].size;
         shaderFbs[i].type = types[i];
     }
 

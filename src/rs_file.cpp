@@ -1,9 +1,246 @@
 #include "rs_file.h"
+#include "rs_window.h"
 #include <io.h>
 #include <fcntl.h>
 #include <sys/stat.h>
 #include <stdio.h>
 #include "zlib.h"
+
+enum class FileReqType: i32 {
+    INVALID = 0,
+    READ_ABSOLUTE
+};
+
+struct AsyncFileRequestDesc
+{
+    FileReqType type;
+    DiskFile* file;
+    u8* buff;
+    i64 size;
+    void* callback;
+};
+
+#define FILE_QUEUE_MAX 256
+
+struct AsyncFileQueue
+{
+    AsyncFileRequestDesc queueBuffers[2][FILE_QUEUE_MAX];
+    AsyncFileRequestDesc* queue;
+    i32 queueCounters[2];
+    i32* queueNext;
+    MutexSpin acquireMutex;
+
+    AsyncFileQueue()
+    {
+        queueCounters[0] = 0;
+        queueCounters[1] = 0;
+    }
+
+    // swap front and back queue
+    bool swapQueues()
+    {
+        if(queueNext == 0) {
+            return false;
+        }
+
+        acquireMutex.lock();
+
+        if(queue == queueBuffers[0]) {
+            queue = queueBuffers[1];
+            queueNext = &queueCounters[1];
+        }
+        else {
+            queue = queueBuffers[0];
+            queueNext = &queueCounters[0];
+        }
+
+        acquireMutex.unlock();
+        return true;
+    }
+
+    // should be the only function acting on the back queue
+    void handleAllBackRequests()
+    {
+        AsyncFileRequestDesc* backQueue = 0;
+        i32 backQueueCount = 0;
+
+        if(queue == queueBuffers[0]) {
+            backQueue = queueBuffers[1];
+            backQueueCount = queueCounters[1];
+            queueCounters[1] = 0;
+        }
+        else {
+            backQueue = queueBuffers[0];
+            backQueueCount = queueCounters[0];
+            queueCounters[0] = 0;
+        }
+
+        for(i32 i = 0; i < backQueueCount; ++i) {
+            AsyncFileRequestDesc& desc = backQueue[i];
+
+            switch(desc.type) {
+                case FileReqType::READ_ABSOLUTE: {
+                    MemBlock b = MEM_ALLOC(desc.size);
+                    assert(b.ptr);
+
+                    fileReadFromPos(desc.file, (i64)desc.buff, desc.size, b.ptr);
+
+                    if(desc.callback) {
+                        ((Callback_ReqReadAbsolute)desc.callback)((char*)b.ptr, desc.size, b);
+                    }
+                    break;
+                }
+                default:
+                    assert(0);
+                    break;
+            }
+        }
+    }
+
+    AsyncFileRequest newRequest(FileReqType type, DiskFile* file, u8* buff, i64 size, void* callback) {
+        acquireMutex.lock();
+
+        assert(*queueNext < FILE_QUEUE_MAX);
+
+        assert(file->handle);
+        assert(buff);
+        assert(size > 0);
+
+        i32 ruid = (*queueNext)++;
+        assert(ruid >= 0); // if we fucked up somehow
+
+        AsyncFileRequest req;
+        req.requestUID = ruid;
+
+        AsyncFileRequestDesc& desc = queue[ruid];
+        desc.type = type;
+        desc.file = file;
+        desc.buff = buff;
+        desc.size = size;
+        desc.callback = callback;
+
+        acquireMutex.unlock();
+        return req;
+    }
+};
+
+static AsyncFileQueue* AFQ;
+
+i32 thread_fileIO(void*)
+{
+    LOG("thread_fileIO started");
+
+    AsyncFileQueue asyncFileQueue;
+    AFQ = &asyncFileQueue;
+
+    Window& client = *get_clientWindow();
+    while(client.running) {
+        if(AFQ->swapQueues()) {
+            AFQ->handleAllBackRequests();
+        }
+        else {
+#ifdef CONF_WINDOWS
+            // TODO: investigate which is best
+            //Sleep(15);
+            SwitchToThread();
+            YieldProcessor();
+#endif
+        }
+    }
+
+    return 0;
+}
+
+
+bool fileOpenToRead(const char* path, DiskFile* file)
+{
+#ifdef CONF_WINDOWS
+    HANDLE hFile = CreateFileA(path,
+                               GENERIC_READ,
+                               0 /*FILE_SHARE_READ*/, // TODO: change this to 0
+                               NULL,
+                               OPEN_EXISTING,
+                               FILE_ATTRIBUTE_READONLY,
+                               NULL);
+    if(hFile != INVALID_HANDLE_VALUE) {
+        i32 len = strlen(path);
+        memmove(file->path, path, len);
+        file->path[len] = 0;
+        file->handle = hFile;
+
+        // get size
+        LARGE_INTEGER size;
+        GetFileSizeEx(hFile, &size);
+        file->size = size.QuadPart;
+        LOG_SUCC("file '%s' (%lldko) open for reading", path, file->size/1024);
+        return true;
+    }
+    LOG_ERR("ERROR: opening file '%s' (%d)", path, GetLastError());
+    return false;
+#endif
+}
+
+void fileClose(DiskFile* file)
+{
+#ifdef CONF_WINDOWS
+    assert(file->handle);
+    CloseHandle(file->handle);
+    file->handle = 0;
+#endif
+}
+
+
+void fileReadFromPos(const DiskFile* file, i64 from, i64 size, void* dest)
+{
+#ifdef CONF_WINDOWS
+    assert(file->handle);
+    assert(dest);
+
+    LARGE_INTEGER dist;
+    dist.QuadPart = from;
+    BOOL r = SetFilePointerEx(file->handle, dist, NULL, FILE_BEGIN);
+    assert(r);
+
+    DWORD unused;
+    r = ReadFile(file->handle, dest, size, &unused, NULL);
+    assert(r);
+#endif
+}
+
+void fileReadAdvance(DiskFile* file, i64 size, void* dest)
+{
+#ifdef CONF_WINDOWS
+    assert(file->handle);
+    assert(dest);
+
+    DWORD unused;
+    BOOL r = ReadFile(file->handle, dest, size, &unused, NULL);
+    if(!r) {
+        LOG_ERR("ERROR: reading file '%s' (%d)", file->path, GetLastError());
+    }
+    assert(r);
+
+    LARGE_INTEGER dist;
+    dist.QuadPart = size;
+    r = SetFilePointerEx(file->handle, dist, NULL, FILE_CURRENT);
+    if(!r) {
+        LOG_ERR("ERROR: setting pointer file '%s' (%d)", file->path, GetLastError());
+    }
+    assert(r);
+
+    file->cursor += size;
+#endif
+}
+
+AsyncFileRequest fileAsyncReadAbsolute(const DiskFile* file, u8* start, i64 size,
+                                       Callback_ReqReadAbsolute callback)
+{
+    assert(((i64)start + size) < file->size);
+    return AFQ->newRequest(FileReqType::READ_ABSOLUTE, (DiskFile*)file, start, size, callback);
+}
+
+
+
 
 FileBuffer fileReadWhole(const char* path, IAllocator* pAlloc)
 {
@@ -21,7 +258,7 @@ FileBuffer fileReadWhole(const char* path, IAllocator* pAlloc)
     u32 len = ftell(file) - start;
     fseek(file, start, SEEK_SET);
 
-    fb.fileSize = len;
+    fb.size = len;
     fb.block = pAlloc->alloc(len + 1);
     if(!fb.block.ptr) {
         LOG_ERR("fileReadWhole(path=%s size=%d) out of memory", path, len);
@@ -69,13 +306,6 @@ struct PakTile
     i32 _unknown[6]; // always the same and unrelevant
 };
 
-struct SubFileDesc
-{
-    i32 vint1;
-    i32 offset;
-    i32 vint2;
-};
-
 static_assert(sizeof(PakTile) == 64, "sizeof(Tile) != 64");
 
 bool pak_tilesRead(const char* filepath, DiskTiles* diskTiles)
@@ -89,7 +319,7 @@ bool pak_tilesRead(const char* filepath, DiskTiles* diskTiles)
     u8* top = (u8*)fb.block.ptr;
     PakHeader* header = (PakHeader*)top;
     const i32 entryCount = header->entryCount;
-    SubFileDesc* fileDesc = (SubFileDesc*)(top + sizeof(PakHeader));
+    PakSubFileDesc* fileDesc = (PakSubFileDesc*)(top + sizeof(PakHeader));
 
     diskTiles->block = MEM_ALLOC(entryCount * sizeof(DiskTiles::Tile));
     assert(diskTiles->block.ptr);
@@ -203,8 +433,8 @@ bool pak_texturesRead(const char* filepath, DiskTextures* textures)
 
     u8* top = (u8*)fb.block.ptr;
     PakHeader* header = (PakHeader*)top;
-    const i32 entryCount = min(header->entryCount, 12000);
-    SubFileDesc* fileDesc = (SubFileDesc*)(top + sizeof(PakHeader));
+    const i32 entryCount = min(header->entryCount, 6000);
+    PakSubFileDesc* fileDesc = (PakSubFileDesc*)(top + sizeof(PakHeader));
 
     fileDesc++; // skip first (invalid)
 
@@ -261,7 +491,7 @@ bool pak_texturesRead(const char* filepath, DiskTextures* textures)
             pixelDataCursor += texSize;
         }
         else {
-            i32 compressedSize = fb.fileSize - fileDesc[i].offset;
+            i32 compressedSize = fb.size - fileDesc[i].offset;
             if(i + 1 < entryCount) {
                 compressedSize = fileDesc[i + 1].offset - fileDesc[i].offset;
             }
@@ -298,7 +528,7 @@ bool bin_WorldRead(const char* filepath)
     cursor += 4;
 
     for(i32 i = 0; i < count; ++i) {
-        assert(cursor < (start + fb.fileSize));
+        assert(cursor < (start + fb.size));
         WorldBinEntry& entry = *(WorldBinEntry*)cursor;
         cursor += sizeof(WorldBinEntry);
         LOG_DBG("[%d] a=%d b=%d c=%d", i, entry.varA, entry.varB, entry.varC);
@@ -329,7 +559,7 @@ bool pak_FloorRead(const char* filepath)
     PakHeader* header = (PakHeader*)top;
     i32 entryCount = min(header->entryCount, 10000);
     //const i32 entryCount = header->entryCount;
-    SubFileDesc* fileDesc = (SubFileDesc*)(top + sizeof(PakHeader));
+    PakSubFileDesc* fileDesc = (PakSubFileDesc*)(top + sizeof(PakHeader));
 
     fileDesc++;
     entryCount--;
@@ -437,6 +667,7 @@ bool keyx_sectorsRead(const char* keyx_filepath, const char* wldx_filepath, Disk
         u8* entryDataNext = (u8*)diskSectors->entryData + entryDataOffset;
 
         DiskSectors::Sector sector;
+        sector.id = ks.sectorId;
         sector.posX1 = ks.posX1;
         sector.posX2 = ks.posX2;
         sector.posY1 = ks.posY1;

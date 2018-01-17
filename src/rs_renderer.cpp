@@ -389,8 +389,10 @@ struct Renderer
 
 Renderer* g_rendererPtr = nullptr;
 
-i32 thread_renderer(void* data)
+i32 thread_renderer(void*)
 {
+    LOG("thread_renderer started");
+
     Renderer renderer;
     g_rendererPtr = &renderer;
 

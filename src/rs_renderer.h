@@ -329,7 +329,7 @@ struct CommandList
     }
 };
 
-i32 thread_renderer(void* data);
+i32 thread_renderer(void*);
 
 void renderer_pushCommandList(const CommandList& list);
 void renderer_waitForBarrier(RBarrier* barrier);

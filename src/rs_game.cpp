@@ -319,6 +319,14 @@ struct Game
         ImGui::SameLine();
         if(ImGui::Button("-")) dbgSectorId--;
 
+        const DiskSectors::Sector& sector = diskSectors.sectors[dbgSectorId];
+
+        ImGui::Text("Sector %d:", sector.id);
+        ImGui::Text("posX1=%d posX2=%d posY1=%d posY2=%d",
+                    sector.posX1, sector.posX2, sector.posY1, sector.posY2);
+
+        ImGui::Image((ImTextureID)(intptr_t)gpuRes_defaultTexture(), ImVec2(256, 256));
+
         ImGui::End();
     }
 
@@ -376,7 +384,7 @@ struct Game
         list.uniformMat4(tileShader.uViewMatrix, &viewIso);
         list.unlock(&viewMutex);
 
-        testTileModel = mat4Scale(vec3f(64, 64, 1));
+        testTileModel = mat4Scale(vec3f(53.65625, 53.65625, 1));
         list.uniformMat4(tileShader.uModelMatrix, &testTileModel);
 
         static i32 slot = 0;
@@ -496,6 +504,8 @@ void ui_videoInfo()
 
 i32 thread_game(void*)
 {
+    LOG("thread_game started");
+
     LOG("Game> initialization...");
     Window& client = *get_clientWindow();
     initTileUVs();
@@ -509,8 +519,8 @@ i32 thread_game(void*)
     client.addInputCallback(receiveGameInput, &game);
     game.loadShaders();
 
-    game.loadTextures();
-    game.loadSectors();
+    //game.loadTextures();
+    //game.loadSectors();
 
     //pak_FloorRead("../sacred_data/Floor.pak");
     //bin_WorldRead("../sacred_data/World.bin");
@@ -520,7 +530,7 @@ i32 thread_game(void*)
     while(client.running) {
         game.processInput();
 
-        GPUres_newFrame();
+        //GPUres_newFrame();
         //game.requestTexBrowserTextures();
 
         // NOTE: dont push render command inside UI code
@@ -528,7 +538,7 @@ i32 thread_game(void*)
         client.dbguiNewFrameBegin();
         if(client.imguiSetup) {
             //game.ui_textureBrowser();
-            game.ui_tileTest();
+            //game.ui_tileTest();
             ui_videoInfo();
             //GPUres_debugUi();
             //ImGui::ShowTestWindow();
@@ -539,7 +549,7 @@ i32 thread_game(void*)
         list.clear();
         renderer_pushCommandList(list);
 
-        game.drawTestTiles();
+        //game.drawTestTiles();
 
         list = {};
         list.queryVramInfo(&dedicated, &availMemory, &currentAvailMem, &evictionCount, &evictedMem);
@@ -550,7 +560,7 @@ i32 thread_game(void*)
     // TODO: wait for deinit
     LOG("Game> cleaning up...");
     game.deinit();
-    GPUres_deinit();
+    //GPUres_deinit();
 
     return 0;
 }

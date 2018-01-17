@@ -3,6 +3,8 @@
 #include "rs_allocator.h"
 #include "rs_array.h"
 
+i32 thread_fileIO(void*);
+
 typedef enum: i32 {
     NO_FILE_ERROR=0,
     CANNOT_FIND,
@@ -13,9 +15,37 @@ typedef enum: i32 {
 struct FileBuffer
 {
     MemBlock block = NULL_MEMBLOCK;
-    i32 fileSize = 0;
+    char* buffer = nullptr;
+    i32 size = 0;
     FileError error = FileError::NO_FILE_ERROR;
 };
+
+#ifdef CONF_WINDOWS
+struct Win32_DiskFile
+{
+    char path[256];
+    HANDLE handle = 0;
+    i64 size = 0;
+    i64 cursor = 0;
+};
+
+typedef Win32_DiskFile DiskFile;
+#endif
+
+struct AsyncFileRequest
+{
+    i32 requestUID;
+};
+
+typedef void (*Callback_ReqReadAbsolute)(char* buff, i64 size, MemBlock block);
+
+bool fileOpenToRead(const char* path, DiskFile* file);
+void fileClose(DiskFile* file);
+void fileReadFromPos(const DiskFile* file, i64 from, i64 size, void* dest);
+void fileReadAdvance(DiskFile* file, i64 size, void* dest);
+
+AsyncFileRequest fileAsyncReadAbsolute(const DiskFile* file, u8* start, i64 size,
+                                       Callback_ReqReadAbsolute callback = nullptr);
 
 /**
  * @brief Allocate a buffer containing the contents of the file
@@ -52,6 +82,13 @@ struct PakHeader
     u8 version;
     i32 entryCount;
     u8 _unkown[248];
+};
+
+struct PakSubFileDesc
+{
+    i32 vint1;
+    i32 offset;
+    i32 vint2;
 };
 
 static_assert(sizeof(PakHeader) == 256, "sizeof(PakHeader) != 256");
@@ -116,6 +153,7 @@ struct DiskSectors
 
     struct Sector
     {
+        i32 id;
         i32 posX1;
         i32 posX2;
         i32 posY1;
