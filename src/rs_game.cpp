@@ -6,7 +6,7 @@
 #include "rs_math.h"
 #include "imgui.h"
 #include "stb_image.h"
-#include "rs_gpu_resources.h"
+#include "rs_resources.h"
 
 
 
@@ -194,7 +194,6 @@ struct Game
 {
     DiskTiles diskTiles;
     DiskSectors diskSectors;
-    DiskTextures diskTextures;
     i32 texDiskIds[PAGE_TEXTURES_COUNT];
     GLuint* gpu_textures[PAGE_TEXTURES_COUNT];
     i32 pageId = 0;
@@ -263,10 +262,10 @@ struct Game
 
     void loadTextures()
     {
-        memset(gpu_textures, 0, sizeof(gpu_textures));
+        /*memset(gpu_textures, 0, sizeof(gpu_textures));
         bool texResult = pak_texturesRead("../sacred_data/texture.pak", &diskTextures);
         assert(texResult);
-        GPUres_init(&diskTextures);
+        GPUres_init(&diskTextures);*/
     }
 
     void requestTexBrowserTextures()
@@ -274,11 +273,12 @@ struct Game
         for(int i = 0; i < PAGE_TEXTURES_COUNT; ++i) {
             texDiskIds[i] = i + (pageId * PAGE_TEXTURES_COUNT);
         }
-        GPUres_requestTextures(texDiskIds, gpu_textures, PAGE_TEXTURES_COUNT);
+        resource_requestGpuTextures(texDiskIds, gpu_textures, PAGE_TEXTURES_COUNT);
     }
 
     void ui_textureBrowser()
     {
+#if 0
         ImGui::Begin("Textures");
         ImGui::SliderInt("page", &pageId, 0, 3000/PAGE_TEXTURES_COUNT - 1);
 
@@ -302,6 +302,7 @@ struct Game
         ImGui::EndChild();
 
         ImGui::End();
+#endif
     }
 
     void ui_tileTest()
@@ -325,7 +326,7 @@ struct Game
         ImGui::Text("posX1=%d posX2=%d posY1=%d posY2=%d",
                     sector.posX1, sector.posX2, sector.posY1, sector.posY2);
 
-        ImGui::Image((ImTextureID)(intptr_t)gpuRes_defaultTexture(), ImVec2(256, 256));
+        ImGui::Image((ImTextureID)(intptr_t)resource_defaultGpuTexture(), ImVec2(256, 256));
 
         ImGui::End();
     }
@@ -340,7 +341,7 @@ struct Game
 
         for(i32 i = 1; i < 4097; ++i) {
             i32 texId = diskTiles.tiles[diskSectors.sectors[dbgSectorId].wldxEntries[i].tileId].textureId;
-            assert(texId >= 0 && texId < diskTextures.textureCount);
+            //assert(texId >= 0 && texId < diskTextures.textureCount);
 
             bool found = false;
             for(i32 j = 0; j < sectorTextureCount && !found; ++j) {
@@ -355,7 +356,7 @@ struct Game
             }
         }
 
-        GPUres_requestTextures(diskSectorTexs, gpuSectorTexs, sectorTextureCount);
+        resource_requestGpuTextures(diskSectorTexs, gpuSectorTexs, sectorTextureCount);
 
         // assign gpu textures to tiles
         for(i32 i = 1; i < 4097; ++i) {
@@ -477,7 +478,6 @@ struct Game
 
     void deinit()
     {
-        MEM_DEALLOC(diskTextures.block);
         MEM_DEALLOC(diskTiles.block);
         MEM_DEALLOC(diskSectors.block);
     }
@@ -520,7 +520,7 @@ i32 thread_game(void*)
     game.loadShaders();
 
     //game.loadTextures();
-    //game.loadSectors();
+    game.loadSectors();
 
     //pak_FloorRead("../sacred_data/Floor.pak");
     //bin_WorldRead("../sacred_data/World.bin");
@@ -530,7 +530,7 @@ i32 thread_game(void*)
     while(client.running) {
         game.processInput();
 
-        //GPUres_newFrame();
+        resource_newFrame();
         //game.requestTexBrowserTextures();
 
         // NOTE: dont push render command inside UI code
@@ -538,9 +538,8 @@ i32 thread_game(void*)
         client.dbguiNewFrameBegin();
         if(client.imguiSetup) {
             //game.ui_textureBrowser();
-            //game.ui_tileTest();
+            game.ui_tileTest();
             ui_videoInfo();
-            //GPUres_debugUi();
             //ImGui::ShowTestWindow();
         }
         client.dbguiNewFrameEnd();
@@ -549,7 +548,7 @@ i32 thread_game(void*)
         list.clear();
         renderer_pushCommandList(list);
 
-        //game.drawTestTiles();
+        game.drawTestTiles();
 
         list = {};
         list.queryVramInfo(&dedicated, &availMemory, &currentAvailMem, &evictionCount, &evictedMem);
@@ -560,7 +559,6 @@ i32 thread_game(void*)
     // TODO: wait for deinit
     LOG("Game> cleaning up...");
     game.deinit();
-    //GPUres_deinit();
 
     return 0;
 }

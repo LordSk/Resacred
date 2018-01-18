@@ -1,13 +1,25 @@
-#include "rs_gpu_resources.h"
-#include "rs_file.h"
+#include "rs_resources.h"
 #include "rs_renderer.h"
-#include "imgui.h"
+#include "rs_file.h"
+
+static void resource_loadTexture(char* buff, i64 size);
+
+/*
+ * GPU resource manager
+ *
+ * Usage:
+ *  - request textures every frame
+ *  - get a pointer back, dereference to get actual gpu handle
+ *  - points to zero while texture is being uploaded to gpu
+ *
+ *  - textures not being requested for a while will be destroyed
+ */
+
 
 #define MAX_GPU_TEXTURES 1024
 
 struct GPUResources
 {
-    DiskTextures* diskTextures;
     u32 gpuTexDefault;
     u32 texGpuId[MAX_GPU_TEXTURES];
     i32 texDiskId[MAX_GPU_TEXTURES];
@@ -110,7 +122,7 @@ struct GPUResources
 
     void requestTextures(i32* inPakTextureIds, u32** outGpuTexHandles, const i32 requestCount)
     {
-        memset(outGpuTexHandles, 0, sizeof(outGpuTexHandles[0]) * requestCount);
+        /*memset(outGpuTexHandles, 0, sizeof(outGpuTexHandles[0]) * requestCount);
 
         // assign already loaded/loading textures
         for(i32 r = 0; r < requestCount; ++r) {
@@ -179,7 +191,7 @@ struct GPUResources
             i32 id = outGpuTexHandles[r] - texGpuId;
             assert(inPakTextureIds[r] == texDiskId[id]);
         }
-#endif
+#endif*/
     }
 
     void deinit()
@@ -194,7 +206,7 @@ struct GPUResources
         renderer_pushCommandList(cmds);
     }
 
-    void debugUi()
+    /*void debugUi()
     {
         ImGui::Begin("Gpu resources");
 
@@ -212,45 +224,174 @@ struct GPUResources
         ImGui::End();
 
         ImGui::End();
-    }
+    }*/
 };
 
-GPUResources* g_gpuResourcesPtr = nullptr;
+/*
+ * Resource manager
+ *
+ * Texture request process:
+ * - if not loaded, request file read
+ */
 
-bool GPUres_init(DiskTextures* diskTextures)
+struct ResourceManager {
+
+DiskFile fileTexture;
+i32 textureCount;
+i32* textureFileOffset;
+AtomicCounter* textureDiskLoadStatus; // 2 == loading from disk, 1 == loaded
+u8** textureDataPtr;
+MemBlock textureOffsetBlock;
+
+u8* textureAllData;
+MemBlock textureAllDataBlock;
+
+GPUResources gpu;
+
+enum class LoadStatus: i32 {
+    NONE = 0,
+    LOADED,
+    LOADING,
+};
+
+bool init()
 {
-    assert(!g_gpuResourcesPtr);
-    static GPUResources gpuRes;
-    g_gpuResourcesPtr = &gpuRes;
-    gpuRes.diskTextures = diskTextures;
-    return gpuRes.init();
+    gpu.init();
+
+    if(!fileOpenToRead("../sacred_data/texture.pak", &fileTexture)) {
+        return false;
+    }
+
+    textureAllDataBlock = MEM_ALLOC(Megabyte(100));
+    assert(textureAllDataBlock.ptr);
+    textureAllData = (u8*)textureAllDataBlock.ptr;
+
+    PakHeader header;
+    fileReadAdvance(&fileTexture, sizeof(header), &header);
+    textureCount = header.entryCount;
+
+    // alloc texture metadata
+    textureOffsetBlock = MEM_ALLOC((sizeof(i32) + sizeof(AtomicCounter) + sizeof(u8*)) * textureCount);
+    assert(textureOffsetBlock.ptr);
+    textureFileOffset = (i32*)textureOffsetBlock.ptr;
+    textureDiskLoadStatus = (AtomicCounter*)(textureFileOffset + textureCount);
+    textureDataPtr = (u8**)(textureDiskLoadStatus + textureCount);
+
+    i64 fileOffsetsSize = textureCount * sizeof(PakSubFileDesc);
+    MemBlock b = MEM_ALLOC(fileOffsetsSize);
+    assert(b.ptr);
+
+    PakSubFileDesc* fileOffsets = (PakSubFileDesc*)b.ptr;
+    fileReadAdvance(&fileTexture, fileOffsetsSize, fileOffsets);
+
+    for(i32 i = 0; i < textureCount; ++i) {
+        textureFileOffset[i] = fileOffsets[i].offset;
+        //LOG("%d offset=%d", i, textureOffset[i]);
+    }
+
+    MEM_DEALLOC(b);
+
+    return true;
 }
 
-void GPUres_newFrame()
+void deinit()
 {
-    assert(g_gpuResourcesPtr);
-    g_gpuResourcesPtr->newFrame();
+    MEM_DEALLOC(textureOffsetBlock);
+    MEM_DEALLOC(textureAllDataBlock);
+    fileClose(&fileTexture);
+    gpu.deinit();
 }
 
-void GPUres_requestTextures(i32* pakTextureIds, u32** outGpuTexHandles, const i32 requestCount)
+void newFrame()
 {
-    assert(g_gpuResourcesPtr);
-    g_gpuResourcesPtr->requestTextures(pakTextureIds, outGpuTexHandles, requestCount);
+    // decompress texture if necessary and upload them to the gpu (if requested)
+    for(i32 i = 0; i < textureCount; ++i) {
+        if((LoadStatus)textureDiskLoadStatus[i].get() == LoadStatus::LOADED /*&& NOT GPU LOADING*/) {
+            //pak_textureRead();
+            //upload to GPU
+        }
+    }
 }
 
-void GPUres_deinit()
+void requestTextures(const i32* textureIds, const i32 requestCount)
 {
-    assert(g_gpuResourcesPtr);
-    g_gpuResourcesPtr->deinit();
+    /*for(i32 i = 0; i < requestCount; ++i) {
+        fileAsyncReadAbsolute(&fileTexture, 0, 0, [](char* buff, i64 size, MemBlock block) {
+            resource_loadTexture(buff, size);
+            MEM_DEALLOC(block);
+        });
+    }*/
 }
 
-void GPUres_debugUi()
+void requestGpuTextures(const i32* textureUIDs, u32** out_gpuHandles, const i32 requestCount)
 {
-    assert(g_gpuResourcesPtr);
-    g_gpuResourcesPtr->debugUi();
+    for(i32 i = 0; i < requestCount; ++i) {
+        const i32 texUID = textureUIDs[i];
+        assert(texUID > 0 && texUID < textureCount);
+        out_gpuHandles[i] = &gpu.gpuTexDefault;
+
+        if((LoadStatus)textureDiskLoadStatus[texUID].get() == LoadStatus::NONE && textureDataPtr[texUID] == nullptr) {
+            textureDiskLoadStatus[texUID].set((i32)LoadStatus::LOADING);
+            textureDataPtr[texUID] = (u8*)0xdeadbeef;
+
+            i32 size = textureFileOffset[textureUIDs[i] + 1] - textureFileOffset[textureUIDs[i]];
+            assert(size > 0);
+
+            fileAsyncReadAbsolute(&fileTexture, textureFileOffset[textureUIDs[i]], size,
+                    &textureDiskLoadStatus[texUID]);
+        }
+    }
 }
 
-u32 gpuRes_defaultTexture()
+void loadTexture(char* fileBuff, i64 buffSize)
 {
-    return g_gpuResourcesPtr->gpuTexDefault;
+    i32 width, height, type, textureSize;
+    pak_textureRead(fileBuff, buffSize, &width, &height, &type, textureAllData, &textureSize);
+}
+
+};
+
+
+
+
+
+
+
+
+
+static ResourceManager DR;
+
+bool resource_init()
+{
+    return DR.init();
+}
+
+void resource_deinit()
+{
+    DR.deinit();
+}
+
+void resource_newFrame()
+{
+    DR.newFrame();
+}
+
+void resource_requestTextures(const i32* textureIds, const i32 textureCount)
+{
+    DR.requestTextures(textureIds, textureCount);
+}
+
+void resource_requestGpuTextures(const i32* textureUIDs, u32** out_gpuHandles, const i32 textureCount)
+{
+    DR.requestGpuTextures(textureUIDs, out_gpuHandles, textureCount);
+}
+
+static void resource_loadTexture(char* buff, i64 size)
+{
+    DR.loadTexture(buff, size);
+}
+
+u32 resource_defaultGpuTexture()
+{
+    return DR.gpu.gpuTexDefault;
 }

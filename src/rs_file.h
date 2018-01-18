@@ -32,20 +32,32 @@ struct Win32_DiskFile
 typedef Win32_DiskFile DiskFile;
 #endif
 
-struct AsyncFileRequest
-{
-    i32 requestUID;
-};
-
-typedef void (*Callback_ReqReadAbsolute)(char* buff, i64 size, MemBlock block);
+/**
+ * Syncronous File IO
+ */
 
 bool fileOpenToRead(const char* path, DiskFile* file);
 void fileClose(DiskFile* file);
 void fileReadFromPos(const DiskFile* file, i64 from, i64 size, void* dest);
 void fileReadAdvance(DiskFile* file, i64 size, void* dest);
 
-AsyncFileRequest fileAsyncReadAbsolute(const DiskFile* file, u8* start, i64 size,
-                                       Callback_ReqReadAbsolute callback = nullptr);
+
+/**
+ * Asyncronous File IO
+ *
+ * - all calls are asynchronous
+ * - counter is DECREMENTED when request is completed
+ * - internally calls to synchronous functions
+ */
+
+struct AsyncFileRequest
+{
+    i32 requestUID;
+};
+
+AsyncFileRequest fileAsyncReadAbsolute(const DiskFile* file, i64 start, i64 size, AtomicCounter* counter);
+
+
 
 /**
  * @brief Allocate a buffer containing the contents of the file
@@ -188,3 +200,6 @@ bool pak_texturesRead(const char* filepath, DiskTextures* textures);
 bool bin_WorldRead(const char* filepath);
 bool pak_FloorRead(const char* filepath);
 bool keyx_sectorsRead(const char* keyx_filepath, const char* wldx_filepath, DiskSectors* diskSectors);
+
+bool pak_textureRead(char* fileBuff, i64 size, i32* out_width, i32* out_height, i32* out_type,
+                     u8* out_data, i32* out_size);

@@ -12,7 +12,7 @@
 #include "rs_renderer.h"
 #include "rs_game.h"
 #include "rs_file.h"
-#include "rs_disk_resources.h"
+#include "rs_resources.h"
 
 i32 main()
 {
@@ -28,13 +28,13 @@ i32 main()
 
     Window& client = *init_clientWindow();
     client.create(1600, 900);
-    diskResource_init();
 
     auto threadRenderer = SDL_CreateThread(thread_renderer, "thread_renderer", nullptr);
     auto threadGame = SDL_CreateThread(thread_game, "thread_game", nullptr);
     auto threadFileIO = SDL_CreateThread(thread_fileIO, "thread_fileIO", nullptr);
 
     renderer_waitForInit();
+    resource_init();
     client.dbguiInit();
 
     while(client.running) {
@@ -42,11 +42,12 @@ i32 main()
     }
 
     client.cleanup();
-    diskResource_deinit();
 
     SDL_WaitThread(threadFileIO, nullptr);
     SDL_WaitThread(threadGame, nullptr);
     SDL_WaitThread(threadRenderer, nullptr);
+
+    resource_deinit();
 
     SDL_Quit();
 
