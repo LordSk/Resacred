@@ -18,6 +18,7 @@ struct AsyncFileRequestDesc
     DiskFile* file;
     u8* buff;
     i64 size;
+    u8* out;
     AtomicCounter* counter;
 };
 
@@ -26,7 +27,7 @@ struct AsyncFileQueue
 {
     AsyncFileRequestDescArray queueBuffers[2];
     AsyncFileRequestDescArray* queue;
-    MutexSpin acquireMutex;
+    Mutex acquireMutex;
 
     AsyncFileQueue()
     {
@@ -74,10 +75,8 @@ struct AsyncFileQueue
 
             switch(desc.type) {
                 case FileReqType::READ_ABSOLUTE: {
-                    MemBlock b = MEM_ALLOC(desc.size);
-                    assert(b.ptr);
-
-                    fileReadFromPos(desc.file, (i64)desc.buff, desc.size, b.ptr);
+                    assert(desc.out);
+                    fileReadFromPos(desc.file, (i64)desc.buff, desc.size, desc.out);
 
                     if(desc.counter) {
                         desc.counter->decrement();
@@ -93,7 +92,7 @@ struct AsyncFileQueue
         backQueue->clearPOD();
     }
 
-    AsyncFileRequest newRequest(FileReqType type, DiskFile* file, u8* buff, i64 size,
+    AsyncFileRequest newRequest(FileReqType type, DiskFile* file, u8* buff, i64 size, u8* out,
                                 AtomicCounter* counter) {
         // fileIO is getting clogged, block until unclogged
         while(queue->count() > 127) {
@@ -114,6 +113,7 @@ struct AsyncFileQueue
         desc.type = type;
         desc.file = file;
         desc.buff = buff;
+        desc.out = out;
         desc.size = size;
         desc.counter = counter;
         queue->pushPOD(&desc);
@@ -231,11 +231,12 @@ void fileReadAdvance(DiskFile* file, i64 size, void* dest)
 #endif
 }
 
-AsyncFileRequest fileAsyncReadAbsolute(const DiskFile* file, i64 start, i64 size,
+AsyncFileRequest fileAsyncReadAbsolute(const DiskFile* file, i64 start, i64 size, u8* out,
                                        AtomicCounter* counter)
 {
     assert(((i64)start + size) < file->size);
-    return AFQ->newRequest(FileReqType::READ_ABSOLUTE, (DiskFile*)file, (u8*)start, size, counter);
+    assert(out);
+    return AFQ->newRequest(FileReqType::READ_ABSOLUTE, (DiskFile*)file, (u8*)start, size, out, counter);
 }
 
 
@@ -258,7 +259,7 @@ FileBuffer fileReadWhole(const char* path, IAllocator* pAlloc)
     fseek(file, start, SEEK_SET);
 
     fb.size = len;
-    fb.block = pAlloc->alloc(len + 1);
+    fb.block = pAlloc->ALLOC(len + 1);
     if(!fb.block.ptr) {
         LOG_ERR("fileReadWhole(path=%s size=%d) out of memory", path, len);
         fb.error = FileError::OUT_OF_MEMORY;
@@ -476,7 +477,7 @@ bool pak_texturesRead(const char* filepath, DiskTextures* textures)
         i32 offset = fileDesc[i].offset;
         PakTexture& tex = *(PakTexture*)(top + offset);
 
-        textures->textureInfo[i].type = (DiskTextures::TexType)tex.typeId;
+        textures->textureInfo[i].type = (PakTextureType)tex.typeId;
         textures->textureInfo[i].width = tex.width;
         textures->textureInfo[i].height = tex.height;
         memmove(&textures->textureName[i], tex.filename, sizeof(DiskTextures::TexName));

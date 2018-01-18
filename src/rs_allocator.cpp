@@ -101,7 +101,7 @@ MemBlock AllocatorStack::__alloc(const char* filename, i32 line, u64 size, u8 al
     if(_topStackMarker + size > _block.size) {
         if(_fallback) {
             LOG_MEM("[AllocatorStack] allocator full, using fallback instead");
-            return _fallback->alloc(size, alignment);
+            return _fallback->ALLOC(size, alignment);
         }
         return NULL_MEMBLOCK;
     }
@@ -147,7 +147,7 @@ MemBlock AllocatorStack::__realloc(const char* filename, i32 line, MemBlock bloc
         if(newMk + size > _block.size) {
             if(_fallback) {
                 LOG_WARN("[AllocatorStack] allocator full, using fallback instead");
-                MemBlock b = _fallback->alloc(size, alignment);
+                MemBlock b = _fallback->ALLOC(size, alignment);
                 if(b.ptr) {
                     memmove(b.ptr, block.ptr, block.size);
                 }
@@ -175,7 +175,7 @@ MemBlock AllocatorStack::__realloc(const char* filename, i32 line, MemBlock bloc
     }
 
 
-    MemBlock b = alloc(size, alignment);
+    MemBlock b = ALLOC(size, alignment);
     if(b.ptr) {
         memmove(b.ptr, block.ptr, block.size);
     }
@@ -210,11 +210,11 @@ void AllocatorBucket::init(MemBlock fromBlock, u32 bucketCount, u64 bucketSize, 
 {
     AllocatorStack stack(fromBlock);
 
-    MemBlock bytefield = stack.alloc(bucketCount);
+    MemBlock bytefield = stack.ALLOC(bucketCount);
     assert(bytefield.ptr);
     _bytefield = (u8*)bytefield.ptr;
 
-    MemBlock fsBlocks = stack.alloc(bucketCount * bucketSize, alignment);
+    MemBlock fsBlocks = stack.ALLOC(bucketCount * bucketSize, alignment);
     assert(fsBlocks.ptr);
     _bucketsPtr = fsBlocks.ptr;
 
@@ -228,7 +228,7 @@ MemBlock AllocatorBucket::__alloc(const char* filename, i32 line, u64 size, u8 a
 {
     assert(size > 0);
 
-    LOG_MEM("[AllocatorBucket] %s:%d alloc(size=%d align=%d bucketAlign=%d)",
+    LOG_MEM("[AllocatorBucket] %s:%d ALLOC(size=%d align=%d bucketAlign=%d)",
                 filename, line, size, alignment, _bucketAlignment);
 
     u8 shouldAlign = 0;
@@ -298,7 +298,7 @@ MemBlock AllocatorBucket::__realloc(const char* filename, i32 line, MemBlock blo
             line, block.ptr, block.size, size);
 
     if(!owns(block) || !block.ptr || block.size == 0) {
-        return alloc(size, alignment);
+        return ALLOC(size, alignment);
     }
 
     u8 shouldAlign = 0;
@@ -363,7 +363,7 @@ MemBlock AllocatorBucket::__realloc(const char* filename, i32 line, MemBlock blo
         }
     }
 
-    MemBlock newBlock = alloc(size, alignment);
+    MemBlock newBlock = ALLOC(size, alignment);
     assert(newBlock.ptr);
     memmove(newBlock.ptr, block.ptr, block.size);
     dealloc(block);
@@ -546,6 +546,50 @@ bool AllocatorStep::owns(MemBlock block) const
         }
     }
     return false;
+}
+
+
+void RingAllocator::init(MemBlock block, u8 alignment)
+{
+    assert(block.ptr);
+    _block = block;
+    _block.ptr = (void*)((intptr_t)_block.ptr + alignAdjust((intptr_t)_block.ptr, alignment));
+}
+
+MemBlock RingAllocator::__alloc(const char* filename, i32 line, u64 size, u8 alignment)
+{
+    assert(size > 0);
+    LOG_MEM("[RingAllocator] %s:%d alloc(%d)", filename, line, size);
+
+    i32 adjust = alignAdjust((intptr_t)_block.ptr + _cursor, alignment);
+    size += adjust;
+
+    if(_cursor + size > _block.size) {
+        _cursor = 0;
+        assert(_cursor + size <= _block.size);
+    }
+
+    void* addr = (void*)((intptr_t)_block.ptr + _cursor); // start of the block
+    _cursor += size;
+    memset(addr, 0, size);
+
+    MemBlock block;
+    block.ptr = (void*)((intptr_t)addr + adjust);
+    block.notaligned = addr;
+    block.size = size - adjust;
+    block.allocator = this;
+    return block;
+}
+
+MemBlock RingAllocator::__realloc(const char* filename, i32 line, MemBlock block, u64 size, u8 alignment)
+{
+    // TODO: improve this
+    return __alloc(filename, line, size, alignment);
+}
+
+void RingAllocator::__dealloc(const char* filename, i32 line, MemBlock block)
+{
+    return;
 }
 
 #ifndef SACRED_TEMP_STACK_SIZE

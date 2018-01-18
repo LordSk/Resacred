@@ -26,6 +26,25 @@ struct MutexSpin
     }
 };
 
+struct Mutex
+{
+#ifdef CONF_WINDOWS
+    CRITICAL_SECTION criticalSection;
+
+    Mutex() {
+        InitializeCriticalSection(&criticalSection);
+    }
+
+    inline void lock() {
+        EnterCriticalSection(&criticalSection);
+    }
+
+    inline void unlock() {
+        LeaveCriticalSection(&criticalSection);
+    }
+#endif
+};
+
 struct AtomicCounter
 {
     vli32 _count = 0;

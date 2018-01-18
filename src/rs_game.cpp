@@ -326,7 +326,7 @@ struct Game
         ImGui::Text("posX1=%d posX2=%d posY1=%d posY2=%d",
                     sector.posX1, sector.posX2, sector.posY1, sector.posY2);
 
-        ImGui::Image((ImTextureID)(intptr_t)resource_defaultGpuTexture(), ImVec2(256, 256));
+        //ImGui::Image((ImTextureID)(intptr_t)resource_defaultGpuTexture(), ImVec2(256, 256));
 
         ImGui::End();
     }

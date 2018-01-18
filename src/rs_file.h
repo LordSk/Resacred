@@ -55,7 +55,7 @@ struct AsyncFileRequest
     i32 requestUID;
 };
 
-AsyncFileRequest fileAsyncReadAbsolute(const DiskFile* file, i64 start, i64 size, AtomicCounter* counter);
+AsyncFileRequest fileAsyncReadAbsolute(const DiskFile* file, i64 start, i64 size, u8* out, AtomicCounter* counter);
 
 
 
@@ -120,20 +120,20 @@ struct PakTexture
     u8* data;
 };
 
+enum class PakTextureType: u16 {
+    TYPE_RGBA8 = 6,
+    TYPE_ARGB4 = 4
+};
+
 struct DiskTextures
 {
-    typedef enum: u16 {
-        TYPE_RGBA8 = 6,
-        TYPE_ARGB4 = 4
-    } TexType;
-
     struct TexName {
         char data[32];
     };
     struct TexInfo {
         u16 width;
         u16 height;
-        TexType type;
+        PakTextureType type;
     };
 
     u8** textureData;

@@ -2,7 +2,13 @@
 #include "rs_renderer.h"
 #include "rs_file.h"
 
-static void resource_loadTexture(char* buff, i64 size);
+struct PakTextureInfo
+{
+    u16 width;
+    u16 height;
+    PakTextureType type;
+};
+
 
 /*
  * GPU resource manager
@@ -120,51 +126,62 @@ struct GPUResources
         return oldestId;
     }
 
-    void requestTextures(i32* inPakTextureIds, u32** outGpuTexHandles, const i32 requestCount)
+    void requestTextures(const i32* inPakTextureIds, u32** outGpuTexHandles, const i32 requestCount)
     {
-        /*memset(outGpuTexHandles, 0, sizeof(outGpuTexHandles[0]) * requestCount);
+        memset(outGpuTexHandles, 0, sizeof(outGpuTexHandles[0]) * requestCount);
 
         // assign already loaded/loading textures
         for(i32 r = 0; r < requestCount; ++r) {
-            const i32 pakTexId = inPakTextureIds[r] ;
-            assert(pakTexId >= 0 && pakTexId < diskTextures->textureCount);
+            const i32 pakTexId = inPakTextureIds[r];
 
+            bool found = false;
             for(i32 i = 0; i < MAX_GPU_TEXTURES; ++i) {
                 if(texSlotOccupied[i] && texDiskId[i] == pakTexId) {
                     outGpuTexHandles[r] = &texGpuId[i];
                     texFramesNotRequested[i] = 0;
+                    found = true;
                     break;
                 }
             }
-        }
 
+            if(!found) {
+                i32 newId = _occupyNextTextureSlot();
+                outGpuTexHandles[r] = &texGpuId[newId];
+                texGpuId[newId] = gpuTexDefault;
+                texDiskId[newId] = pakTexId;
+                texFramesNotRequested[newId] = 0;
+                // TODO: it increments here but decrements in ResourceManager?
+                // choose one
+                texLoaded[newId].set(0);
+            }
+        }
+    }
+
+    void uploadTextures(i32* pakTextureUIDs, PakTextureInfo* textureInfos, u8** textureData, const i32 count)
+    {
         // for all remaining requests create a new gpu texture and assign it
         CommandList cmds;
-        for(i32 r = 0; r < requestCount; ++r) {
-            if(outGpuTexHandles[r] != 0) {
-                continue;
+        for(i32 r = 0; r < count; ++r) {
+            const i32 pakTexId = pakTextureUIDs[r];
+            i32 gpuId = -1;
+
+            for(i32 i = 0; i < MAX_GPU_TEXTURES; ++i) {
+                if(texSlotOccupied[i] && texDiskId[i] == pakTexId) {
+                    gpuId = i;
+                    break;
+                }
             }
 
-            // FIXME: can somehow bypass first assert??
-            const i32 reqPakTexId = inPakTextureIds[r];
-            assert(reqPakTexId >= 1 && reqPakTexId < diskTextures->textureCount);
+            assert(gpuId != -1);
 
-            i32 newId = _occupyNextTextureSlot();
-            outGpuTexHandles[r] = &texGpuId[newId];
-            texGpuId[newId] = gpuTexDefault;
-            texDiskId[newId] = reqPakTexId;
-            texFramesNotRequested[newId] = 0;
-            texLoaded[newId]._count = 0;
-
-            TextureDesc2D& desc = texDesc[newId];
+            TextureDesc2D& desc = texDesc[gpuId];
 
             // upload texture to gpu
-            const i32 actualTexId = reqPakTexId - 1;
-            desc.width = diskTextures->textureInfo[actualTexId].width;
-            desc.height = diskTextures->textureInfo[actualTexId].height;
-            desc.data =  diskTextures->textureData[actualTexId];
+            desc.width = textureInfos[r].width;
+            desc.height = textureInfos[r].height;
+            desc.data =  textureData[r];
 
-            if(diskTextures->textureInfo[actualTexId].type == DiskTextures::TYPE_RGBA8) {
+            if(textureInfos[r].type == PakTextureType::TYPE_RGBA8) {
                 desc.internalFormat = GL_RGBA8;
                 desc.dataFormat = GL_RGBA;
                 desc.dataPixelCompType = GL_UNSIGNED_BYTE;
@@ -180,18 +197,10 @@ struct GPUResources
             desc.magFilter = GL_NEAREST;
 
 
-            cmds.createTexture2D(&desc, &texGpuId[newId]);
-            cmds.counterIncrement(&texLoaded[newId]);
+            cmds.createTexture2D(&desc, &texGpuId[gpuId]);
+            cmds.counterIncrement(&texLoaded[gpuId]);
         }
         renderer_pushCommandList(cmds);
-
-#ifdef CONF_DEBUG
-        for(i32 r = 0; r < requestCount; ++r) {
-            assert(outGpuTexHandles[r] >= texGpuId && outGpuTexHandles[r] < &texGpuId[MAX_GPU_TEXTURES]);
-            i32 id = outGpuTexHandles[r] - texGpuId;
-            assert(inPakTextureIds[r] == texDiskId[id]);
-        }
-#endif*/
     }
 
     void deinit()
@@ -227,6 +236,10 @@ struct GPUResources
     }*/
 };
 
+#define FILE_DATA_SIZE Megabyte(100)
+#define TEXTURE_DATA_SIZE Megabyte(200)
+#define TEXTURE_TEMP_SIZE Megabyte(5)
+
 /*
  * Resource manager
  *
@@ -240,18 +253,27 @@ DiskFile fileTexture;
 i32 textureCount;
 i32* textureFileOffset;
 AtomicCounter* textureDiskLoadStatus; // 2 == loading from disk, 1 == loaded
-u8** textureDataPtr;
-MemBlock textureOffsetBlock;
+MemBlock* textureDataBlock;
+PakTextureInfo* textureInfo;
+u8* textureGpuUpload;
+MemBlock textureMetaBlock;
 
-u8* textureAllData;
-MemBlock textureAllDataBlock;
+u8* fileData;
+u8* textureRawData;
+MemBlock textureFileAndRawBlock;
+intptr_t fileRingCursor = 0;
+AllocatorBucket textureDataAllocator;
+
+u8* tempTextureBuff;
+MemBlock tempTextureBuffBlock;
 
 GPUResources gpu;
 
 enum class LoadStatus: i32 {
     NONE = 0,
-    LOADED,
-    LOADING,
+    PROCESSED,
+    FILE_LOADED,
+    FILE_LOADING,
 };
 
 bool init()
@@ -262,20 +284,38 @@ bool init()
         return false;
     }
 
-    textureAllDataBlock = MEM_ALLOC(Megabyte(100));
-    assert(textureAllDataBlock.ptr);
-    textureAllData = (u8*)textureAllDataBlock.ptr;
+    textureFileAndRawBlock = MEM_ALLOC(TEXTURE_DATA_SIZE + FILE_DATA_SIZE);
+    assert(textureFileAndRawBlock.ptr);
+    textureRawData = (u8*)textureFileAndRawBlock.ptr;
+    fileData = textureRawData + TEXTURE_DATA_SIZE;
+
+    LOG_DBG("Resource> textureFileAndRawBlock size=%lldmb", (TEXTURE_DATA_SIZE + FILE_DATA_SIZE)/(1024*1024));
+
+    MemBlock textureRawDataBlock;
+    textureRawDataBlock.ptr = textureRawData;
+    textureRawDataBlock.size = TEXTURE_DATA_SIZE;
+    textureDataAllocator.init(textureRawDataBlock, TEXTURE_DATA_SIZE/1024, 1024);
+
+    tempTextureBuffBlock = MEM_ALLOC(TEXTURE_TEMP_SIZE);
+    assert(tempTextureBuffBlock.ptr);
+    tempTextureBuff = (u8*)tempTextureBuffBlock.ptr;
 
     PakHeader header;
     fileReadAdvance(&fileTexture, sizeof(header), &header);
     textureCount = header.entryCount;
 
     // alloc texture metadata
-    textureOffsetBlock = MEM_ALLOC((sizeof(i32) + sizeof(AtomicCounter) + sizeof(u8*)) * textureCount);
-    assert(textureOffsetBlock.ptr);
-    textureFileOffset = (i32*)textureOffsetBlock.ptr;
+    textureMetaBlock = MEM_ALLOC((sizeof(i32) + sizeof(AtomicCounter) + sizeof(MemBlock) +
+                                  sizeof(PakTextureInfo) + sizeof(u8)) * textureCount);
+    assert(textureMetaBlock.ptr);
+
+    LOG_DBG("Resource> textureMetaBlock size=%lldkb", textureMetaBlock.size/1024);
+
+    textureFileOffset = (i32*)textureMetaBlock.ptr;
     textureDiskLoadStatus = (AtomicCounter*)(textureFileOffset + textureCount);
-    textureDataPtr = (u8**)(textureDiskLoadStatus + textureCount);
+    textureDataBlock = (MemBlock*)(textureDiskLoadStatus + textureCount);
+    textureInfo = (PakTextureInfo*)(textureDataBlock + textureCount);
+    textureGpuUpload = (u8*)(textureInfo + textureCount);
 
     i64 fileOffsetsSize = textureCount * sizeof(PakSubFileDesc);
     MemBlock b = MEM_ALLOC(fileOffsetsSize);
@@ -296,21 +336,69 @@ bool init()
 
 void deinit()
 {
-    MEM_DEALLOC(textureOffsetBlock);
-    MEM_DEALLOC(textureAllDataBlock);
+    MEM_DEALLOC(textureMetaBlock);
+    MEM_DEALLOC(textureFileAndRawBlock);
+    MEM_DEALLOC(tempTextureBuffBlock);
     fileClose(&fileTexture);
     gpu.deinit();
 }
 
 void newFrame()
 {
+    resetTempAllocator();
+
+    Array<i32,256> pakTexIdUpload;
+    Array<u8*,256> dataUpload;
+    Array<PakTextureInfo,256> texInfoUpload;
+    pakTexIdUpload.allocator = MEM_CONTEXT.tempAllocator;
+    dataUpload.allocator = MEM_CONTEXT.tempAllocator;
+    texInfoUpload.allocator = MEM_CONTEXT.tempAllocator;
+
     // decompress texture if necessary and upload them to the gpu (if requested)
     for(i32 i = 0; i < textureCount; ++i) {
-        if((LoadStatus)textureDiskLoadStatus[i].get() == LoadStatus::LOADED /*&& NOT GPU LOADING*/) {
-            //pak_textureRead();
-            //upload to GPU
+        if((LoadStatus)textureDiskLoadStatus[i].get() == LoadStatus::FILE_LOADED) {
+            //LOG("Resource> texId=%d file loaded", i);
+            i32 width, height, type, textureSize;
+            pak_textureRead((char*)textureDataBlock[i].ptr, textureDataBlock[i].size,
+                            &width, &height, &type, tempTextureBuff, &textureSize);
+            assert(textureSize < TEXTURE_TEMP_SIZE);
+
+            textureDataBlock[i] = textureDataAllocator.ALLOC(textureSize);
+            if(!textureDataBlock[i].ptr) {
+                // evict old texture data
+                assert(0); // TODO: implement
+            }
+            memmove(textureDataBlock[i].ptr, tempTextureBuff, textureSize);
+
+            textureDiskLoadStatus[i].decrement();
+
+            PakTextureInfo& info = textureInfo[i];
+            info.width = width;
+            info.height = height;
+            info.type = (PakTextureType)type;
+
+            pakTexIdUpload.pushPOD(&i);
+            dataUpload.pushPOD((u8**)&textureDataBlock[i].ptr);
+            texInfoUpload.pushPOD(&info);
         }
     }
+
+    const i32 toUploadCount = pakTexIdUpload.count();
+    if(toUploadCount > 0) {
+        gpu.uploadTextures(pakTexIdUpload.data(), texInfoUpload.data(), dataUpload.data(), toUploadCount);
+    }
+}
+
+u8* fileRingAlloc(i64 size)
+{
+    if(fileRingCursor + size > FILE_DATA_SIZE) {
+        fileRingCursor = 0;
+        assert(fileRingCursor + size <= FILE_DATA_SIZE);
+    }
+
+    u8* r = fileData + fileRingCursor;
+    fileRingCursor += size;
+    return r;
 }
 
 void requestTextures(const i32* textureIds, const i32 requestCount)
@@ -325,28 +413,26 @@ void requestTextures(const i32* textureIds, const i32 requestCount)
 
 void requestGpuTextures(const i32* textureUIDs, u32** out_gpuHandles, const i32 requestCount)
 {
+    gpu.requestTextures(textureUIDs, out_gpuHandles, requestCount);
+
     for(i32 i = 0; i < requestCount; ++i) {
         const i32 texUID = textureUIDs[i];
         assert(texUID > 0 && texUID < textureCount);
-        out_gpuHandles[i] = &gpu.gpuTexDefault;
+        //out_gpuHandles[i] = &gpu.gpuTexDefault;
 
-        if((LoadStatus)textureDiskLoadStatus[texUID].get() == LoadStatus::NONE && textureDataPtr[texUID] == nullptr) {
-            textureDiskLoadStatus[texUID].set((i32)LoadStatus::LOADING);
-            textureDataPtr[texUID] = (u8*)0xdeadbeef;
+        if((LoadStatus)textureDiskLoadStatus[texUID].get() == LoadStatus::NONE &&
+           textureDataBlock[texUID].ptr == nullptr) {
+            textureDiskLoadStatus[texUID].set((i32)LoadStatus::FILE_LOADING);
 
             i32 size = textureFileOffset[textureUIDs[i] + 1] - textureFileOffset[textureUIDs[i]];
             assert(size > 0);
+            textureDataBlock[texUID].ptr = fileRingAlloc(size);
+            textureDataBlock[texUID].size = size;
 
             fileAsyncReadAbsolute(&fileTexture, textureFileOffset[textureUIDs[i]], size,
-                    &textureDiskLoadStatus[texUID]);
+                    (u8*)textureDataBlock[texUID].ptr, &textureDiskLoadStatus[texUID]);
         }
     }
-}
-
-void loadTexture(char* fileBuff, i64 buffSize)
-{
-    i32 width, height, type, textureSize;
-    pak_textureRead(fileBuff, buffSize, &width, &height, &type, textureAllData, &textureSize);
 }
 
 };
@@ -384,11 +470,6 @@ void resource_requestTextures(const i32* textureIds, const i32 textureCount)
 void resource_requestGpuTextures(const i32* textureUIDs, u32** out_gpuHandles, const i32 textureCount)
 {
     DR.requestGpuTextures(textureUIDs, out_gpuHandles, textureCount);
-}
-
-static void resource_loadTexture(char* buff, i64 size)
-{
-    DR.loadTexture(buff, size);
 }
 
 u32 resource_defaultGpuTexture()
