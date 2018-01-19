@@ -289,6 +289,7 @@ inline void __mem_dealloc(const char* filename, i32 line, MemBlock& mb)
 {
     if(mb.allocator) {
         mb.allocator->__dealloc(filename, line, mb);
+        mb = NULL_MEMBLOCK;
     }
 }
 

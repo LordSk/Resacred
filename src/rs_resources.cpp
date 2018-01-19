@@ -71,6 +71,13 @@ struct GPUResources
         return true;
     }
 
+    void destroyTexture(CommandList* cmds, i32 texSlot)
+    {
+        if(texGpuId[texSlot] != gpuTexDefault) {
+            cmds->destroyTexture(texGpuId[texSlot]);
+        }
+    }
+
     void newFrame()
     {
         CommandList cmds;
@@ -81,7 +88,7 @@ struct GPUResources
                 texFramesNotRequested[i]++;
 
                 if(texFramesNotRequested[i] > 10) {
-                    cmds.destroyTexture(texGpuId[i]);
+                    destroyTexture(&cmds, i);
                     texGpuId[i] = gpuTexDefault;
                     texDiskId[i] = 0;
                     texSlotOccupied[i] = false;
@@ -117,7 +124,7 @@ struct GPUResources
         assert(oldestId >= 0);
 
         CommandList cmds;
-        cmds.destroyTexture(texGpuId[oldestId]);
+        destroyTexture(&cmds, oldestId);
         renderer_pushCommandList(cmds);
         texGpuId[oldestId] = gpuTexDefault;
         texDiskId[oldestId] = 0;
@@ -172,7 +179,11 @@ struct GPUResources
                 }
             }
 
-            assert(gpuId != -1);
+            if(gpuId == -1 || texLoaded[gpuId].get()) {
+                continue;
+            }
+
+            //LOG_DBG("ResourcesGpu> uploading pakId=%d gpuId=%d", pakTexId, gpuId);
 
             TextureDesc2D& desc = texDesc[gpuId];
 
@@ -237,7 +248,7 @@ struct GPUResources
 };
 
 #define FILE_DATA_SIZE Megabyte(100)
-#define TEXTURE_DATA_SIZE Megabyte(200)
+#define TEXTURE_DATA_SIZE Megabyte(100)
 #define TEXTURE_TEMP_SIZE Megabyte(5)
 
 /*
@@ -256,6 +267,7 @@ AtomicCounter* textureDiskLoadStatus; // 2 == loading from disk, 1 == loaded
 MemBlock* textureDataBlock;
 PakTextureInfo* textureInfo;
 u8* textureGpuUpload;
+i32* textureAge; // in frames
 MemBlock textureMetaBlock;
 
 u8* fileData;
@@ -305,8 +317,9 @@ bool init()
     textureCount = header.entryCount;
 
     // alloc texture metadata
-    textureMetaBlock = MEM_ALLOC((sizeof(i32) + sizeof(AtomicCounter) + sizeof(MemBlock) +
-                                  sizeof(PakTextureInfo) + sizeof(u8)) * textureCount);
+    textureMetaBlock = MEM_ALLOC((sizeof(*textureFileOffset) + sizeof(*textureDiskLoadStatus) +
+            sizeof(*textureDataBlock) + sizeof(*textureInfo) + sizeof(*textureGpuUpload) +
+            sizeof(*textureAge)) * textureCount);
     assert(textureMetaBlock.ptr);
 
     LOG_DBG("Resource> textureMetaBlock size=%lldkb", textureMetaBlock.size/1024);
@@ -316,6 +329,7 @@ bool init()
     textureDataBlock = (MemBlock*)(textureDiskLoadStatus + textureCount);
     textureInfo = (PakTextureInfo*)(textureDataBlock + textureCount);
     textureGpuUpload = (u8*)(textureInfo + textureCount);
+    textureAge = (i32*)(textureGpuUpload + textureCount);
 
     i64 fileOffsetsSize = textureCount * sizeof(PakSubFileDesc);
     MemBlock b = MEM_ALLOC(fileOffsetsSize);
@@ -345,7 +359,15 @@ void deinit()
 
 void newFrame()
 {
+    gpu.newFrame();
     resetTempAllocator();
+
+    // texture age in frames
+    for(i32 i = 0; i < textureCount; ++i) {
+        if((LoadStatus)textureDiskLoadStatus[i].get() == LoadStatus::PROCESSED) {
+            textureAge[i]++;
+        }
+    }
 
     Array<i32,256> pakTexIdUpload;
     Array<u8*,256> dataUpload;
@@ -366,20 +388,23 @@ void newFrame()
             textureDataBlock[i] = textureDataAllocator.ALLOC(textureSize);
             if(!textureDataBlock[i].ptr) {
                 // evict old texture data
-                assert(0); // TODO: implement
+                textureDataBlock[i] = evictTexture(textureSize);
             }
             memmove(textureDataBlock[i].ptr, tempTextureBuff, textureSize);
-
-            textureDiskLoadStatus[i].decrement();
 
             PakTextureInfo& info = textureInfo[i];
             info.width = width;
             info.height = height;
             info.type = (PakTextureType)type;
 
+            textureDiskLoadStatus[i].decrement(); // -> PROCESSED
+        }
+
+        if((LoadStatus)textureDiskLoadStatus[i].get() == LoadStatus::PROCESSED && textureGpuUpload[i]) {
             pakTexIdUpload.pushPOD(&i);
             dataUpload.pushPOD((u8**)&textureDataBlock[i].ptr);
-            texInfoUpload.pushPOD(&info);
+            texInfoUpload.pushPOD(&textureInfo[i]);
+            textureGpuUpload[i] = 0;
         }
     }
 
@@ -393,7 +418,7 @@ u8* fileRingAlloc(i64 size)
 {
     if(fileRingCursor + size > FILE_DATA_SIZE) {
         fileRingCursor = 0;
-        assert(fileRingCursor + size <= FILE_DATA_SIZE);
+        assert(fileRingCursor + size <= FILE_DATA_SIZE); // TODO: sometimes triggers somehow, investigate
     }
 
     u8* r = fileData + fileRingCursor;
@@ -401,37 +426,72 @@ u8* fileRingAlloc(i64 size)
     return r;
 }
 
-void requestTextures(const i32* textureIds, const i32 requestCount)
+MemBlock evictTexture(i64 size)
 {
-    /*for(i32 i = 0; i < requestCount; ++i) {
-        fileAsyncReadAbsolute(&fileTexture, 0, 0, [](char* buff, i64 size, MemBlock block) {
-            resource_loadTexture(buff, size);
-            MEM_DEALLOC(block);
-        });
-    }*/
+    //LOG_DBG("Resource> evictTexture(%lld)", size);
+
+    for(i32 tries = 0; tries < 100; ++tries) {
+        i32 oldestTextureAge = 0;
+        i32 oldestTexture = -1;
+
+        for(i32 i = 0; i < textureCount; ++i) {
+            if((LoadStatus)textureDiskLoadStatus[i].get() == LoadStatus::PROCESSED &&
+               textureAge[i] > oldestTextureAge) {
+                oldestTextureAge = textureAge[i];
+                oldestTexture = i;
+            }
+        }
+
+        assert(oldestTexture != -1);
+
+        // DELETE TEXTURE
+        MEM_DEALLOC(textureDataBlock[oldestTexture]);
+        textureFileOffset[oldestTexture] = 0;
+        textureDiskLoadStatus[oldestTexture].set(0);
+        textureInfo[oldestTexture] = {};
+        textureGpuUpload[oldestTexture] = 0;
+        textureAge[oldestTexture] = 0;
+
+        MemBlock b = textureDataAllocator.ALLOC(size);
+        if(b.ptr) {
+            LOG_DBG("Resource> textures evicted = %d", tries+1);
+            return b;
+        }
+    }
+
+    assert(0);
+    return NULL_MEMBLOCK;
 }
 
-void requestGpuTextures(const i32* textureUIDs, u32** out_gpuHandles, const i32 requestCount)
+void requestTextures(const i32* pakTextureUIDs, const i32 requestCount)
 {
-    gpu.requestTextures(textureUIDs, out_gpuHandles, requestCount);
-
     for(i32 i = 0; i < requestCount; ++i) {
-        const i32 texUID = textureUIDs[i];
+        const i32 texUID = pakTextureUIDs[i];
         assert(texUID > 0 && texUID < textureCount);
-        //out_gpuHandles[i] = &gpu.gpuTexDefault;
+        textureAge[texUID] = 0;
 
         if((LoadStatus)textureDiskLoadStatus[texUID].get() == LoadStatus::NONE &&
            textureDataBlock[texUID].ptr == nullptr) {
             textureDiskLoadStatus[texUID].set((i32)LoadStatus::FILE_LOADING);
 
-            i32 size = textureFileOffset[textureUIDs[i] + 1] - textureFileOffset[textureUIDs[i]];
+            i32 size = textureFileOffset[pakTextureUIDs[i] + 1] - textureFileOffset[pakTextureUIDs[i]];
             assert(size > 0);
             textureDataBlock[texUID].ptr = fileRingAlloc(size);
             textureDataBlock[texUID].size = size;
 
-            fileAsyncReadAbsolute(&fileTexture, textureFileOffset[textureUIDs[i]], size,
+            fileAsyncReadAbsolute(&fileTexture, textureFileOffset[pakTextureUIDs[i]], size,
                     (u8*)textureDataBlock[texUID].ptr, &textureDiskLoadStatus[texUID]);
         }
+    }
+}
+
+void requestGpuTextures(const i32* pakTextureUIDs, u32** out_gpuHandles, const i32 requestCount)
+{
+    gpu.requestTextures(pakTextureUIDs, out_gpuHandles, requestCount);
+
+    requestTextures(pakTextureUIDs, requestCount);
+    for(i32 i = 0; i < requestCount; ++i) {
+        textureGpuUpload[pakTextureUIDs[i]] = 1;
     }
 }
 

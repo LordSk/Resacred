@@ -572,5 +572,5 @@ void APIENTRY debugCallback(GLenum source, GLenum type, GLuint id,
                            "OGL> {%s|%s|%s} id=%x group=%s \"%s\"",
                            sourceStr[source], typeStr[type],
                            severityStr[severity], id, currentGroupName[currentScopeId], message);
-
+    assert(severity <= 2);
 }

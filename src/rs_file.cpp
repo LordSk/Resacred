@@ -68,7 +68,7 @@ struct AsyncFileQueue
 
         const i32 backQueueCount = backQueue->count();
 
-        LOG("FileIO> Handling queue %#d, count=%d", backQueue - &queueBuffers[0], backQueueCount);
+        //LOG_DBG("FileIO> Handling queue %#d, count=%d", backQueue - &queueBuffers[0], backQueueCount);
 
         for(i32 i = 0; i < backQueueCount; ++i) {
             AsyncFileRequestDesc& desc = (*backQueue)[i];
@@ -668,9 +668,10 @@ bool keyx_sectorsRead(const char* keyx_filepath, const char* wldx_filepath, Disk
         keyxDataOffset += sizeof(KeyxSector);
         const i32 uncompressedSize = ks.subs[15].size;
         deflatedDataTotalSize += uncompressedSize;
+        assert(uncompressedSize < Megabyte(2));
     }
 
-    LOG_DBG("deflatedDataTotalSize=%llukb", deflatedDataTotalSize/1024);
+    LOG_DBG("deflatedDataTotalSize=%llukb entryCount=%d", deflatedDataTotalSize/1024, entryCount);
 
     diskSectors->block = MEM_ALLOC(deflatedDataTotalSize);
     assert(diskSectors->block.ptr);
@@ -705,13 +706,12 @@ bool keyx_sectorsRead(const char* keyx_filepath, const char* wldx_filepath, Disk
         sector.wldxEntries = (DiskSectors::WldxEntry*)entryDataNext;
         sector.wldxEntryCount = uncompressedSize / sizeof(DiskSectors::WldxEntry);
 
-        memmove((u8*)diskSectors->entryData + entryDataOffset, s_deflateOutput, uncompressedSize);
+        memmove(entryDataNext, s_deflateOutput, uncompressedSize);
         entryDataOffset += uncompressedSize;
 
         diskSectors->sectors.pushPOD(&sector);
     }
 
     LOG_DBG("keyx_SectorsRead> done");
-
     return true;
 }

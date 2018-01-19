@@ -16,6 +16,7 @@
  * 246
  * 250
  * 299
+ * 690
  * 1360
  * 1750
  * 1752
@@ -65,17 +66,19 @@ struct TileVertex
 {
     f32 x, y;
     f32 u, v;
+    u32 color;
 
     TileVertex() = default;
-    TileVertex(f32 _x, f32 _y, f32 _u, f32 _v) {
+    TileVertex(f32 _x, f32 _y, f32 _u, f32 _v, u32 _c) {
         x = _x;
         y = _y;
         u = _u;
         v = _v;
+        color = _c;
     }
 };
 
-void makeTileMesh(TileVertex* mesh, i32 localTileId, f32 offsetX, f32 offsetY)
+void makeTileMesh(TileVertex* mesh, i32 localTileId, f32 offsetX, f32 offsetY, u32 color)
 {
     assert(localTileId >= 0 && localTileId < 18);
     /*
@@ -96,12 +99,12 @@ void makeTileMesh(TileVertex* mesh, i32 localTileId, f32 offsetX, f32 offsetY)
     mesh[5] = TileVertex(0.0 + offsetX, 1.0 + offsetY, tileUV[localTileId][3].x, tileUV[localTileId][3].y);
     */
 
-    mesh[0] = TileVertex(0.0 + offsetX, 0.0 + offsetY, tileUV[localTileId][1].x, tileUV[localTileId][1].y);
-    mesh[1] = TileVertex(1.0 + offsetX, 0.0 + offsetY, tileUV[localTileId][2].x, tileUV[localTileId][2].y);
-    mesh[2] = TileVertex(1.0 + offsetX, 1.0 + offsetY, tileUV[localTileId][3].x, tileUV[localTileId][3].y);
-    mesh[3] = TileVertex(0.0 + offsetX, 0.0 + offsetY, tileUV[localTileId][1].x, tileUV[localTileId][1].y);
-    mesh[4] = TileVertex(1.0 + offsetX, 1.0 + offsetY, tileUV[localTileId][3].x, tileUV[localTileId][3].y);
-    mesh[5] = TileVertex(0.0 + offsetX, 1.0 + offsetY, tileUV[localTileId][0].x, tileUV[localTileId][0].y);
+    mesh[0] = TileVertex(0.0 + offsetX, 0.0 + offsetY, tileUV[localTileId][1].x, tileUV[localTileId][1].y, color);
+    mesh[1] = TileVertex(1.0 + offsetX, 0.0 + offsetY, tileUV[localTileId][2].x, tileUV[localTileId][2].y, color);
+    mesh[2] = TileVertex(1.0 + offsetX, 1.0 + offsetY, tileUV[localTileId][3].x, tileUV[localTileId][3].y, color);
+    mesh[3] = TileVertex(0.0 + offsetX, 0.0 + offsetY, tileUV[localTileId][1].x, tileUV[localTileId][1].y, color);
+    mesh[4] = TileVertex(1.0 + offsetX, 1.0 + offsetY, tileUV[localTileId][3].x, tileUV[localTileId][3].y, color);
+    mesh[5] = TileVertex(0.0 + offsetX, 1.0 + offsetY, tileUV[localTileId][0].x, tileUV[localTileId][0].y, color);
 }
 
 struct TileShader
@@ -120,14 +123,17 @@ struct TileShader
             #version 330 core
             layout(location = 0) in vec2 position;
             layout(location = 1) in vec2 uv;
+            layout(location = 2) in vec4 color;
             uniform mat4 uViewMatrix;
             uniform mat4 uModelMatrix;
 
             out vec2 vert_uv;
+            out vec4 vert_color;
 
             void main()
             {
                 vert_uv = uv;
+                vert_color = color;
                 gl_Position = uViewMatrix * uModelMatrix * vec4(position, 0.0, 1.0);
             }
             )FOO";
@@ -137,11 +143,12 @@ struct TileShader
             uniform sampler2D uDiffuse;
 
             in vec2 vert_uv;
+            in vec4 vert_color;
             out vec4 fragmentColor;
 
             void main()
             {
-                fragmentColor = texture(uDiffuse, vert_uv);
+                fragmentColor = texture(uDiffuse, vert_uv) * vert_color;
             }
             )FOO";
 
@@ -171,15 +178,18 @@ struct TileShader
         enum Location {
             POSITION = 0,
             UV = 1,
+            COLOR = 2,
         };
 
-        i32 indexes[] = {POSITION, UV};
+        i32 indexes[] = {POSITION, UV, COLOR};
         list.enableVertexAttribArrays(indexes, sizeof(indexes)/sizeof(Location));
 
         list.vertexAttribPointer(Location::POSITION, 2, GL_FLOAT, GL_FALSE, sizeof(TileVertex),
                                 (GLvoid*)OFFSETOF(TileVertex, x));
         list.vertexAttribPointer(Location::UV, 2, GL_FLOAT, GL_FALSE, sizeof(TileVertex),
                                 (GLvoid*)OFFSETOF(TileVertex, u));
+        list.vertexAttribPointer(Location::COLOR, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(TileVertex),
+                                (GLvoid*)OFFSETOF(TileVertex, color));
 
         RBarrier barrierShader;
         list.barrier(&barrierShader, "Tile shader");
@@ -213,7 +223,25 @@ struct Game
     MutexSpin viewMutex;
 
     i32 dbgTileDrawCount = 4096;
-    i32 dbgSectorId = 130;
+    i32 dbgSectorId = 690;
+
+    enum {
+        MODE_NORMAL = 0,
+        MODE_STATIC,
+        MODE_ENTITY,
+        MODE_SMTH_POS,
+        MODE_SMTH_TYPE,
+        MODE_COUNT
+    };
+
+    const char* viewModeCombo[MODE_COUNT] = {
+        "NORMAL",
+        "STATIC",
+        "ENTITY",
+        "SMTH_POS",
+        "SMTH_TYPE",
+    };
+    i32 dbgViewMode = MODE_NORMAL;
 
     struct {
         u8 mouseLeft = 0;
@@ -307,24 +335,28 @@ struct Game
 
     void ui_tileTest()
     {
+        const DiskSectors::Sector& sector = diskSectors.sectors[dbgSectorId];
+
         ImGui::Begin("Test tile");
 
         ImGui::SliderInt("viewZMul", &viewZMul, -8, 8);
         ImGui::Checkbox("Isometric view", &viewIsIso);
+        ImGui::Combo("viewMode", &dbgViewMode, viewModeCombo, MODE_COUNT);
+
         ImGui::SliderInt("dbgTileDrawCount", &dbgTileDrawCount, 1, 4096);
 
 
-        if(ImGui::Button("+")) dbgSectorId++;
-        ImGui::SameLine();
         ImGui::SliderInt("dbgSectorId", &dbgSectorId, 1, 6049);
         ImGui::SameLine();
         if(ImGui::Button("-")) dbgSectorId--;
+        ImGui::SameLine();
+        if(ImGui::Button("+")) dbgSectorId++;
 
-        const DiskSectors::Sector& sector = diskSectors.sectors[dbgSectorId];
 
         ImGui::Text("Sector %d:", sector.id);
-        ImGui::Text("posX1=%d posX2=%d posY1=%d posY2=%d",
-                    sector.posX1, sector.posX2, sector.posY1, sector.posY2);
+        ImGui::Text("posX1=%d posX2=%d posY1=%d posY2=%d count=%d",
+                    sector.posX1, sector.posX2, sector.posY1, sector.posY2,
+                    sector.wldxEntryCount);
 
         //ImGui::Image((ImTextureID)(intptr_t)resource_defaultGpuTexture(), ImVec2(256, 256));
 
@@ -333,15 +365,18 @@ struct Game
 
     void drawTestTiles()
     {
-        constexpr i32 MAX_SECTOR_TEXTURE_COUNT = 200;
+        constexpr i32 MAX_SECTOR_TEXTURE_COUNT = 300;
+        constexpr i32 MAX_TILE_ENTRIES = 4097;
         i32 diskSectorTexs[MAX_SECTOR_TEXTURE_COUNT] = {};
         GLuint* gpuSectorTexs[MAX_SECTOR_TEXTURE_COUNT];
         i32 sectorTextureCount = 0;
-        GLuint* tileGpuTexId[4097];
+        GLuint* tileGpuTexId[MAX_TILE_ENTRIES];
 
-        for(i32 i = 1; i < 4097; ++i) {
-            i32 texId = diskTiles.tiles[diskSectors.sectors[dbgSectorId].wldxEntries[i].tileId].textureId;
-            //assert(texId >= 0 && texId < diskTextures.textureCount);
+        const auto& sector = diskSectors.sectors[dbgSectorId];
+
+        for(i32 i = 1; i < MAX_TILE_ENTRIES; ++i) {
+            i32 tileId = sector.wldxEntries[i].tileId;
+            i32 texId = diskTiles.tiles[tileId].textureId;
 
             bool found = false;
             for(i32 j = 0; j < sectorTextureCount && !found; ++j) {
@@ -359,8 +394,9 @@ struct Game
         resource_requestGpuTextures(diskSectorTexs, gpuSectorTexs, sectorTextureCount);
 
         // assign gpu textures to tiles
-        for(i32 i = 1; i < 4097; ++i) {
-            i32 texId = diskTiles.tiles[diskSectors.sectors[dbgSectorId].wldxEntries[i].tileId].textureId;
+        for(i32 i = 1; i < MAX_TILE_ENTRIES; ++i) {
+            i32 tileId = sector.wldxEntries[i].tileId;
+            i32 texId = diskTiles.tiles[tileId].textureId;
 
             for(i32 j = 0; j < sectorTextureCount; ++j) {
                 if(diskSectorTexs[j] == texId) {
@@ -395,8 +431,37 @@ struct Game
         i32 tileMeshId = 0;
         for(i32 y = 0; y < 64; ++y) {
             for(i32 x = 0; x < 64; ++x) {
-                DiskSectors::WldxEntry& we = diskSectors.sectors[dbgSectorId].wldxEntries[y*64 + x + 1];
-                makeTileMesh(&tileVertexData[6 * (tileMeshId++)], we.tileId % 18, x, y);
+                DiskSectors::WldxEntry& we = sector.wldxEntries[y*64 + x + 1];
+                u32 color = 0xff000000;
+
+                switch(dbgViewMode) {
+                    case MODE_NORMAL:
+                        color = 0xffffffff;
+                        break;
+
+                    case MODE_STATIC:
+                        if(we.staticId) {
+                            color = 0xff0000ff;
+                        }
+                        break;
+
+                    case MODE_ENTITY:
+                        if(we.entityId) {
+                            color = 0xffff0000;
+                        }
+                        break;
+
+                    case MODE_SMTH_TYPE:
+                        if(we.someTypeId) {
+                            color = 0xff000000 | (0x00000001 * (we.someTypeId*(255/15)));
+                        }
+                        break;
+
+                    case MODE_SMTH_POS:
+                        color = 0xff000000 | (we.smthZ << 16) | (we.smthY << 8) | (we.smthX);
+                        break;
+                }
+                makeTileMesh(&tileVertexData[6 * (tileMeshId++)], we.tileId % 18, x, y, color);
             }
         }
         tileVertexMutex.unlock();

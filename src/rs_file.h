@@ -174,7 +174,7 @@ struct DiskSectors
         i32 wldxEntryCount;
     };
 
-    Array<Sector,6050> sectors;
+    Array<Sector,6051> sectors;
     WldxEntry* entryData;
     MemBlock block;
 };
