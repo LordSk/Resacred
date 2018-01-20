@@ -22,6 +22,7 @@
  * 1752
  * 2123
  * 4878
+ * 5351
 */
 
 
@@ -202,10 +203,8 @@ struct TileShader
 
 struct Game
 {
-    DiskTiles diskTiles;
-    DiskSectors diskSectors;
-    i32 texDiskIds[PAGE_TEXTURES_COUNT];
-    GLuint* gpu_textures[PAGE_TEXTURES_COUNT];
+    i32 texBrowser_texIds[PAGE_TEXTURES_COUNT];
+    GLuint* texBrowser_texGpu[PAGE_TEXTURES_COUNT];
     i32 pageId = 0;
     i32 testTileLocalId = 0;
     TileVertex tileVertexData[6 * 64 * 64];
@@ -224,6 +223,8 @@ struct Game
 
     i32 dbgTileDrawCount = 4096;
     i32 dbgSectorId = 690;
+    i32 loadedSectorId = -1;
+    WldxEntry* sectorData = nullptr;
 
     enum {
         MODE_NORMAL = 0,
@@ -261,31 +262,12 @@ struct Game
         renderer_pushCommandList(list);
     }
 
-    void loadSectors()
+    void loadSectorIfNeeded()
     {
-        pak_tilesRead("../sacred_data/tiles.pak", &diskTiles);
-        keyx_sectorsRead("../sacred_data/sectors.keyx", "../sacred_data/sectors.wldx", &diskSectors);
-
-        // const i32 sectorCount = diskSectors.sectors.count();
-        /*const i32 sectorCount = 2;
-        const DiskSectors::Sector* sectors = diskSectors.sectors.data();
-        for(i32 s = 1; s < sectorCount; ++s) {
-            LOG_DBG("Sector#%d", s);
-
-            const i32 wldxEntryCount = sectors[s].wldxEntryCount;
-            for(i32 w = 1; w < wldxEntryCount; ++w) {
-                DiskSectors::WldxEntry& we = sectors[s].wldxEntries[w];
-                LOG_DBG("[%d] tileId=%d texId=%d static=%d entity=%d px=%d py=%d [%d, %d, %d, %d] %d", w,
-                        we.tileId,
-                        diskTiles.tiles[we.tileId].textureId,
-                        we.staticId,
-                        we.entityId,
-                        we.posInfo & (64-1),
-                        we.posInfo / 64,
-                        we.smthX, we.smthY, we.smthZ, we.smthW,
-                        we.someTypeId & 0xF);
-            }
-        }*/
+        if(loadedSectorId != dbgSectorId) {
+            sectorData = resource_loadSector(dbgSectorId);
+            loadedSectorId = dbgSectorId;
+        }
     }
 
     void loadTextures()
@@ -299,28 +281,33 @@ struct Game
     void requestTexBrowserTextures()
     {
         for(int i = 0; i < PAGE_TEXTURES_COUNT; ++i) {
-            texDiskIds[i] = i + (pageId * PAGE_TEXTURES_COUNT);
+            texBrowser_texIds[i] = i + (pageId * PAGE_TEXTURES_COUNT) + 1;
         }
-        resource_requestGpuTextures(texDiskIds, gpu_textures, PAGE_TEXTURES_COUNT);
+        resource_requestGpuTextures(texBrowser_texIds, texBrowser_texGpu, PAGE_TEXTURES_COUNT);
     }
 
     void ui_textureBrowser()
     {
-#if 0
+#if 1
         ImGui::Begin("Textures");
-        ImGui::SliderInt("page", &pageId, 0, 3000/PAGE_TEXTURES_COUNT - 1);
+        ImGui::SliderInt("page", &pageId, 0, resource_getTextureCount()/PAGE_TEXTURES_COUNT - 1);
 
+        PakTextureInfo* texInfo = resource_getTextureInfos();
         ImGui::BeginChild("texture_list");
 
         for(int i = 0; i < PAGE_TEXTURES_COUNT; ++i) {
             ImGui::BeginGroup();
-            ImGui::Image((ImTextureID)(intptr_t)*gpu_textures[i],
+            ImGui::Image((ImTextureID)(intptr_t)*texBrowser_texGpu[i],
                          ImVec2(256, 256));
-            i32 diskTexId = texDiskIds[i];
-            ImGui::Text("%s (%d/%d) #%d", diskTextures.textureName[diskTexId],
-                        diskTextures.textureInfo[diskTexId].width,
-                        diskTextures.textureInfo[diskTexId].height,
+            i32 diskTexId = texBrowser_texIds[i];
+
+#ifdef CONF_DEBUG
+            ImGui::Text("%s (%d/%d) #%d", texInfo[diskTexId].name,
+                        texInfo[diskTexId].width,
+                        texInfo[diskTexId].height,
                         diskTexId);
+#endif
+
             ImGui::EndGroup();
 
             if((i + 1)%4 != 0) {
@@ -335,11 +322,9 @@ struct Game
 
     void ui_tileTest()
     {
-        const DiskSectors::Sector& sector = diskSectors.sectors[dbgSectorId];
+        ImGui::Begin("Sector viewer");
 
-        ImGui::Begin("Test tile");
-
-        ImGui::SliderInt("viewZMul", &viewZMul, -8, 8);
+        //ImGui::SliderInt("viewZMul", &viewZMul, -8, 8);
         ImGui::Checkbox("Isometric view", &viewIsIso);
         ImGui::Combo("viewMode", &dbgViewMode, viewModeCombo, MODE_COUNT);
 
@@ -353,10 +338,10 @@ struct Game
         if(ImGui::Button("+")) dbgSectorId++;
 
 
-        ImGui::Text("Sector %d:", sector.id);
+        /*ImGui::Text("Sector %d:", sector.id);
         ImGui::Text("posX1=%d posX2=%d posY1=%d posY2=%d count=%d",
                     sector.posX1, sector.posX2, sector.posY1, sector.posY2,
-                    sector.wldxEntryCount);
+                    sector.wldxEntryCount);*/
 
         //ImGui::Image((ImTextureID)(intptr_t)resource_defaultGpuTexture(), ImVec2(256, 256));
 
@@ -372,11 +357,11 @@ struct Game
         i32 sectorTextureCount = 0;
         GLuint* tileGpuTexId[MAX_TILE_ENTRIES];
 
-        const auto& sector = diskSectors.sectors[dbgSectorId];
+        u16* tileTexIds = resource_getTileTextureIds18();
 
         for(i32 i = 1; i < MAX_TILE_ENTRIES; ++i) {
-            i32 tileId = sector.wldxEntries[i].tileId;
-            i32 texId = diskTiles.tiles[tileId].textureId;
+            i32 tileId = sectorData[i].tileId;
+            i32 texId = tileTexIds[tileId/18];
 
             bool found = false;
             for(i32 j = 0; j < sectorTextureCount && !found; ++j) {
@@ -395,8 +380,8 @@ struct Game
 
         // assign gpu textures to tiles
         for(i32 i = 1; i < MAX_TILE_ENTRIES; ++i) {
-            i32 tileId = sector.wldxEntries[i].tileId;
-            i32 texId = diskTiles.tiles[tileId].textureId;
+            i32 tileId = sectorData[i].tileId;
+            i32 texId = tileTexIds[tileId/18];
 
             for(i32 j = 0; j < sectorTextureCount; ++j) {
                 if(diskSectorTexs[j] == texId) {
@@ -431,7 +416,7 @@ struct Game
         i32 tileMeshId = 0;
         for(i32 y = 0; y < 64; ++y) {
             for(i32 x = 0; x < 64; ++x) {
-                DiskSectors::WldxEntry& we = sector.wldxEntries[y*64 + x + 1];
+                WldxEntry& we = sectorData[y*64 + x + 1];
                 u32 color = 0xff000000;
 
                 switch(dbgViewMode) {
@@ -477,7 +462,7 @@ struct Game
         i32 drawQueueFirst = 0;
         i32 drawQueueCount = 0;
         for(i32 i = 0; i < dbgTileDrawCount; ++i) {
-            i32 texId = diskTiles.tiles[diskSectors.sectors[1].wldxEntries[i+1].tileId].textureId;
+            i32 texId = tileTexIds[diskSectors.sectors[1].wldxEntries[i+1].tileId].textureId;
 
             if(texId != currentDiskTexId) {
                 list.textureSlot(tileGpuTexId[i+1], 0);
@@ -543,8 +528,6 @@ struct Game
 
     void deinit()
     {
-        MEM_DEALLOC(diskTiles.block);
-        MEM_DEALLOC(diskSectors.block);
     }
 };
 
@@ -584,9 +567,6 @@ i32 thread_game(void*)
     client.addInputCallback(receiveGameInput, &game);
     game.loadShaders();
 
-    //game.loadTextures();
-    game.loadSectors();
-
     //pak_FloorRead("../sacred_data/Floor.pak");
     //bin_WorldRead("../sacred_data/World.bin");
 
@@ -594,21 +574,24 @@ i32 thread_game(void*)
 
     while(client.running) {
         game.processInput();
-
         resource_newFrame();
-        //game.requestTexBrowserTextures();
+
+        game.requestTexBrowserTextures();
 
         // NOTE: dont push render command inside UI code
 #ifdef CONF_DEBUG
         client.dbguiNewFrameBegin();
         if(client.imguiSetup) {
-            //game.ui_textureBrowser();
+            game.ui_textureBrowser();
             game.ui_tileTest();
             ui_videoInfo();
             //ImGui::ShowTestWindow();
         }
         client.dbguiNewFrameEnd();
 #endif
+
+        game.loadSectorIfNeeded();
+
         CommandList list;
         list.clear();
         renderer_pushCommandList(list);

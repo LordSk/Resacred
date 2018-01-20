@@ -298,16 +298,6 @@ bool fileWriteBuffer(const char* path, const char* pBuffer, u32 buffSize)
     return bytesWritten != -1;
 }
 
-struct PakTile
-{
-    char filename[32]; // iso%d.tga
-    i32 textureId;
-    i32 tileId;
-    i32 _unknown[6]; // always the same and unrelevant
-};
-
-static_assert(sizeof(PakTile) == 64, "sizeof(Tile) != 64");
-
 bool pak_tilesRead(const char* filepath, DiskTiles* diskTiles)
 {
     FileBuffer fb = fileReadWhole(filepath);
@@ -357,7 +347,7 @@ struct TGAHeader
 };
 
 i32 zlib_decompress(const char* input, const i32 inputSize, u8* output, const i32 outputMaxSize,
-                    i32* outputSize = nullptr)
+                    i32* outputSize)
 {
     constexpr i32 CHUNK = 16384;
     i32 ret;
@@ -423,6 +413,7 @@ i32 zlib_decompress(const char* input, const i32 inputSize, u8* output, const i3
     return ret == Z_STREAM_END ? Z_OK : Z_DATA_ERROR;
 }
 
+#if 0
 bool pak_texturesRead(const char* filepath, DiskTextures* textures)
 {
     FileBuffer fb = fileReadWhole(filepath);
@@ -506,16 +497,19 @@ bool pak_texturesRead(const char* filepath, DiskTextures* textures)
 
     return true;
 }
+#endif
 
 bool pak_textureRead(char* fileBuff, i64 size, i32* out_width, i32* out_height, i32* out_type,
-                     u8* out_data, i32* out_size)
+                     u8* out_data, i32* out_size, char* out_name)
 {
     PakTexture& tex = *(PakTexture*)fileBuff;
 
     *out_type = tex.typeId;
     *out_width = tex.width;
     *out_height = tex.height;
-    //memmove(&textures->textureName[i], tex.filename, sizeof(DiskTextures::TexName));
+#ifdef CONF_DEBUG
+    memmove(out_name, tex.filename, 32);
+#endif
 
     if(tex.typeId == 6) {
         i32 texSize = tex.width * tex.height * 4;
@@ -616,25 +610,6 @@ struct KeyxSub
     i32 size;
 };
 
-struct KeyxSector
-{
-    char name32[32];
-    i32 int0;
-    i32 sectorId;
-//40
-    i32 beforeNbs;
-    u16 neighbourIds[8];
-//60
-    i32 posX1;
-    i32 posY1;
-    i32 posX2;
-    i32 posY2;
-    KeyxSub subs[32];
-    u8 data[308];
-};
-
-static_assert(sizeof(KeyxSector) == 0x300, "sizeof(KeyxSector) := 0x300");
-
 bool keyx_sectorsRead(const char* keyx_filepath, const char* wldx_filepath, DiskSectors* diskSectors)
 {
     LOG_DBG("keyx_SectorsRead> start reading data...");
@@ -675,7 +650,7 @@ bool keyx_sectorsRead(const char* keyx_filepath, const char* wldx_filepath, Disk
 
     diskSectors->block = MEM_ALLOC(deflatedDataTotalSize);
     assert(diskSectors->block.ptr);
-    diskSectors->entryData = (DiskSectors::WldxEntry*)diskSectors->block.ptr;
+    diskSectors->entryData = (WldxEntry*)diskSectors->block.ptr;
     u64 entryDataOffset = 0;
 
     keyxDataOffset = sizeof(PakHeader);
@@ -703,8 +678,8 @@ bool keyx_sectorsRead(const char* keyx_filepath, const char* wldx_filepath, Disk
         sector.posX2 = ks.posX2;
         sector.posY1 = ks.posY1;
         sector.posY2 = ks.posY2;
-        sector.wldxEntries = (DiskSectors::WldxEntry*)entryDataNext;
-        sector.wldxEntryCount = uncompressedSize / sizeof(DiskSectors::WldxEntry);
+        sector.wldxEntries = (WldxEntry*)entryDataNext;
+        sector.wldxEntryCount = uncompressedSize / sizeof(WldxEntry);
 
         memmove(entryDataNext, s_deflateOutput, uncompressedSize);
         entryDataOffset += uncompressedSize;

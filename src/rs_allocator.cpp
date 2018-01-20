@@ -549,27 +549,30 @@ bool AllocatorStep::owns(MemBlock block) const
 }
 
 
-void RingAllocator::init(MemBlock block, u8 alignment)
+void AllocatorRing::init(MemBlock block, u8 alignment)
 {
     assert(block.ptr);
     _block = block;
     _block.ptr = (void*)((intptr_t)_block.ptr + alignAdjust((intptr_t)_block.ptr, alignment));
 }
 
-MemBlock RingAllocator::__alloc(const char* filename, i32 line, u64 size, u8 alignment)
+MemBlock AllocatorRing::__alloc(const char* filename, i32 line, u64 size, u8 alignment)
 {
     assert(size > 0);
     LOG_MEM("[RingAllocator] %s:%d alloc(%d)", filename, line, size);
 
-    i32 adjust = alignAdjust((intptr_t)_block.ptr + _cursor, alignment);
-    size += adjust;
+    void* addr = (void*)((intptr_t)_block.ptr + _cursor); // start of the block
+    i32 adjust = 0;
+    if(alignment) {
+        adjust = alignAdjust((intptr_t)addr, alignment);
+        size += adjust;
+    }
 
     if(_cursor + size > _block.size) {
         _cursor = 0;
         assert(_cursor + size <= _block.size);
     }
 
-    void* addr = (void*)((intptr_t)_block.ptr + _cursor); // start of the block
     _cursor += size;
     memset(addr, 0, size);
 
@@ -581,13 +584,13 @@ MemBlock RingAllocator::__alloc(const char* filename, i32 line, u64 size, u8 ali
     return block;
 }
 
-MemBlock RingAllocator::__realloc(const char* filename, i32 line, MemBlock block, u64 size, u8 alignment)
+MemBlock AllocatorRing::__realloc(const char* filename, i32 line, MemBlock block, u64 size, u8 alignment)
 {
     // TODO: improve this
     return __alloc(filename, line, size, alignment);
 }
 
-void RingAllocator::__dealloc(const char* filename, i32 line, MemBlock block)
+void AllocatorRing::__dealloc(const char* filename, i32 line, MemBlock block)
 {
     return;
 }

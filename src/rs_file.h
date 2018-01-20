@@ -5,12 +5,12 @@
 
 i32 thread_fileIO(void*);
 
-typedef enum: i32 {
+enum class FileError: i32 {
     NO_FILE_ERROR=0,
     CANNOT_FIND,
     CANNOT_OPEN,
     OUT_OF_MEMORY,
-} FileError;
+};
 
 struct FileBuffer
 {
@@ -125,6 +125,50 @@ enum class PakTextureType: u16 {
     TYPE_ARGB4 = 4
 };
 
+struct KeyxSector
+{
+    char name32[32];
+    i32 int0;
+    i32 sectorId;
+//40
+    i32 beforeNbs;
+    u16 neighbourIds[8];
+//60
+    i32 posX1;
+    i32 posY1;
+    i32 posX2;
+    i32 posY2;
+
+    struct {
+        i32 int0;
+        i32 fileOffset;
+        i32 size;
+    } subs[32];
+
+    u8 data[308];
+};
+
+static_assert(sizeof(KeyxSector) == 0x300, "sizeof(KeyxSector) != 0x300");
+
+struct WldxEntry
+{
+    i32 tileId;
+    i32 staticId;
+    i32 entityId;
+    i32 posInfo;
+    u8 rest[8];
+    i8 smthX; // probably color related
+    i8 smthY;
+    i8 smthZ;
+    i8 smthW;
+    u8 unk1;
+    u8 unk2;
+    u8 unk3;
+    u8 someTypeId; // 0-15
+};
+
+static_assert(sizeof(WldxEntry) == 32, "sizeof(WldxEntry) != 32");
+
 struct DiskTextures
 {
     struct TexName {
@@ -146,23 +190,6 @@ struct DiskTextures
 
 struct DiskSectors
 {
-    struct WldxEntry
-    {
-        i32 tileId;
-        i32 staticId;
-        i32 entityId;
-        i32 posInfo;
-        u8 rest[8];
-        i8 smthX; // probably color related
-        i8 smthY;
-        i8 smthZ;
-        i8 smthW;
-        u8 unk1;
-        u8 unk2;
-        u8 unk3;
-        u8 someTypeId; // 0-15
-    };
-
     struct Sector
     {
         i32 id;
@@ -179,8 +206,6 @@ struct DiskSectors
     MemBlock block;
 };
 
-static_assert(sizeof(DiskSectors::WldxEntry) == 32, "sizeof(WldxEntry) != 32");
-
 struct DiskTiles
 {
     struct Tile
@@ -195,11 +220,24 @@ struct DiskTiles
     MemBlock block;
 };
 
+struct PakTile
+{
+    char filename[32]; // iso%d.tga
+    i32 textureId;
+    i32 tileId;
+    i32 _unknown[6]; // always the same and unrelevant
+};
+
+static_assert(sizeof(PakTile) == 64, "sizeof(Tile) != 64");
+
+i32 zlib_decompress(const char* input, const i32 inputSize, u8* output, const i32 outputMaxSize,
+                    i32* outputSize = nullptr);
+
 bool pak_tilesRead(const char* filepath, DiskTiles* diskTiles);
-bool pak_texturesRead(const char* filepath, DiskTextures* textures);
+//bool pak_texturesRead(const char* filepath, DiskTextures* textures);
 bool bin_WorldRead(const char* filepath);
 bool pak_FloorRead(const char* filepath);
 bool keyx_sectorsRead(const char* keyx_filepath, const char* wldx_filepath, DiskSectors* diskSectors);
 
 bool pak_textureRead(char* fileBuff, i64 size, i32* out_width, i32* out_height, i32* out_type,
-                     u8* out_data, i32* out_size);
+                     u8* out_data, i32* out_size, char* out_name);

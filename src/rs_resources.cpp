@@ -2,13 +2,7 @@
 #include "rs_renderer.h"
 #include "rs_file.h"
 
-struct PakTextureInfo
-{
-    u16 width;
-    u16 height;
-    PakTextureType type;
-};
-
+// TODO: move all file operations out of here?
 
 /*
  * GPU resource manager
@@ -76,6 +70,10 @@ struct GPUResources
         if(texGpuId[texSlot] != gpuTexDefault) {
             cmds->destroyTexture(texGpuId[texSlot]);
         }
+        texGpuId[texSlot] = gpuTexDefault;
+        texDiskId[texSlot] = 0;
+        texLoaded[texSlot].set(0);
+        texSlotOccupied[texSlot] = false;
     }
 
     void newFrame()
@@ -89,9 +87,7 @@ struct GPUResources
 
                 if(texFramesNotRequested[i] > 10) {
                     destroyTexture(&cmds, i);
-                    texGpuId[i] = gpuTexDefault;
-                    texDiskId[i] = 0;
-                    texSlotOccupied[i] = false;
+                    //LOG_DBG("ResourceGpu> evicting texture %d", i);
                 }
             }
         }
@@ -108,7 +104,7 @@ struct GPUResources
             }
         }
 
-        LOG_WARN("GPURes> Warning, requesting a lot of textures quickly");
+        LOG_WARN("ResourceGpu> Warning, requesting a lot of textures quickly");
 
         i32 oldestFrameCount = 0;
         i32 oldestId = -1;
@@ -125,11 +121,8 @@ struct GPUResources
 
         CommandList cmds;
         destroyTexture(&cmds, oldestId);
-        renderer_pushCommandList(cmds);
-        texGpuId[oldestId] = gpuTexDefault;
-        texDiskId[oldestId] = 0;
-        texLoaded[oldestId]._count = 0;
         texSlotOccupied[oldestId] = true;
+        renderer_pushCommandList(cmds);
         return oldestId;
     }
 
@@ -247,8 +240,20 @@ struct GPUResources
     }*/
 };
 
-#define FILE_DATA_SIZE Megabyte(100)
-#define TEXTURE_DATA_SIZE Megabyte(100)
+struct Keyx
+{
+    i32 sectorId;
+    i32 fileOffset;
+    i32 compressedSize;
+    i32 uncompressedSize;
+    i32 posX1;
+    i32 posX2;
+    i32 posY1;
+    i32 posY2;
+};
+
+#define FILE_RING_BUFFER_SIZE Megabyte(200)
+#define TEXTURE_DATA_SIZE Megabyte(300)
 #define TEXTURE_TEMP_SIZE Megabyte(5)
 
 /*
@@ -281,6 +286,17 @@ MemBlock tempTextureBuffBlock;
 
 GPUResources gpu;
 
+u16* tileTextureId;
+MemBlock tileTextureIdBlock;
+
+Keyx* keyx;
+MemBlock keyxBlock;
+DiskFile fileSectors;
+
+i32 sectorCount = 0;
+MemBlock sectorDataBlock;
+AllocatorRing sectorRingAlloc;
+
 enum class LoadStatus: i32 {
     NONE = 0,
     PROCESSED,
@@ -296,12 +312,14 @@ bool init()
         return false;
     }
 
-    textureFileAndRawBlock = MEM_ALLOC(TEXTURE_DATA_SIZE + FILE_DATA_SIZE);
+    // Setup texture related stuff
+    textureFileAndRawBlock = MEM_ALLOC(TEXTURE_DATA_SIZE + FILE_RING_BUFFER_SIZE);
     assert(textureFileAndRawBlock.ptr);
     textureRawData = (u8*)textureFileAndRawBlock.ptr;
     fileData = textureRawData + TEXTURE_DATA_SIZE;
 
-    LOG_DBG("Resource> textureFileAndRawBlock size=%lldmb", (TEXTURE_DATA_SIZE + FILE_DATA_SIZE)/(1024*1024));
+    LOG_DBG("Resource> textureFileAndRawBlock size=%lldmb",
+            (TEXTURE_DATA_SIZE + FILE_RING_BUFFER_SIZE)/(1024*1024));
 
     MemBlock textureRawDataBlock;
     textureRawDataBlock.ptr = textureRawData;
@@ -345,7 +363,112 @@ bool init()
 
     MEM_DEALLOC(b);
 
+    if(!loadTileTextureIds()) {
+        return false;
+    }
+
+    if(!loadSectorKeyx()) {
+        return false;
+    }
+
     return true;
+}
+
+bool loadTileTextureIds()
+{
+    FileBuffer fb = fileReadWhole("../sacred_data/tiles.pak");
+    if(fb.error != FileError::NO_FILE_ERROR) {
+        return false;
+    }
+    defer(MEM_DEALLOC(fb.block));
+
+    u8* top = (u8*)fb.block.ptr;
+    PakHeader* header = (PakHeader*)top;
+    const i32 entryCount = header->entryCount;
+
+    const i32 tileCount = entryCount / 18 + 1;
+    tileTextureIdBlock = MEM_ALLOC(sizeof(*tileTextureId) * tileCount);
+    assert(tileTextureIdBlock.ptr);
+    tileTextureId = (u16*)tileTextureIdBlock.ptr;
+
+    PakSubFileDesc* fileDesc = (PakSubFileDesc*)(top + sizeof(PakHeader));
+    for(i32 i = 0; i < entryCount; ++i) {
+        i32 offset = fileDesc[i].offset;
+        PakTile* tile = (PakTile*)(top + offset);
+        /*LOG("[%d] off=0x%x filename=%32s texId=%d tileId=%d %d %d %d %d %d %d", i, offset,
+            tile->filename, tile->textureId, tile->tileId,
+            tile->_unknown[0], tile->_unknown[1], tile->_unknown[2], tile->_unknown[3], tile->_unknown[4],
+            tile->_unknown[5]);*/
+        assert(i/18 < tileCount);
+        tileTextureId[i/18] = tile->textureId;
+    }
+
+    LOG_SUCC("Resource> tiles.pak loaded");
+    return true;
+}
+
+bool loadSectorKeyx()
+{
+    FileBuffer fbKeyx = fileReadWhole("../sacred_data/sectors.keyx");
+    if(fbKeyx.error != FileError::NO_FILE_ERROR) {
+        return false;
+    }
+    defer(fbKeyx.block.dealloc());
+
+    const u8* top = (const u8*)fbKeyx.block.ptr;
+
+    PakHeader* header = (PakHeader*)top;
+    const i32 entryCount = header->entryCount;
+    sectorCount = entryCount;
+
+    keyxBlock = MEM_ALLOC(entryCount * sizeof(*keyx));
+    assert(keyxBlock.ptr);
+    keyx = (Keyx*)keyxBlock.ptr;
+
+    i32 keyxDataOffset = sizeof(PakHeader);
+    for(i32 i = 0; i < entryCount; ++i) {
+        KeyxSector& ks = *(KeyxSector*)(top + keyxDataOffset);
+        keyxDataOffset += sizeof(KeyxSector);
+
+        Keyx& key = keyx[i];
+        key.sectorId = ks.sectorId;
+        key.fileOffset = ks.subs[13].fileOffset;
+        key.compressedSize = ks.subs[13].size;
+        key.uncompressedSize = ks.subs[15].size;
+        key.posX1 = ks.posX1;
+        key.posX2 = ks.posX2;
+        key.posY1 = ks.posY1;
+        key.posY2 = ks.posY2;
+    }
+
+    LOG_SUCC("Resource> sectors.keyx loaded");
+
+    if(!fileOpenToRead("../sacred_data/sectors.wldx", &fileSectors)) {
+        return false;
+    }
+
+    sectorDataBlock = MEM_ALLOC(Megabyte(20));
+    sectorRingAlloc.init(sectorDataBlock);
+    return true;
+}
+
+WldxEntry* loadSectorData(i32 sectorId)
+{
+    assert(sectorId >= 0 && sectorId < sectorCount);
+
+    const i32 fileOffset = keyx[sectorId].fileOffset;
+    const i32 compSize = keyx[sectorId].compressedSize;
+    const i32 uncompSize = keyx[sectorId].uncompressedSize;
+
+    u8* fileBuffer = fileRingAlloc(compSize);
+    MemBlock outputBlock = sectorRingAlloc.ALLOC(uncompSize);
+    assert(outputBlock.ptr);
+    WldxEntry* output = (WldxEntry*)outputBlock.ptr;
+
+    fileReadFromPos(&fileSectors, fileOffset, compSize, fileBuffer);
+    i32 ret = zlib_decompress((char*)fileBuffer, compSize, (u8*)output, uncompSize);
+    assert(ret == 0); // Z_OK
+    return output;
 }
 
 void deinit()
@@ -353,6 +476,9 @@ void deinit()
     MEM_DEALLOC(textureMetaBlock);
     MEM_DEALLOC(textureFileAndRawBlock);
     MEM_DEALLOC(tempTextureBuffBlock);
+    MEM_DEALLOC(tileTextureIdBlock);
+    MEM_DEALLOC(keyxBlock);
+    MEM_DEALLOC(sectorDataBlock);
     fileClose(&fileTexture);
     gpu.deinit();
 }
@@ -381,8 +507,9 @@ void newFrame()
         if((LoadStatus)textureDiskLoadStatus[i].get() == LoadStatus::FILE_LOADED) {
             //LOG("Resource> texId=%d file loaded", i);
             i32 width, height, type, textureSize;
+            char name[32];
             pak_textureRead((char*)textureDataBlock[i].ptr, textureDataBlock[i].size,
-                            &width, &height, &type, tempTextureBuff, &textureSize);
+                            &width, &height, &type, tempTextureBuff, &textureSize, name);
             assert(textureSize < TEXTURE_TEMP_SIZE);
 
             textureDataBlock[i] = textureDataAllocator.ALLOC(textureSize);
@@ -396,6 +523,9 @@ void newFrame()
             info.width = width;
             info.height = height;
             info.type = (PakTextureType)type;
+#ifdef CONF_DEBUG
+            memmove(info.name, name, 32);
+#endif
 
             textureDiskLoadStatus[i].decrement(); // -> PROCESSED
         }
@@ -416,9 +546,9 @@ void newFrame()
 
 u8* fileRingAlloc(i64 size)
 {
-    if(fileRingCursor + size > FILE_DATA_SIZE) {
+    if(fileRingCursor + size > FILE_RING_BUFFER_SIZE) {
         fileRingCursor = 0;
-        assert(fileRingCursor + size <= FILE_DATA_SIZE); // TODO: sometimes triggers somehow, investigate
+        assert(fileRingCursor + size <= FILE_RING_BUFFER_SIZE);
     }
 
     u8* r = fileData + fileRingCursor;
@@ -444,11 +574,9 @@ MemBlock evictTexture(i64 size)
 
         assert(oldestTexture != -1);
 
-        // DELETE TEXTURE
+        // delete texture data
         MEM_DEALLOC(textureDataBlock[oldestTexture]);
-        textureFileOffset[oldestTexture] = 0;
         textureDiskLoadStatus[oldestTexture].set(0);
-        textureInfo[oldestTexture] = {};
         textureGpuUpload[oldestTexture] = 0;
         textureAge[oldestTexture] = 0;
 
@@ -467,7 +595,7 @@ void requestTextures(const i32* pakTextureUIDs, const i32 requestCount)
 {
     for(i32 i = 0; i < requestCount; ++i) {
         const i32 texUID = pakTextureUIDs[i];
-        assert(texUID > 0 && texUID < textureCount);
+        assert(texUID >= 0 && texUID < textureCount);
         textureAge[texUID] = 0;
 
         if((LoadStatus)textureDiskLoadStatus[texUID].get() == LoadStatus::NONE &&
@@ -535,4 +663,24 @@ void resource_requestGpuTextures(const i32* textureUIDs, u32** out_gpuHandles, c
 u32 resource_defaultGpuTexture()
 {
     return DR.gpu.gpuTexDefault;
+}
+
+WldxEntry*resource_loadSector(i32 sectorId)
+{
+    return DR.loadSectorData(sectorId);
+}
+
+u16* resource_getTileTextureIds18()
+{
+    return DR.tileTextureId;
+}
+
+i32 resource_getTextureCount()
+{
+    return DR.textureCount;
+}
+
+PakTextureInfo* resource_getTextureInfos()
+{
+    return DR.textureInfo;
 }

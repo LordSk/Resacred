@@ -240,7 +240,7 @@ struct AllocatorStep: IAllocator
     bool owns(MemBlock block) const;
 };
 
-struct RingAllocator: IAllocator
+struct AllocatorRing: IAllocator
 {
     MemBlock _block = NULL_MEMBLOCK;
     intptr_t _cursor = 0;
@@ -250,6 +250,11 @@ struct RingAllocator: IAllocator
     MemBlock __alloc(const char* filename, i32 line, u64 size, u8 alignment = 0);
     MemBlock __realloc(const char* filename, i32 line, MemBlock block, u64 size, u8 alignment = 0);
     void __dealloc(const char* filename, i32 line, MemBlock block);
+
+    inline bool owns(MemBlock block) const {
+        return (intptr_t)block.ptr >= (intptr_t)_block.ptr &&
+               (intptr_t)block.ptr < ((intptr_t)_block.ptr + _block.size);
+    }
 };
 
 struct MemoryContext

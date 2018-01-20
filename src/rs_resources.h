@@ -1,5 +1,16 @@
 #pragma once
 #include "rs_base.h"
+#include "rs_file.h"
+
+struct PakTextureInfo
+{
+#ifdef CONF_DEBUG
+    char name[32];
+#endif
+    u16 width;
+    u16 height;
+    PakTextureType type;
+};
 
 bool resource_init();
 void resource_deinit();
@@ -8,3 +19,9 @@ void resource_newFrame();
 void resource_requestTextures(const i32* textureIds, const i32 textureCount);
 void resource_requestGpuTextures(const i32* textureUIDs, u32** out_gpuHandles, const i32 textureCount);
 u32 resource_defaultGpuTexture();
+
+struct WldxEntry* resource_loadSector(i32 sectorId);
+u16* resource_getTileTextureIds18(); // Usage: textures[tileId/18]
+
+i32 resource_getTextureCount();
+PakTextureInfo* resource_getTextureInfos();
