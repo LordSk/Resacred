@@ -3,6 +3,7 @@
 #include "rs_file.h"
 
 // TODO: move all file operations out of here?
+// TODO: Load a range of textures instead of just one
 
 /*
  * GPU resource manager
@@ -138,7 +139,7 @@ struct GPUResources
             for(i32 i = 0; i < MAX_GPU_TEXTURES; ++i) {
                 if(texSlotOccupied[i] && texDiskId[i] == pakTexId) {
                     outGpuTexHandles[r] = &texGpuId[i];
-                    texFramesNotRequested[i] = 0;
+                    texFramesNotRequested[i] = 1;
                     found = true;
                     break;
                 }
@@ -149,7 +150,7 @@ struct GPUResources
                 outGpuTexHandles[r] = &texGpuId[newId];
                 texGpuId[newId] = gpuTexDefault;
                 texDiskId[newId] = pakTexId;
-                texFramesNotRequested[newId] = 0;
+                texFramesNotRequested[newId] = 1;
                 // TODO: it increments here but decrements in ResourceManager?
                 // choose one
                 texLoaded[newId].set(0);
@@ -296,6 +297,10 @@ DiskFile fileSectors;
 i32 sectorCount = 0;
 MemBlock sectorDataBlock;
 AllocatorRing sectorRingAlloc;
+
+Array<i32,256> _pakTexIdUpload;
+Array<u8*,256> _dataUpload;
+Array<PakTextureInfo,256> _texInfoUpload;
 
 enum class LoadStatus: i32 {
     NONE = 0,
@@ -495,12 +500,9 @@ void newFrame()
         }
     }
 
-    Array<i32,256> pakTexIdUpload;
-    Array<u8*,256> dataUpload;
-    Array<PakTextureInfo,256> texInfoUpload;
-    pakTexIdUpload.allocator = MEM_CONTEXT.tempAllocator;
-    dataUpload.allocator = MEM_CONTEXT.tempAllocator;
-    texInfoUpload.allocator = MEM_CONTEXT.tempAllocator;
+    _pakTexIdUpload.clearPOD();
+    _dataUpload.clearPOD();
+    _texInfoUpload.clearPOD();
 
     // decompress texture if necessary and upload them to the gpu (if requested)
     for(i32 i = 0; i < textureCount; ++i) {
@@ -531,16 +533,16 @@ void newFrame()
         }
 
         if((LoadStatus)textureDiskLoadStatus[i].get() == LoadStatus::PROCESSED && textureGpuUpload[i]) {
-            pakTexIdUpload.pushPOD(&i);
-            dataUpload.pushPOD((u8**)&textureDataBlock[i].ptr);
-            texInfoUpload.pushPOD(&textureInfo[i]);
+            _pakTexIdUpload.pushPOD(&i);
+            _dataUpload.pushPOD((u8**)&textureDataBlock[i].ptr);
+            _texInfoUpload.pushPOD(&textureInfo[i]);
             textureGpuUpload[i] = 0;
         }
     }
 
-    const i32 toUploadCount = pakTexIdUpload.count();
+    const i32 toUploadCount = _pakTexIdUpload.count();
     if(toUploadCount > 0) {
-        gpu.uploadTextures(pakTexIdUpload.data(), texInfoUpload.data(), dataUpload.data(), toUploadCount);
+        gpu.uploadTextures(_pakTexIdUpload.data(), _texInfoUpload.data(), _dataUpload.data(), toUploadCount);
     }
 }
 

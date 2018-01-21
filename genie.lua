@@ -68,7 +68,8 @@ solution "resacred_solution"
 	}
 	
 	defines {
-    --    "LOGGER_DONT_WRITE",
+        --"LOGGER_DONT_WRITE",
+        --"SACRED_LOG_MEM_ALLOC",
     }
 	
 	-- disable exception related warnings

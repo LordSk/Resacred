@@ -25,9 +25,9 @@
  * 5351
 */
 
+// interesting texture page: 27 (minimap)
 
-
-#define PAGE_TEXTURES_COUNT 500
+#define PAGE_TEXTURES_COUNT 160
 #define OFFSETOF(TYPE, ELEMENT) ((size_t)&(((TYPE *)0)->ELEMENT))
 #define VIEW_X_ANGLE rs_radians(53.66563)
 
@@ -560,6 +560,7 @@ i32 thread_game(void*)
 
     renderer_waitForInit();
     client.dbguiWaitForInit();
+    resource_init();
 
     Game game;
     pGame = &game;

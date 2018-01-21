@@ -8,12 +8,14 @@ Logger& getMemLogger()
     return memLog;
 }
 
-#ifdef SACRED_LOG_MEM_ALLOC
-    #define LOG_MEM(format, ...) getMemLogger().logf(lsk::LOG_MAGENTA,\
+
+#if defined(CONF_DEBUG) && defined(SACRED_LOG_MEM_ALLOC)
+    #define LOG_MEM(format, ...) getMemLogger().logf(LOG_COLOR_MAGENTA,\
     __FILE__, __LINE__, format, ##__VA_ARGS__)
 #else
     #define LOG_MEM
 #endif
+
 
 inline i32 alignAdjust(intptr_t addr, u8 alignment)
 {
@@ -146,7 +148,7 @@ MemBlock AllocatorStack::__realloc(const char* filename, i32 line, MemBlock bloc
 
         if(newMk + size > _block.size) {
             if(_fallback) {
-                LOG_WARN("[AllocatorStack] allocator full, using fallback instead");
+                LOG_WARN("[AllocatorStack] %s:%d allocator full, using fallback instead", filename, line);
                 MemBlock b = _fallback->ALLOC(size, alignment);
                 if(b.ptr) {
                     memmove(b.ptr, block.ptr, block.size);
@@ -561,16 +563,15 @@ MemBlock AllocatorRing::__alloc(const char* filename, i32 line, u64 size, u8 ali
     assert(size > 0);
     LOG_MEM("[RingAllocator] %s:%d alloc(%d)", filename, line, size);
 
+    if(_cursor + size > _block.size) {
+        _cursor = 0;
+        assert(_cursor + size <= _block.size);
+    }
+
     void* addr = (void*)((intptr_t)_block.ptr + _cursor); // start of the block
     i32 adjust = 0;
     if(alignment) {
         adjust = alignAdjust((intptr_t)addr, alignment);
-        size += adjust;
-    }
-
-    if(_cursor + size > _block.size) {
-        _cursor = 0;
-        assert(_cursor + size <= _block.size);
     }
 
     _cursor += size;
@@ -579,7 +580,7 @@ MemBlock AllocatorRing::__alloc(const char* filename, i32 line, u64 size, u8 ali
     MemBlock block;
     block.ptr = (void*)((intptr_t)addr + adjust);
     block.notaligned = addr;
-    block.size = size - adjust;
+    block.size = size;
     block.allocator = this;
     return block;
 }

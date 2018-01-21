@@ -34,7 +34,6 @@ i32 main()
     auto threadFileIO = SDL_CreateThread(thread_fileIO, "thread_fileIO", nullptr);
 
     renderer_waitForInit();
-    resource_init();
     client.dbguiInit();
 
     while(client.running) {
