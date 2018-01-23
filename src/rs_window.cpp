@@ -42,13 +42,13 @@ void Window::handleInput()
 #endif
 
         if(event.type == SDL_QUIT) {
-            running = false;
+            clientRunning = false;
             return;
         }
 
         if(event.type == SDL_KEYDOWN) {
             if(event.key.keysym.sym == SDLK_ESCAPE) {
-                running = false;
+                clientRunning = false;
                 return;
             }
         }

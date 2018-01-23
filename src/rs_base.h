@@ -74,7 +74,12 @@ __privDefer<F> __defer_func(F f) {
     #define assert_msg(expr, msg)
 #endif
 
-
+template<int s> struct Sizeof;
+#ifdef CONF_DEBUG
+    #define MESSAGE_SIZEOF(s) Sizeof<sizeof(s)> GLUE(size_, s)
+#else
+    #define MESSAGE_SIZEOF(s)
+#endif
 
 #include <chrono>
 #include <intrin.h>

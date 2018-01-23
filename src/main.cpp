@@ -36,15 +36,18 @@ i32 main()
     renderer_waitForInit();
     client.dbguiInit();
 
-    while(client.running) {
+    while(client.clientRunning) {
         client.handleInput();
     }
 
     client.cleanup();
 
-    SDL_WaitThread(threadFileIO, nullptr);
     SDL_WaitThread(threadGame, nullptr);
+    SDL_WaitThread(threadFileIO, nullptr);
+
+    client.rdrRunning = false;
     SDL_WaitThread(threadRenderer, nullptr);
+
 
     resource_deinit();
 

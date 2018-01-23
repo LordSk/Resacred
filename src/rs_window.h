@@ -7,7 +7,8 @@
 struct Window
 {
     struct SDL_Window* window;
-    bool running = true;
+    bool clientRunning = true;
+    bool rdrRunning = true;
     i32 width;
     i32 height;
 

@@ -161,8 +161,8 @@ struct WldxEntry
     i8 smthY;
     i8 smthZ;
     i8 smthW;
-    u8 unk1;
-    u8 unk2;
+    u8 offsetX;
+    u8 offsetY;
     u8 unk3;
     u8 someTypeId; // 0-15
 };

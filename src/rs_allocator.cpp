@@ -562,16 +562,18 @@ MemBlock AllocatorRing::__alloc(const char* filename, i32 line, u64 size, u8 ali
 {
     assert(size > 0);
     LOG_MEM("[RingAllocator] %s:%d alloc(%d)", filename, line, size);
+    const i64 maxSize = size += alignment;
 
-    if(_cursor + size > _block.size) {
+    if(_cursor + maxSize > _block.size) {
         _cursor = 0;
-        assert(_cursor + size <= _block.size);
+        assert(_cursor + maxSize <= _block.size);
     }
 
     void* addr = (void*)((intptr_t)_block.ptr + _cursor); // start of the block
     i32 adjust = 0;
     if(alignment) {
         adjust = alignAdjust((intptr_t)addr, alignment);
+        size += adjust;
     }
 
     _cursor += size;
@@ -580,7 +582,7 @@ MemBlock AllocatorRing::__alloc(const char* filename, i32 line, u64 size, u8 ali
     MemBlock block;
     block.ptr = (void*)((intptr_t)addr + adjust);
     block.notaligned = addr;
-    block.size = size;
+    block.size = size - adjust;
     block.allocator = this;
     return block;
 }

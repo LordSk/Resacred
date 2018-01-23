@@ -331,7 +331,8 @@ struct CommandList
 
 i32 thread_renderer(void*);
 
-void renderer_pushCommandList(const CommandList& list);
+void renderer_pushCommandList(CommandList& list);
 void renderer_waitForBarrier(RBarrier* barrier);
 void renderer_waitForInit();
+f64 renderer_getFrameTime();
 

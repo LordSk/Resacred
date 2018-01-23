@@ -203,6 +203,7 @@ struct TileShader
 
 struct Game
 {
+    f64 frameTime = 0;
     i32 texBrowser_texIds[PAGE_TEXTURES_COUNT];
     GLuint* texBrowser_texGpu[PAGE_TEXTURES_COUNT];
     i32 pageId = 0;
@@ -232,6 +233,7 @@ struct Game
         MODE_ENTITY,
         MODE_SMTH_POS,
         MODE_SMTH_TYPE,
+        MODE_POS_INFO,
         MODE_COUNT
     };
 
@@ -241,6 +243,7 @@ struct Game
         "ENTITY",
         "SMTH_POS",
         "SMTH_TYPE",
+        "MODE_POS_INFO",
     };
     i32 dbgViewMode = MODE_NORMAL;
 
@@ -425,6 +428,7 @@ struct Game
                         break;
 
                     case MODE_STATIC:
+                        color = 0xffffffff;
                         if(we.staticId) {
                             color = 0xff0000ff;
                         }
@@ -445,6 +449,13 @@ struct Game
                     case MODE_SMTH_POS:
                         color = 0xff000000 | (we.smthZ << 16) | (we.smthY << 8) | (we.smthX);
                         break;
+
+                    case MODE_POS_INFO: {
+                        u32 red = clamp(we.posInfo % 64 * 5, 0, 255);
+                        u32 green = clamp(we.posInfo / 64 * 5, 0, 255);
+                        color = 0xff000000 | (green << 8) | red;
+                        break;
+                    }
                 }
                 makeTileMesh(&tileVertexData[6 * (tileMeshId++)], we.tileId % 18, x, y, color);
             }
@@ -454,6 +465,7 @@ struct Game
         list.lock(&tileVertexMutex);
         list.arrayBufferSubData(&tileShader.vertexBuffer, 0, tileVertexData, sizeof(tileVertexData));
         list.unlock(&tileVertexMutex);
+        renderer_pushCommandList(list);
 
 
         list.bindVertexArray(&tileShader.vao);
@@ -481,6 +493,10 @@ struct Game
         for(i32 i = 0; i < dbgTileDrawCount; ++i) {
             list.textureSlot(tileGpuTexId[i+1], 0);
             list.drawTriangles(i * 6, 6);
+
+            if(i % 200 == 0) {
+                renderer_pushCommandList(list);
+            }
         }
 
         renderer_pushCommandList(list);
@@ -546,6 +562,8 @@ void ui_videoInfo()
     ImGui::Text("Total available: %dkb", availMemory);
     ImGui::Text("Current Avilable: %dkb", currentAvailMem);
     ImGui::ProgressBar(1.0 - (currentAvailMem / (f64)availMemory));
+    ImGui::Text("Renderer frametime: %.5fms", renderer_getFrameTime() * 1000.0);
+    ImGui::Text("Game     frametime: %.5fms", pGame->frameTime * 1000.0);
 
     ImGui::End();
 }
@@ -573,7 +591,8 @@ i32 thread_game(void*)
 
     LOG_SUCC("Game> initializated");
 
-    while(client.running) {
+    while(client.clientRunning) {
+        auto t0 = timeNow();
         game.processInput();
         resource_newFrame();
 
@@ -603,6 +622,7 @@ i32 thread_game(void*)
         list.queryVramInfo(&dedicated, &availMemory, &currentAvailMem, &evictionCount, &evictedMem);
         list.endFrame();
         renderer_pushCommandList(list);
+        game.frameTime = timeDurSince(t0);
     }
 
     // TODO: wait for deinit

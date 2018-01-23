@@ -38,6 +38,7 @@ struct AsyncFileQueue
     bool swapQueues()
     {
         if(queue->count() == 0) {
+            threadSleep(15);
             return false;
         }
 
@@ -133,7 +134,7 @@ i32 thread_fileIO(void*)
     AFQ = &asyncFileQueue;
 
     Window& client = *get_clientWindow();
-    while(client.running) {
+    while(client.clientRunning) {
         if(AFQ->swapQueues()) {
             AFQ->handleAllBackRequests();
         }
@@ -568,7 +569,7 @@ struct FloorEntry
     i32 id;
     i32 pakTileIds;
     i32 varC;
-    i32 nextTileId; // maybe?
+    i32 nextFloorId;
 };
 
 bool pak_FloorRead(const char* filepath)
@@ -594,7 +595,7 @@ bool pak_FloorRead(const char* filepath)
         i32 pakTileId1 = fe.pakTileIds & 0x1FFFF;
         i32 pakTileId2 = fe.pakTileIds >> 17;
 
-        LOG_DBG("[%d] %d %d %08x %d", i, pakTileId1, pakTileId2, fe.varC, fe.nextTileId);
+        LOG_DBG("[%d] %d %d %08x %d", i, pakTileId1, pakTileId2, fe.varC, fe.nextFloorId);
     }
 
 
@@ -688,5 +689,96 @@ bool keyx_sectorsRead(const char* keyx_filepath, const char* wldx_filepath, Disk
     }
 
     LOG_DBG("keyx_SectorsRead> done");
+    return true;
+}
+/*
+PakStaticEntry  struc ; (sizeof=0x40, mappedto_674)
+00000000                                         ; XREF: cWorld_getStaticEntry/r
+00000000 id              dd ?
+00000004 itemTypeId      dd ?
+00000008 field_8         dd ?
+0000000C field_C         dw ?
+0000000E field_E         dd ?
+00000012 field_12        dd ?
+00000016                 db ? ; undefined
+00000017 parentId        dd ?
+0000001B anotherParentId dd ?
+0000001F nextStaticId    dd ?
+00000023 patchX          dw ?
+00000025 patchY          dw ?
+00000027 triggerId       dd ?
+0000002B field_2B        db ?
+0000002C field_2C        db ?
+0000002D layer           db ?
+0000002E smthX           db ?
+0000002F smthY           db ?
+00000030 smthZ           db ?
+00000031 field_31        db ?
+00000032 field_32        db ?
+00000033 field_33        db ?
+00000034                 db ? ; undefined
+00000035 field_35        db ?
+00000036                 db ? ; undefined
+00000037                 db ? ; undefined
+00000038                 db ? ; undefined
+00000039                 db ? ; undefined
+0000003A                 db ? ; undefined
+0000003B                 db ? ; undefined
+0000003C                 db ? ; undefined
+0000003D                 db ? ; undefined
+0000003E                 db ? ; undefined
+0000003F field_3F        db ?
+00000040 PakStaticEntry  ends
+00000040*/
+#pragma pack(1)
+struct PakStatic
+{
+    i32 id;
+    i32 itemTypeId;
+    i32 field_8;
+    i16 field_C;
+    i32 field_E;
+    i32 field_12;
+    u8 unk_0;
+    i32 parentId;
+    i32 anotherParentId;
+    i32 nextStaticId;
+    i16 patchX;
+    i16 patchY;
+    i32 triggerId;
+    i8 field_2B;
+    i8 field_2C;
+    u8 layer;
+    i8 smthX;
+    i8 smthY;
+    i8 smthZ;
+    i8 field_31;
+    i8 field_32;
+    i8 field_33;
+    u8 unk_1;
+    i8 field_35;
+    i8 unk_2[10];
+};
+
+//MESSAGE_SIZEOF(PakStatic);
+static_assert(sizeof(PakStatic) == 64, "sizeof(PakStatic) != 64");
+
+bool pak_staticRead(const char* path)
+{
+    LOG_DBG("pak_staticRead> start reading data...");
+
+    // read keyx file
+    FileBuffer fbStatic = fileReadWhole(path);
+    if(fbStatic.error != FileError::NO_FILE_ERROR) {
+        return false;
+    }
+    defer(fbStatic.block.dealloc());
+
+    const u8* top = (const u8*)fbStatic.block.ptr;
+    PakHeader* header = (PakHeader*)top;
+    const i32 entryCount = header->entryCount;
+
+    LOG_DBG("pak_staticRead> entryCount=%d", entryCount);
+
     return true;
 }
