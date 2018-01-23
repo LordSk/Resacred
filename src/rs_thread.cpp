@@ -1,5 +1,6 @@
 #include "rs_thread.h"
 #include "rs_logger.h"
+#include <thread>
 
 #ifdef _WIN32
     #include <windows.h>
@@ -38,5 +39,18 @@ i32 threadGetId()
 {
 #ifdef _WIN32
     return GetCurrentThreadId();
+#endif
+}
+
+i32 threadGetLogicalProcessorCount()
+{
+    return std::thread::hardware_concurrency();
+}
+
+void threadSetProcessorAffinity(void* threadHandle, i32 procId)
+{
+#ifdef _WIN32
+    DWORD_PTR mask = 1 << procId;
+    SetThreadAffinityMask((HANDLE)threadHandle, mask);
 #endif
 }

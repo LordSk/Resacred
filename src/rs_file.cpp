@@ -14,25 +14,20 @@ enum class FileReqType: i32 {
 
 struct AsyncFileRequestDesc
 {
-    FileReqType type;
-    DiskFile* file;
-    u8* buff;
-    i64 size;
-    u8* out;
-    AtomicCounter* counter;
+    FileReqType type = FileReqType::INVALID;
+    DiskFile* file = nullptr;
+    u8* buff = nullptr;
+    i64 size = 0;
+    u8* out = nullptr;
+    AtomicCounter* counter = nullptr;
 };
 
 typedef Array<AsyncFileRequestDesc,127> AsyncFileRequestDescArray;
 struct AsyncFileQueue
 {
     AsyncFileRequestDescArray queueBuffers[2];
-    AsyncFileRequestDescArray* queue;
+    AsyncFileRequestDescArray* queue = &queueBuffers[0];
     Mutex acquireMutex;
-
-    AsyncFileQueue()
-    {
-        queue = &queueBuffers[0];
-    }
 
     // swap front and back queue
     bool swapQueues()
@@ -97,6 +92,7 @@ struct AsyncFileQueue
                                 AtomicCounter* counter) {
         // fileIO is getting clogged, block until unclogged
         while(queue->count() > 127) {
+            //_mm_pause(); // Actually very important?
             threadSleep(15);
         }
 
@@ -126,12 +122,14 @@ struct AsyncFileQueue
 
 static AsyncFileQueue* AFQ;
 
-i32 thread_fileIO(void*)
+unsigned long thread_fileIO(void*)
 {
-    LOG("thread_fileIO started");
+    LOG("thread_fileIO started [%x]", threadGetId());
 
     AsyncFileQueue asyncFileQueue;
     AFQ = &asyncFileQueue;
+
+    LOG_SUCC("FileIO> initialized");
 
     Window& client = *get_clientWindow();
     while(client.clientRunning) {
@@ -141,9 +139,9 @@ i32 thread_fileIO(void*)
         else {
 #ifdef CONF_WINDOWS
             // TODO: investigate which is best
-            //Sleep(15);
-            SwitchToThread();
-            YieldProcessor();
+            threadSleep(15);
+            /*SwitchToThread();
+            YieldProcessor();*/
 #endif
         }
     }

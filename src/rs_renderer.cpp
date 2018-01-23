@@ -45,10 +45,7 @@ void APIENTRY debugCallback(GLenum source, GLenum type, GLuint id,
 struct Renderer {
 
 SDL_GLContext glContext;
-SDL_mutex* cmdListMutex[QUEUE_COUNT];
 Array<CommandList::Cmd,QUEUE_LIST_MAX> cmdList[QUEUE_COUNT];
-u8 frameReady[QUEUE_COUNT];
-
 i32 fillingQueueId = 0;
 f64 frameTime = 0;
 
@@ -79,8 +76,6 @@ bool init()
     }
 
     for(i32 i = 0; i < QUEUE_COUNT; ++i) {
-        frameReady[i] = false;
-        cmdListMutex[i] = SDL_CreateMutex();
         cmdList[i].allocator = nullptr;
     }
 
@@ -97,7 +92,6 @@ bool init()
     glDebugMessageCallback(debugCallback, this);
 #endif
 
-    LOG("Renderer> initialized.");
     initialized = true;
     return true;
 }
@@ -124,8 +118,9 @@ void handleQueue()
 
         OGL_DBG_GROUP_BEGIN(RENDERER_COMMAND_EXEC);
 
-        for(i32 i = 0; i < _cmdListCount; ++i) {
-            CommandList::Cmd& cmd = _cmdList[i];
+        for(i32 c = 0; c < _cmdListCount; ++c) {
+            CommandList::Cmd& cmd = _cmdList[c];
+
             switch(cmd.type) {
                 case CommandList::CT_CLEAR:
                     glClear(GL_COLOR_BUFFER_BIT);
@@ -378,6 +373,9 @@ void handleQueue()
                     frameRenderId = (frameRenderId + 1) % FRAME_COUNT;*/
                     //LOG_DBG("Renderer> CT_EXECUTE");
                     break;
+                default:
+                    assert(0);
+                    break;
             }
         }
 
@@ -393,7 +391,7 @@ void pushCommandList(const CommandList& list)
     assert(list.cmds.count() < QUEUE_LIST_MAX);
 
     while(cmdList[fillingQueueId].count() + list.cmds.count() >= (QUEUE_LIST_MAX-1)) {
-        //threadSleep(15);
+        _mm_pause(); // Actually very important?
     }
 
     queueMutex.lock();
@@ -410,9 +408,9 @@ void cleanUp()
 
 Renderer* g_rendererPtr = nullptr;
 
-i32 thread_renderer(void*)
+unsigned long thread_renderer(void*)
 {
-    LOG("thread_renderer started");
+    LOG("thread_renderer started [%x]", threadGetId());
 
     Renderer renderer;
     g_rendererPtr = &renderer;
@@ -420,6 +418,8 @@ i32 thread_renderer(void*)
     if(!renderer.init()) {
         return 1;
     }
+
+    LOG_SUCC("Renderer> initialized");
 
     renderer.handleQueue();
     renderer.cleanUp();
@@ -430,34 +430,10 @@ i32 thread_renderer(void*)
 
 void renderer_pushCommandList(CommandList& list)
 {
-    if(!g_rendererPtr || !g_rendererPtr->initialized) { // TODO: remove this
-        return;
+    if(list.cmds.count() > 0) {
+        g_rendererPtr->pushCommandList(list);
+        list.cmds.clearPOD();
     }
-
-#if 0
-    Renderer& rdr = *g_rendererPtr;
-    SDL_mutex* cmdListMutex = rdr.cmdListMutex[rdr.framePrepareId];
-    auto& cmdListArr = rdr.cmdList[rdr.framePrepareId];
-    const i32 oldCount = cmdListArr.count();
-
-    SDL_LockMutex(cmdListMutex);
-    cmdListArr.pushPOD(list.cmds.data(), list.cmds.count());
-
-    CommandList::Cmd* cmdList = cmdListArr.data();
-    const i32 newCount = cmdListArr.count();
-    for(i32 i = oldCount; i < newCount; ++i) {
-        if(cmdList[i].type == CommandList::CT_END_FRAME || cmdList[i].type == CommandList::CT_EXECUTE) {
-            rdr.frameReady[rdr.framePrepareId] = true;
-            rdr.framePrepareId = (rdr.framePrepareId + 1) % FRAME_COUNT;
-            break;
-        }
-    }
-
-    SDL_UnlockMutex(cmdListMutex);
-#else
-    g_rendererPtr->pushCommandList(list);
-    list.cmds.clearPOD();
-#endif
 }
 
 void renderer_waitForBarrier(RBarrier* barrier)
@@ -474,9 +450,6 @@ void renderer_waitForInit()
 
 f64 renderer_getFrameTime()
 {
-    if(!g_rendererPtr || !g_rendererPtr->initialized) { // TODO: remove this
-        return -1;
-    }
     return g_rendererPtr->frameTime;
 }
 

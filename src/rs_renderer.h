@@ -60,7 +60,7 @@ struct CommandList
         CT_BIND_BUFFER,                 // 10
         CT_BIND_VERTEX_ARRAY,           // 11
         CT_ARRAY_BUFFER_DATA,           // 12
-        CT_BUFFER_SUB_DATA,       // 13
+        CT_BUFFER_SUB_DATA,             // 13
         CT_DRAW_TRIANGLES,              // 14
         CT_USE_PROGRAM,                 // 15
         CT_UNIFORM_INT,                 // 16
@@ -300,14 +300,14 @@ struct CommandList
         cmds.pushPOD(&cmd, 1);
     }
 
-    inline void lock(MutexSpin* mutex) {
+    inline void mutexLock(MutexSpin* mutex) {
         Cmd cmd;
         cmd.type = CT_LOCK;
         cmd.param[0] = mutex;
         cmds.pushPOD(&cmd, 1);
     }
 
-    inline void unlock(MutexSpin* mutex) {
+    inline void mutexUnlock(MutexSpin* mutex) {
         Cmd cmd;
         cmd.type = CT_UNLOCK;
         cmd.param[0] = mutex;
@@ -329,7 +329,7 @@ struct CommandList
     }
 };
 
-i32 thread_renderer(void*);
+unsigned long thread_renderer(void*);
 
 void renderer_pushCommandList(CommandList& list);
 void renderer_waitForBarrier(RBarrier* barrier);

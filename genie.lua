@@ -35,7 +35,7 @@ solution "resacred_solution"
 		}
 		defines {
 			"NDEBUG",
-			"CONF_RELEASE"
+			"CONF_RELEASE",
 		}
 	
 	configuration {}
@@ -70,6 +70,7 @@ solution "resacred_solution"
 	defines {
         --"LOGGER_DONT_WRITE",
         --"SACRED_LOG_MEM_ALLOC",
+        "CONF_ENABLE_UI"
     }
 	
 	-- disable exception related warnings

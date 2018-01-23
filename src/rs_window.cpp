@@ -31,8 +31,8 @@ bool Window::create(const i32 width_, const i32 height_)
 void Window::handleInput()
 {
     SDL_Event event;
-    while(SDL_PollEvent(&event)) {
-#ifdef CONF_DEBUG
+    while(SDL_WaitEvent(&event)) {
+#ifdef CONF_ENABLE_UI
         //TODO: better handle imgui input
         imguiMutex.lock();
         if(imguiSetup) {
@@ -85,14 +85,14 @@ void Window::addInputCallback(Window::Proc_InputCallback callback, void* userDat
 
 void Window::dbguiInit()
 {
-#ifdef CONF_DEBUG
+#ifdef CONF_ENABLE_UI
     imguiSetup = imguiInit(width, height, "resacred_imgui.ini");
 #endif
 }
 
 void Window::dbguiNewFrameBegin()
 {
-#ifdef CONF_DEBUG
+#ifdef CONF_ENABLE_UI
     imguiMutex.lock();
     if(imguiSetup) {
         imguiUpdate(imguiSetup, 0);
@@ -102,14 +102,14 @@ void Window::dbguiNewFrameBegin()
 
 void Window::dbguiNewFrameEnd()
 {
-#ifdef CONF_DEBUG
+#ifdef CONF_ENABLE_UI
     imguiMutex.unlock();
 #endif
 }
 
 void Window::dbguiRender()
 {
-#ifdef CONF_DEBUG
+#ifdef CONF_ENABLE_UI
     imguiMutex.lock();
     if(imguiSetup) {
         ImGui::Render();
@@ -120,7 +120,7 @@ void Window::dbguiRender()
 
 void Window::dbguiWaitForInit()
 {
-#ifdef CONF_DEBUG
+#ifdef CONF_ENABLE_UI
     while(!imguiSetup) {
         _mm_pause();
     }

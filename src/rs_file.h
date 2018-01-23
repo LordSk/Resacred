@@ -3,7 +3,7 @@
 #include "rs_allocator.h"
 #include "rs_array.h"
 
-i32 thread_fileIO(void*);
+unsigned long thread_fileIO(void*);
 
 enum class FileError: i32 {
     NO_FILE_ERROR=0,

@@ -6,23 +6,23 @@
 
 typedef volatile long int vli32;
 
-//#define lock() __lock(__FILE__, __LINE__)
-//#define unlock() __unlock(__FILE__, __LINE__)
+/*#define lock() __lock(__FILE__, __LINE__)
+#define unlock() __unlock(__FILE__, __LINE__)*/
 
 struct MutexSpin
 {
     vli32 _inUse = 0;
 
     void lock(/*const char* filename, i32 line*/) {
-        //printf("lock %s:%d\n", filename, line); fflush(stdout);
+        //printf("{{{ lock %s:%d\n", filename, line); fflush(stdout);
         while(_InterlockedExchange(&_inUse, 1) == 1) {
             _mm_pause();
         }
     }
 
     void unlock(/*const char* filename, i32 line*/) {
-        //printf("unlock %s:%d\n", filename, line); fflush(stdout);
         _InterlockedExchange(&_inUse, 0);
+        //printf("}}} unlock %s:%d\n", filename, line); fflush(stdout);
     }
 };
 
@@ -35,12 +35,14 @@ struct Mutex
         InitializeCriticalSection(&criticalSection);
     }
 
-    inline void lock() {
+    void lock(/*const char* filename, i32 line*/) {
+        //printf("{{{ lock %s:%d\n", filename, line); fflush(stdout);
         EnterCriticalSection(&criticalSection);
     }
 
-    inline void unlock() {
+    void unlock(/*const char* filename, i32 line*/) {
         LeaveCriticalSection(&criticalSection);
+        //printf("}}} unlock %s:%d\n", filename, line); fflush(stdout);
     }
 #endif
 };
@@ -75,3 +77,5 @@ void threadClose(void* thread);
 void threadWaitForClose(void** threads, i32 count = 1);
 void threadSleep(i32 milliseconds);
 i32 threadGetId();
+i32 threadGetLogicalProcessorCount();
+void threadSetProcessorAffinity(void* threadHandle, i32 procId);

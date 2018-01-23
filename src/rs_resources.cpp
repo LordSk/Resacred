@@ -376,6 +376,8 @@ bool init()
         return false;
     }
 
+    LOG_SUCC("Resource> initialized");
+
     return true;
 }
 

@@ -223,7 +223,7 @@ struct Game
     MutexSpin viewMutex;
 
     i32 dbgTileDrawCount = 4096;
-    i32 dbgSectorId = 690;
+    i32 dbgSectorId = 4688;
     i32 loadedSectorId = -1;
     WldxEntry* sectorData = nullptr;
 
@@ -271,14 +271,6 @@ struct Game
             sectorData = resource_loadSector(dbgSectorId);
             loadedSectorId = dbgSectorId;
         }
-    }
-
-    void loadTextures()
-    {
-        /*memset(gpu_textures, 0, sizeof(gpu_textures));
-        bool texResult = pak_texturesRead("../sacred_data/texture.pak", &diskTextures);
-        assert(texResult);
-        GPUres_init(&diskTextures);*/
     }
 
     void requestTexBrowserTextures()
@@ -405,9 +397,9 @@ struct Game
         }
         viewMutex.unlock();
 
-        list.lock(&viewMutex);
+        list.mutexLock(&viewMutex);
         list.uniformMat4(tileShader.uViewMatrix, &viewIso);
-        list.unlock(&viewMutex);
+        list.mutexUnlock(&viewMutex);
 
         testTileModel = mat4Scale(vec3f(53.65625, 53.65625, 1));
         list.uniformMat4(tileShader.uModelMatrix, &testTileModel);
@@ -462,32 +454,13 @@ struct Game
         }
         tileVertexMutex.unlock();
 
-        list.lock(&tileVertexMutex);
+        list.mutexLock(&tileVertexMutex);
         list.arrayBufferSubData(&tileShader.vertexBuffer, 0, tileVertexData, sizeof(tileVertexData));
-        list.unlock(&tileVertexMutex);
+        list.mutexUnlock(&tileVertexMutex);
         renderer_pushCommandList(list);
 
 
         list.bindVertexArray(&tileShader.vao);
-
-        /*i32 currentDiskTexId = 0;
-        i32 drawQueueFirst = 0;
-        i32 drawQueueCount = 0;
-        for(i32 i = 0; i < dbgTileDrawCount; ++i) {
-            i32 texId = tileTexIds[diskSectors.sectors[1].wldxEntries[i+1].tileId].textureId;
-
-            if(texId != currentDiskTexId) {
-                list.textureSlot(tileGpuTexId[i+1], 0);
-                list.drawTriangles(drawQueueFirst * 6, drawQueueCount * 6);
-                drawQueueFirst = i;
-                drawQueueCount = 1;
-            }
-            else {
-                drawQueueCount++;
-            }
-        }
-
-        list.drawTriangles(drawQueueFirst, drawQueueCount * 6);*/
 
         // TODO: pack same texture calls or bind more textures
         for(i32 i = 0; i < dbgTileDrawCount; ++i) {
@@ -568,9 +541,9 @@ void ui_videoInfo()
     ImGui::End();
 }
 
-i32 thread_game(void*)
+unsigned long thread_game(void*)
 {
-    LOG("thread_game started");
+    LOG("thread_game started [%x]", threadGetId());
 
     LOG("Game> initialization...");
     Window& client = *get_clientWindow();
@@ -599,7 +572,7 @@ i32 thread_game(void*)
         game.requestTexBrowserTextures();
 
         // NOTE: dont push render command inside UI code
-#ifdef CONF_DEBUG
+#ifdef CONF_ENABLE_UI
         client.dbguiNewFrameBegin();
         if(client.imguiSetup) {
             game.ui_textureBrowser();
@@ -618,7 +591,6 @@ i32 thread_game(void*)
 
         game.drawTestTiles();
 
-        list = {};
         list.queryVramInfo(&dedicated, &availMemory, &currentAvailMem, &evictionCount, &evictedMem);
         list.endFrame();
         renderer_pushCommandList(list);
