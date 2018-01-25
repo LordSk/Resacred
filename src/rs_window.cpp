@@ -103,6 +103,7 @@ void Window::dbguiNewFrameBegin()
 void Window::dbguiNewFrameEnd()
 {
 #ifdef CONF_ENABLE_UI
+    ImGui::EndFrame();
     imguiMutex.unlock();
 #endif
 }
