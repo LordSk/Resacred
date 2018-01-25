@@ -241,18 +241,6 @@ struct GPUResources
     }*/
 };
 
-struct Keyx
-{
-    i32 sectorId;
-    i32 fileOffset;
-    i32 compressedSize;
-    i32 uncompressedSize;
-    i32 posX1;
-    i32 posX2;
-    i32 posY1;
-    i32 posY2;
-};
-
 #define FILE_RING_BUFFER_SIZE Megabyte(200)
 #define TEXTURE_DATA_SIZE Megabyte(300)
 #define TEXTURE_TEMP_SIZE Megabyte(5)
@@ -292,8 +280,8 @@ GPUResources gpu;
 u16* tileTextureId;
 MemBlock tileTextureIdBlock;
 
-Keyx* keyx;
-MemBlock keyxBlock;
+SectorInfo* sectorInfo;
+MemBlock sectorInfoBlock;
 DiskFile fileSectors;
 
 i32 sectorCount = 0;
@@ -433,24 +421,30 @@ bool loadSectorKeyx()
     const i32 entryCount = header->entryCount;
     sectorCount = entryCount;
 
-    keyxBlock = MEM_ALLOC(entryCount * sizeof(*keyx));
-    assert(keyxBlock.ptr);
-    keyx = (Keyx*)keyxBlock.ptr;
+    sectorInfoBlock = MEM_ALLOC(entryCount * sizeof(*sectorInfo));
+    assert(sectorInfoBlock.ptr);
+    sectorInfo = (SectorInfo*)sectorInfoBlock.ptr;
 
     i32 keyxDataOffset = sizeof(PakHeader);
     for(i32 i = 0; i < entryCount; ++i) {
         KeyxSector& ks = *(KeyxSector*)(top + keyxDataOffset);
         keyxDataOffset += sizeof(KeyxSector);
 
-        Keyx& key = keyx[i];
-        key.sectorId = ks.sectorId;
-        key.fileOffset = ks.subs[13].fileOffset;
-        key.compressedSize = ks.subs[13].size;
-        key.uncompressedSize = ks.subs[15].size;
-        key.posX1 = ks.posX1;
-        key.posX2 = ks.posX2;
-        key.posY1 = ks.posY1;
-        key.posY2 = ks.posY2;
+        SectorInfo& si = sectorInfo[i];
+        si.sectorId = ks.sectorId;
+        si.fileOffset = ks.subs[13].fileOffset;
+        si.compressedSize = ks.subs[13].size;
+        si.uncompressedSize = ks.subs[15].size;
+        si.posX1 = ks.posX1;
+        si.posX2 = ks.posX2;
+        si.posY1 = ks.posY1;
+        si.posY2 = ks.posY2;
+        si.numHeights = ks.subs[2].size;
+
+        i32 offsetMapData = ks.subs[11].fileOffset;
+        i32 offsetHeightData = ks.subs[12].fileOffset;
+        assert(offsetMapData == 32);
+        assert(offsetHeightData == 131104);
     }
 
     LOG_SUCC("Resource> sectors.keyx loaded");
@@ -464,23 +458,36 @@ bool loadSectorKeyx()
     return true;
 }
 
-WldxEntry* loadSectorData(i32 sectorId)
+SectorxData* loadSectorData(i32 sectorId)
 {
     assert(sectorId >= 0 && sectorId < sectorCount);
 
-    const i32 fileOffset = keyx[sectorId].fileOffset;
-    const i32 compSize = keyx[sectorId].compressedSize;
-    const i32 uncompSize = keyx[sectorId].uncompressedSize;
+    const i32 fileOffset = sectorInfo[sectorId].fileOffset;
+    const i32 compSize = sectorInfo[sectorId].compressedSize;
+    const i32 uncompSize = sectorInfo[sectorId].uncompressedSize;
 
     u8* fileBuffer = fileRingAlloc(compSize);
     MemBlock outputBlock = sectorRingAlloc.ALLOC(uncompSize);
     assert(outputBlock.ptr);
-    WldxEntry* output = (WldxEntry*)outputBlock.ptr;
+    SectorxData* output = (SectorxData*)outputBlock.ptr;
 
     fileReadFromPos(&fileSectors, fileOffset, compSize, fileBuffer);
     i32 ret = zlib_decompress((char*)fileBuffer, compSize, (u8*)output, uncompSize);
     assert(ret == 0); // Z_OK
+
+#if 0
+    char path[256];
+    sprintf(path, "sector_data.%d", sectorId);
+    fileWriteBuffer(path, (const char*)output, uncompSize);
+#endif
+
     return output;
+}
+
+const SectorInfo& getSectorInfo(i32 sectorId)
+{
+    assert(sectorId >= 0 && sectorId < sectorCount);
+    return sectorInfo[sectorId];
 }
 
 void deinit()
@@ -489,7 +496,7 @@ void deinit()
     MEM_DEALLOC(textureFileAndRawBlock);
     MEM_DEALLOC(tempTextureBuffBlock);
     MEM_DEALLOC(tileTextureIdBlock);
-    MEM_DEALLOC(keyxBlock);
+    MEM_DEALLOC(sectorInfoBlock);
     MEM_DEALLOC(sectorDataBlock);
     fileClose(&fileTexture);
     gpu.deinit();
@@ -676,9 +683,14 @@ u32 resource_defaultGpuTexture()
     return DR.gpu.gpuTexDefault;
 }
 
-WldxEntry*resource_loadSector(i32 sectorId)
+SectorxData* resource_loadSector(i32 sectorId)
 {
     return DR.loadSectorData(sectorId);
+}
+
+const SectorInfo& resource_getSectorInfo(i32 sectorId)
+{
+    return DR.getSectorInfo(sectorId);
 }
 
 u16* resource_getTileTextureIds18()

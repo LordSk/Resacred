@@ -171,6 +171,22 @@ struct WldxEntry
 
 static_assert(sizeof(WldxEntry) == 32, "sizeof(WldxEntry) != 32");
 
+struct SectorxhHeightEntry
+{
+    i32 unk[4];
+    i32 offsetData;
+    u8 unk2[16];
+};
+
+static_assert(sizeof(SectorxhHeightEntry) == 36, "sizeof(SectorxhHeightData) != 36");
+
+struct SectorxData
+{
+    char name[32];
+    WldxEntry data[4096];
+    SectorxhHeightEntry heightData[1];
+};
+
 struct DiskTextures
 {
     struct TexName {

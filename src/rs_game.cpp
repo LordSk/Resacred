@@ -223,9 +223,10 @@ struct Game
     MutexSpin viewMutex;
 
     i32 dbgTileDrawCount = 4096;
-    i32 dbgSectorId = 4688;
+    i32 dbgSectorId = 3322;
     i32 loadedSectorId = -1;
-    WldxEntry* sectorData = nullptr;
+    SectorxData* sectorData = nullptr;
+    SectorInfo sectorInfo;
 
     enum {
         MODE_NORMAL = 0,
@@ -269,6 +270,7 @@ struct Game
     {
         if(loadedSectorId != dbgSectorId) {
             sectorData = resource_loadSector(dbgSectorId);
+            sectorInfo = resource_getSectorInfo(dbgSectorId);
             loadedSectorId = dbgSectorId;
         }
     }
@@ -327,16 +329,39 @@ struct Game
 
 
         ImGui::SliderInt("dbgSectorId", &dbgSectorId, 1, 6049);
-        ImGui::SameLine();
+
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(30, 5));
         if(ImGui::Button("-")) dbgSectorId--;
         ImGui::SameLine();
         if(ImGui::Button("+")) dbgSectorId++;
+        ImGui::PopStyleVar(1);
+
+        dbgSectorId = clamp(dbgSectorId, 1, 6049);
 
 
-        /*ImGui::Text("Sector %d:", sector.id);
-        ImGui::Text("posX1=%d posX2=%d posY1=%d posY2=%d count=%d",
-                    sector.posX1, sector.posX2, sector.posY1, sector.posY2,
-                    sector.wldxEntryCount);*/
+        if(sectorData) {
+            ImGui::Text("#%d (%s)", dbgSectorId, sectorData->name);
+            /*ImGui::Text("posX1=%d posX2=%d posY1=%d posY2=%d count=%d",
+                        sector.posX1, sector.posX2, sector.posY1, sector.posY2,
+                        sector.wldxEntryCount);*/
+
+            char headerName[64];
+            sprintf(headerName, "Height data (%d)", sectorInfo.numHeights);
+            if(ImGui::CollapsingHeader(headerName)) {
+                for(i32 i = 0; i < sectorInfo.numHeights; ++i) {
+                    sprintf(headerName, "Height #%d", i);
+                    if(ImGui::CollapsingHeader(headerName)) {
+                        ImGui::Text("offset=%d", sectorData->heightData[i].offsetData);
+                    }
+                }
+            }
+
+            if(ImGui::Button("Dump data to file")) {
+                char path[256];
+                sprintf(path, "sector_data.%d", dbgSectorId);
+                fileWriteBuffer(path, (const char*)sectorData, sectorInfo.uncompressedSize);
+            }
+        }
 
         //ImGui::Image((ImTextureID)(intptr_t)resource_defaultGpuTexture(), ImVec2(256, 256));
 
@@ -346,16 +371,17 @@ struct Game
     void drawTestTiles()
     {
         constexpr i32 MAX_SECTOR_TEXTURE_COUNT = 300;
-        constexpr i32 MAX_TILE_ENTRIES = 4097;
+        constexpr i32 MAX_TILE_ENTRIES = 4096;
         i32 diskSectorTexs[MAX_SECTOR_TEXTURE_COUNT] = {};
         GLuint* gpuSectorTexs[MAX_SECTOR_TEXTURE_COUNT];
         i32 sectorTextureCount = 0;
         GLuint* tileGpuTexId[MAX_TILE_ENTRIES];
 
         u16* tileTexIds = resource_getTileTextureIds18();
+        WldxEntry* sectorEntries = sectorData->data;
 
-        for(i32 i = 1; i < MAX_TILE_ENTRIES; ++i) {
-            i32 tileId = sectorData[i].tileId;
+        for(i32 i = 0; i < MAX_TILE_ENTRIES; ++i) {
+            i32 tileId = sectorEntries[i].tileId;
             i32 texId = tileTexIds[tileId/18];
 
             bool found = false;
@@ -374,8 +400,8 @@ struct Game
         resource_requestGpuTextures(diskSectorTexs, gpuSectorTexs, sectorTextureCount);
 
         // assign gpu textures to tiles
-        for(i32 i = 1; i < MAX_TILE_ENTRIES; ++i) {
-            i32 tileId = sectorData[i].tileId;
+        for(i32 i = 0; i < MAX_TILE_ENTRIES; ++i) {
+            i32 tileId = sectorEntries[i].tileId;
             i32 texId = tileTexIds[tileId/18];
 
             for(i32 j = 0; j < sectorTextureCount; ++j) {
@@ -411,7 +437,7 @@ struct Game
         i32 tileMeshId = 0;
         for(i32 y = 0; y < 64; ++y) {
             for(i32 x = 0; x < 64; ++x) {
-                WldxEntry& we = sectorData[y*64 + x + 1];
+                WldxEntry& we = sectorEntries[y*64 + x];
                 u32 color = 0xff000000;
 
                 switch(dbgViewMode) {
@@ -464,7 +490,7 @@ struct Game
 
         // TODO: pack same texture calls or bind more textures
         for(i32 i = 0; i < dbgTileDrawCount; ++i) {
-            list.textureSlot(tileGpuTexId[i+1], 0);
+            list.textureSlot(tileGpuTexId[i], 0);
             list.drawTriangles(i * 6, 6);
 
             if(i % 200 == 0) {
@@ -530,11 +556,14 @@ static void receiveGameInput(const SDL_Event& event, void* userData)
 
 void ui_videoInfo()
 {
-    ImGui::Begin("Video info");
+    ImGui::SetNextWindowPos(ImVec2(5,5));
+    ImGui::Begin("Video info", nullptr,
+                 ImGuiWindowFlags_NoTitleBar|ImGuiWindowFlags_NoResize|
+                 ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoSavedSettings);
 
-    ImGui::Text("Total available: %dkb", availMemory);
-    ImGui::Text("Current Avilable: %dkb", currentAvailMem);
+    ImGui::Text("Current/Total %dmb/%dmb", currentAvailMem/1024, availMemory/1024);
     ImGui::ProgressBar(1.0 - (currentAvailMem / (f64)availMemory));
+    ImGui::Separator();
     ImGui::Text("Renderer frametime: %.5fms", renderer_getFrameTime() * 1000.0);
     ImGui::Text("Game     frametime: %.5fms", pGame->frameTime * 1000.0);
 
