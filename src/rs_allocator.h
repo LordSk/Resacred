@@ -152,7 +152,7 @@ struct AllocatorStack: public IAllocator
  * @brief AllocatorBucket
  * - alloc blocks of bucketSize
  * - 1 byte overhead per block (TODO: make it one bit?)
- * - faster and fragment less that heap allocation
+ * - faster and fragments less that heap allocation
  * - realloc can be really fast
  */
 struct AllocatorBucket: public IAllocator
@@ -216,7 +216,7 @@ struct AllocatorPool: IAllocator
 };
 
 /**
- * @brief Step allocator: use a different allocator based of allocation size
+ * @brief Step allocator: use a different allocator based on allocation size
  */
 struct AllocatorStep: IAllocator
 {

@@ -98,15 +98,16 @@ struct PakHeader
 
 struct PakSubFileDesc
 {
-    i32 vint1;
+    i32 type;
     i32 offset;
-    i32 vint2;
+    i32 size;
 };
 
 static_assert(sizeof(PakHeader) == 256, "sizeof(PakHeader) != 256");
 
 
-struct PakTexture
+#pragma pack(1)
+struct PakTextureHeader
 {
     char filename[32];
     u16 width;
@@ -115,10 +116,11 @@ struct PakTexture
     u32 compressedSize;
     u8 unknown1;
     u32 offset; // set by Sacred after being loaded
-    u8 null[39];
-    // -- header size = 80
-    u8* data;
+    u8 null[34];
 };
+#pragma pack()
+
+static_assert(sizeof(PakTextureHeader) == 80, "sizeof(PakTextureHeader) != 80");
 
 enum class PakTextureType: u16 {
     TYPE_RGBA8 = 6,
@@ -163,7 +165,7 @@ struct WldxEntry
     i8 smthW;
     u8 offsetX;
     u8 offsetY;
-    u8 unk3;
+    u8 flags;
     u8 someTypeId; // 0-15
 };
 

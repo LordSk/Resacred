@@ -117,8 +117,8 @@ struct GPUResources
             }
         }
 
-        assert(oldestFrameCount > 0);
         assert(oldestId >= 0);
+        assert(oldestFrameCount > 0);
 
         CommandList cmds;
         destroyTexture(&cmds, oldestId);
@@ -256,6 +256,7 @@ struct Keyx
 #define FILE_RING_BUFFER_SIZE Megabyte(200)
 #define TEXTURE_DATA_SIZE Megabyte(300)
 #define TEXTURE_TEMP_SIZE Megabyte(5)
+#define FRAME_MAX_PROCESSING_COUNT 24
 
 /*
  * Resource manager
@@ -269,6 +270,7 @@ struct ResourceManager {
 DiskFile fileTexture;
 i32 textureCount;
 i32* textureFileOffset;
+i32* textureFileSize;
 AtomicCounter* textureDiskLoadStatus; // 2 == loading from disk, 1 == loaded
 MemBlock* textureDataBlock;
 PakTextureInfo* textureInfo;
@@ -298,9 +300,9 @@ i32 sectorCount = 0;
 MemBlock sectorDataBlock;
 AllocatorRing sectorRingAlloc;
 
-Array<i32,256> _pakTexIdUpload;
-Array<u8*,256> _dataUpload;
-Array<PakTextureInfo,256> _texInfoUpload;
+Array<i32,64> _pakTexIdUpload;
+Array<u8*,64> _dataUpload;
+Array<PakTextureInfo,64> _texInfoUpload;
 
 enum class LoadStatus: i32 {
     NONE = 0,
@@ -340,7 +342,8 @@ bool init()
     textureCount = header.entryCount;
 
     // alloc texture metadata
-    textureMetaBlock = MEM_ALLOC((sizeof(*textureFileOffset) + sizeof(*textureDiskLoadStatus) +
+    textureMetaBlock = MEM_ALLOC((sizeof(*textureFileOffset) + sizeof(*textureFileSize) +
+            sizeof(*textureDiskLoadStatus) +
             sizeof(*textureDataBlock) + sizeof(*textureInfo) + sizeof(*textureGpuUpload) +
             sizeof(*textureAge)) * textureCount);
     assert(textureMetaBlock.ptr);
@@ -348,7 +351,8 @@ bool init()
     LOG_DBG("Resource> textureMetaBlock size=%lldkb", textureMetaBlock.size/1024);
 
     textureFileOffset = (i32*)textureMetaBlock.ptr;
-    textureDiskLoadStatus = (AtomicCounter*)(textureFileOffset + textureCount);
+    textureFileSize = (i32*)(textureFileOffset + textureCount);
+    textureDiskLoadStatus = (AtomicCounter*)(textureFileSize + textureCount);
     textureDataBlock = (MemBlock*)(textureDiskLoadStatus + textureCount);
     textureInfo = (PakTextureInfo*)(textureDataBlock + textureCount);
     textureGpuUpload = (u8*)(textureInfo + textureCount);
@@ -363,6 +367,7 @@ bool init()
 
     for(i32 i = 0; i < textureCount; ++i) {
         textureFileOffset[i] = fileOffsets[i].offset;
+        textureFileSize[i] = fileOffsets[i].size;
         //LOG("%d offset=%d", i, textureOffset[i]);
     }
 
@@ -507,7 +512,8 @@ void newFrame()
     _texInfoUpload.clearPOD();
 
     // decompress texture if necessary and upload them to the gpu (if requested)
-    for(i32 i = 0; i < textureCount; ++i) {
+    i32 workDoneCount = 0;
+    for(i32 i = 0; i < textureCount && workDoneCount < FRAME_MAX_PROCESSING_COUNT; ++i) {
         if((LoadStatus)textureDiskLoadStatus[i].get() == LoadStatus::FILE_LOADED) {
             //LOG("Resource> texId=%d file loaded", i);
             i32 width, height, type, textureSize;
@@ -532,6 +538,7 @@ void newFrame()
 #endif
 
             textureDiskLoadStatus[i].decrement(); // -> PROCESSED
+            workDoneCount++;
         }
 
         if((LoadStatus)textureDiskLoadStatus[i].get() == LoadStatus::PROCESSED && textureGpuUpload[i]) {
@@ -586,7 +593,7 @@ MemBlock evictTexture(i64 size)
 
         MemBlock b = textureDataAllocator.ALLOC(size);
         if(b.ptr) {
-            LOG_DBG("Resource> textures evicted = %d", tries+1);
+            //LOG_DBG("Resource> textures evicted = %d", tries+1);
             return b;
         }
     }
@@ -606,12 +613,12 @@ void requestTextures(const i32* pakTextureUIDs, const i32 requestCount)
            textureDataBlock[texUID].ptr == nullptr) {
             textureDiskLoadStatus[texUID].set((i32)LoadStatus::FILE_LOADING);
 
-            i32 size = textureFileOffset[pakTextureUIDs[i] + 1] - textureFileOffset[pakTextureUIDs[i]];
+            i32 size = textureFileSize[texUID] + sizeof(PakTextureHeader);
             assert(size > 0);
             textureDataBlock[texUID].ptr = fileRingAlloc(size);
             textureDataBlock[texUID].size = size;
 
-            fileAsyncReadAbsolute(&fileTexture, textureFileOffset[pakTextureUIDs[i]], size,
+            fileAsyncReadAbsolute(&fileTexture, textureFileOffset[texUID], size,
                     (u8*)textureDataBlock[texUID].ptr, &textureDiskLoadStatus[texUID]);
         }
     }

@@ -373,11 +373,12 @@ i32 zlib_decompress(const char* input, const i32 inputSize, u8* output, const i3
         i32 copySize = CHUNK;
         if(inputSize > 0 && inputSize - inCursor < CHUNK) {
             copySize = inputSize - inCursor;
+            if(copySize <= 0) {
+                break;
+            }
         }
+
         strm.avail_in = copySize;
-        if(copySize <= 0) {
-            break;
-        }
         memmove(in, input + inCursor, copySize);
         inCursor += copySize;
         strm.next_in = in;
@@ -501,7 +502,7 @@ bool pak_texturesRead(const char* filepath, DiskTextures* textures)
 bool pak_textureRead(char* fileBuff, i64 size, i32* out_width, i32* out_height, i32* out_type,
                      u8* out_data, i32* out_size, char* out_name)
 {
-    PakTexture& tex = *(PakTexture*)fileBuff;
+    PakTextureHeader& tex = *(PakTextureHeader*)fileBuff;
 
     *out_type = tex.typeId;
     *out_width = tex.width;
@@ -757,6 +758,7 @@ struct PakStatic
     i8 field_35;
     i8 unk_2[10];
 };
+#pragma pack()
 
 //MESSAGE_SIZEOF(PakStatic);
 static_assert(sizeof(PakStatic) == 64, "sizeof(PakStatic) != 64");
