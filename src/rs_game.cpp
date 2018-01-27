@@ -208,7 +208,7 @@ struct Game
     GLuint* texBrowser_texGpu[PAGE_TEXTURES_COUNT];
     i32 pageId = 0;
     i32 testTileLocalId = 0;
-    TileVertex tileVertexData[6 * 64 * 64];
+    TileVertex tileVertexData[6 * 4096];
     MutexSpin tileVertexMutex;
 
     TileShader tileShader;
@@ -227,6 +227,9 @@ struct Game
     i32 loadedSectorId = -1;
     SectorxData* sectorData = nullptr;
     SectorInfo sectorInfo;
+
+    i32 dbgFloorOffset = 0;
+    bool dbgFloorOver = 0;
 
     enum {
         MODE_NORMAL = 0,
@@ -325,12 +328,12 @@ struct Game
         ImGui::Checkbox("Isometric view", &viewIsIso);
         ImGui::Combo("viewMode", &dbgViewMode, viewModeCombo, MODE_COUNT);
 
-        ImGui::SliderInt("dbgTileDrawCount", &dbgTileDrawCount, 1, 4096);
+        //ImGui::SliderInt("dbgTileDrawCount", &dbgTileDrawCount, 1, 4096);
 
 
-        ImGui::SliderInt("dbgSectorId", &dbgSectorId, 1, 6049);
+        ImGui::SliderInt("Sector ID", &dbgSectorId, 1, 6049);
 
-        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(30, 5));
+        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(10, 5));
         if(ImGui::Button("-")) dbgSectorId--;
         ImGui::SameLine();
         if(ImGui::Button("+")) dbgSectorId++;
@@ -364,6 +367,19 @@ struct Game
         }
 
         //ImGui::Image((ImTextureID)(intptr_t)resource_defaultGpuTexture(), ImVec2(256, 256));
+
+        ImGui::End();
+    }
+
+    void ui_floorTest()
+    {
+        const i32 floorCount = resource_getFloorCount();
+
+        ImGui::Begin("Floor viewer");
+
+        ImGui::Checkbox("Isometric view", &viewIsIso);
+        ImGui::SliderInt("offset", &dbgFloorOffset, 0, floorCount-4096);
+        ImGui::Checkbox("Second tile", &dbgFloorOver);
 
         ImGui::End();
     }
@@ -501,6 +517,135 @@ struct Game
         renderer_pushCommandList(list);
     }
 
+    void drawFloorTest()
+    {
+        constexpr i32 MAX_SECTOR_TEXTURE_COUNT = 3000;
+        constexpr i32 MAX_TILE_ENTRIES = 4096;
+        constexpr i32 MAX_TILE_ENTRIES_HALF = MAX_TILE_ENTRIES/2;
+        i32 diskSectorTexs[MAX_SECTOR_TEXTURE_COUNT] = {};
+        GLuint* gpuFloorTex[MAX_SECTOR_TEXTURE_COUNT];
+        i32 floorTexCount = 0;
+        GLuint* tileGpuTexId[MAX_TILE_ENTRIES];
+        i32 floorTileIds[MAX_TILE_ENTRIES];
+        i32 floorTexIds[MAX_TILE_ENTRIES];
+        u32 floorColor[MAX_TILE_ENTRIES];
+
+        u16* tileTexIds = resource_getTileTextureIds18();
+        FloorEntry* floors = resource_getFloors();
+        const i32 floorCount = resource_getFloorCount();
+
+        i32 fid = dbgFloorOffset;
+        for(i32 i = 0; i < MAX_TILE_ENTRIES_HALF; ++i) {
+            assert(fid < floorCount);
+
+            FloorEntry& fe = floors[fid];
+            i32 tileId1 = fe.pakTileIds & 0x1FFFF;
+            i32 tileId2 = fe.pakTileIds >> 17;
+            i32 texId1 = tileTexIds[tileId1/18];
+            i32 texId2 = tileTexIds[tileId2/18];
+            floorTileIds[i*2] = tileId1;
+            floorTileIds[i*2+1] = tileId2;
+            floorTexIds[i*2] = texId1;
+            floorTexIds[i*2+1] = texId2;
+            floorColor[i*2] = 0xffffffff;
+            floorColor[i*2+1] = tileId2 ? 0xffffffff : 0xff000000;
+
+            bool found1 = false;
+            bool found2 = false;
+            for(i32 j = 0; j < floorTexCount && (!found2 || !found2); ++j) {
+                if(diskSectorTexs[j] == texId1) {
+                    found1 = true;
+                }
+                if(diskSectorTexs[j] == texId2) {
+                    found2 = true;
+                }
+            }
+
+            if(!found1) {
+                diskSectorTexs[floorTexCount++] = texId1;
+                assert(floorTexCount <= MAX_SECTOR_TEXTURE_COUNT);
+            }
+            if(!found2) {
+                diskSectorTexs[floorTexCount++] = texId2;
+                assert(floorTexCount <= MAX_SECTOR_TEXTURE_COUNT);
+            }
+
+            if(fe.nextFloorId) {
+                fid = fe.nextFloorId;
+            }
+            else {
+                fid++;
+            }
+        }
+
+        resource_requestGpuTextures(diskSectorTexs, gpuFloorTex, floorTexCount);
+
+        // assign gpu textures to tiles
+        for(i32 i = 0; i < MAX_TILE_ENTRIES; ++i) {
+            i32 texId = floorTexIds[i];
+
+            for(i32 j = 0; j < floorTexCount; ++j) {
+                if(diskSectorTexs[j] == texId) {
+                    tileGpuTexId[i] = gpuFloorTex[j];
+                }
+            }
+        }
+
+        CommandList list;
+        list.useProgram(&tileShader.program);
+
+        viewMutex.lock();
+        viewIso = mat4Orthographic(0, 1600 * viewZoom, 900 * viewZoom, 0, -10000.f, 10000.f);
+        viewIso = mat4Mul(viewIso, mat4Translate(vec3f(-viewX, -viewY, 0)));
+        if(viewIsIso) {
+            viewIso = mat4Mul(viewIso, mat4RotateAxisX(VIEW_X_ANGLE));
+            viewIso = mat4Mul(viewIso, mat4RotateAxisZ(RS_HALFPI/2 * viewZMul));
+        }
+        viewMutex.unlock();
+
+        list.mutexLock(&viewMutex);
+        list.uniformMat4(tileShader.uViewMatrix, &viewIso);
+        list.mutexUnlock(&viewMutex);
+
+        testTileModel = mat4Scale(vec3f(53.65625, 53.65625, 1));
+        list.uniformMat4(tileShader.uModelMatrix, &testTileModel);
+
+        static i32 slot = 0;
+        list.uniformInt(tileShader.uDiffuse, &slot);
+
+        const i32 over = dbgFloorOver;
+        tileVertexMutex.lock();
+        i32 tileMeshId = 0;
+        for(i32 i = 0; i < MAX_TILE_ENTRIES; ++i) {
+            //i32 fid = i*2 + over;
+            i32 fid = i;
+            i32 tileId = floorTileIds[fid];
+            i32 x = i & 63;
+            i32 y = i / 64;
+            makeTileMesh(&tileVertexData[6 * (tileMeshId++)], tileId % 18, x, y, floorColor[fid]);
+        }
+        tileVertexMutex.unlock();
+
+        list.mutexLock(&tileVertexMutex);
+        list.arrayBufferSubData(&tileShader.vertexBuffer, 0, tileVertexData, sizeof(tileVertexData));
+        list.mutexUnlock(&tileVertexMutex);
+        renderer_pushCommandList(list);
+
+        list.bindVertexArray(&tileShader.vao);
+
+        // TODO: pack same texture calls or bind more textures
+        for(i32 i = 0; i < MAX_TILE_ENTRIES; ++i) {
+            list.textureSlot(tileGpuTexId[i], 0);
+            list.drawTriangles(i * 6, 6);
+
+            if(i % 200 == 0) {
+                renderer_pushCommandList(list);
+            }
+        }
+
+        renderer_pushCommandList(list);
+    }
+
     // NOTE: async (coming from another thread)
     // TODO: mutex?
     void receiveInput(const SDL_Event& event)
@@ -605,7 +750,8 @@ unsigned long thread_game(void*)
         client.dbguiNewFrameBegin();
         if(client.imguiSetup) {
             game.ui_textureBrowser();
-            game.ui_tileTest();
+            //game.ui_tileTest();
+            game.ui_floorTest();
             ui_videoInfo();
             //ImGui::ShowTestWindow();
         }
@@ -618,7 +764,8 @@ unsigned long thread_game(void*)
         list.clear();
         renderer_pushCommandList(list);
 
-        game.drawTestTiles();
+        //game.drawTestTiles();
+        game.drawFloorTest();
 
         list.queryVramInfo(&dedicated, &availMemory, &currentAvailMem, &evictionCount, &evictedMem);
         list.endFrame();

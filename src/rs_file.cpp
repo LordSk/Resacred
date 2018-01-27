@@ -563,14 +563,6 @@ bool bin_WorldRead(const char* filepath)
     return true;
 }
 
-struct FloorEntry
-{
-    i32 id;
-    i32 pakTileIds;
-    i32 varC;
-    i32 nextFloorId;
-};
-
 bool pak_FloorRead(const char* filepath)
 {
     FileBuffer fb = fileReadWhole(filepath);

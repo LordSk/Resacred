@@ -248,6 +248,16 @@ struct PakTile
 
 static_assert(sizeof(PakTile) == 64, "sizeof(Tile) != 64");
 
+struct FloorEntry
+{
+    i32 id;
+    i32 pakTileIds;
+    i32 varC;
+    i32 nextFloorId;
+};
+
+static_assert(sizeof(FloorEntry) == 16, "sizeof(FloorEntry) != 16");
+
 i32 zlib_decompress(const char* input, const i32 inputSize, u8* output, const i32 outputMaxSize,
                     i32* outputSize = nullptr);
 

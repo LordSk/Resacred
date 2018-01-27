@@ -292,6 +292,11 @@ Array<i32,64> _pakTexIdUpload;
 Array<u8*,64> _dataUpload;
 Array<PakTextureInfo,64> _texInfoUpload;
 
+MemBlock floorData;
+FloorEntry* floors;
+//const i32 floorCount = 10000;
+i32 floorEntryCount;
+
 enum class LoadStatus: i32 {
     NONE = 0,
     PROCESSED,
@@ -366,6 +371,10 @@ bool init()
     }
 
     if(!loadSectorKeyx()) {
+        return false;
+    }
+
+    if(!loadFloorData()) {
         return false;
     }
 
@@ -490,6 +499,31 @@ const SectorInfo& getSectorInfo(i32 sectorId)
     return sectorInfo[sectorId];
 }
 
+bool loadFloorData()
+{
+    FileBuffer fb = fileReadWhole("../sacred_data/Floor.PAK");
+    if(fb.error != FileError::NO_FILE_ERROR) {
+        return false;
+    }
+    defer(fb.block.dealloc());
+
+    u8* top = (u8*)fb.block.ptr;
+    PakHeader& header = *(PakHeader*)top;
+    floorEntryCount = header.entryCount-1;
+    PakSubFileDesc* fileDesc = (PakSubFileDesc*)(top + sizeof(PakHeader));
+
+    floorData = MEM_ALLOC(sizeof(*floors) * floorEntryCount);
+    assert(floorData.ptr);
+    floors = (FloorEntry*)floorData.ptr;
+
+    LOG_DBG("Resource> floorCount=%d floorData=%lldmb", floorEntryCount, floorData.size/(1024*1024));
+
+    top += fileDesc[1].offset;
+    memmove(floors, top, sizeof(FloorEntry) * floorEntryCount);
+
+    return true;
+}
+
 void deinit()
 {
     MEM_DEALLOC(textureMetaBlock);
@@ -498,6 +532,8 @@ void deinit()
     MEM_DEALLOC(tileTextureIdBlock);
     MEM_DEALLOC(sectorInfoBlock);
     MEM_DEALLOC(sectorDataBlock);
+    MEM_DEALLOC(floorData);
+
     fileClose(&fileTexture);
     gpu.deinit();
 }
@@ -647,10 +683,6 @@ void requestGpuTextures(const i32* pakTextureUIDs, u32** out_gpuHandles, const i
 
 
 
-
-
-
-
 static ResourceManager DR;
 
 bool resource_init()
@@ -706,4 +738,14 @@ i32 resource_getTextureCount()
 PakTextureInfo* resource_getTextureInfos()
 {
     return DR.textureInfo;
+}
+
+FloorEntry* resource_getFloors()
+{
+    return DR.floors;
+}
+
+i32 resource_getFloorCount()
+{
+    return DR.floorEntryCount;
 }

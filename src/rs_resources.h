@@ -39,3 +39,6 @@ u16* resource_getTileTextureIds18(); // Usage: textures[tileId/18]
 
 i32 resource_getTextureCount();
 PakTextureInfo* resource_getTextureInfos();
+
+FloorEntry* resource_getFloors();
+i32 resource_getFloorCount();
