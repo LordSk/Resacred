@@ -404,15 +404,24 @@ bool loadTileTextureIds()
     tileTextureId = (u16*)tileTextureIdBlock.ptr;
 
     PakSubFileDesc* fileDesc = (PakSubFileDesc*)(top + sizeof(PakHeader));
+    /*i32 lastTexId = -1;
+    i32 streak = 17;*/
+
     for(i32 i = 0; i < entryCount; ++i) {
         i32 offset = fileDesc[i].offset;
         PakTile* tile = (PakTile*)(top + offset);
-        /*LOG("[%d] off=0x%x filename=%32s texId=%d tileId=%d %d %d %d %d %d %d", i, offset,
-            tile->filename, tile->textureId, tile->tileId,
-            tile->_unknown[0], tile->_unknown[1], tile->_unknown[2], tile->_unknown[3], tile->_unknown[4],
-            tile->_unknown[5]);*/
         assert(i/18 < tileCount);
         tileTextureId[i/18] = tile->textureId;
+        /*if(lastTexId == tile->textureId) {
+            streak++;
+            assert(streak < 18);
+        }
+        else {
+            assert(streak == 17);
+            lastTexId = tile->textureId;
+            streak = 0;
+            LOG_DBG("tile %d newtexId=%d", i, tile->textureId);
+        }*/
     }
 
     LOG_SUCC("Resource> tiles.pak loaded");
@@ -512,7 +521,7 @@ bool loadFloorData()
 
     u8* top = (u8*)fb.block.ptr;
     PakHeader& header = *(PakHeader*)top;
-    floorEntryCount = header.entryCount-1;
+    floorEntryCount = header.entryCount;
     PakSubFileDesc* fileDesc = (PakSubFileDesc*)(top + sizeof(PakHeader));
 
     floorData = MEM_ALLOC(sizeof(*floors) * floorEntryCount);
@@ -521,7 +530,7 @@ bool loadFloorData()
 
     LOG_DBG("Resource> floorCount=%d floorData=%lldmb", floorEntryCount, floorData.size/(1024*1024));
 
-    top += fileDesc[1].offset;
+    top += fileDesc[0].offset;
     memmove(floors, top, sizeof(FloorEntry) * floorEntryCount);
 
     return true;
@@ -652,7 +661,7 @@ void requestTextures(const i32* pakTextureUIDs, const i32 requestCount)
 {
     for(i32 i = 0; i < requestCount; ++i) {
         const i32 texUID = pakTextureUIDs[i];
-        assert(texUID >= 0 && texUID < textureCount);
+        assert(texUID > 0 && texUID < textureCount);
         textureAge[texUID] = 0;
 
         if((LoadStatus)textureDiskLoadStatus[texUID].get() == LoadStatus::NONE &&

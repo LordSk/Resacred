@@ -48,6 +48,7 @@ SDL_GLContext glContext;
 Array<CommandList::Cmd,QUEUE_LIST_MAX> cmdList[QUEUE_COUNT];
 i32 fillingQueueId = 0;
 f64 frameTime = 0;
+timept framet0 = timeNow();
 
 bool initialized = false;
 Mutex queueMutex;
@@ -104,8 +105,6 @@ void handleQueue()
 {
     Window& client = *get_clientWindow();
     while(client.rdrRunning) {
-        auto t0 = timeNow();
-
         if(cmdList[fillingQueueId].count() == 0) {
             continue;
         }
@@ -265,8 +264,8 @@ void handleQueue()
                     i32 dataSize = (i32)(intptr_t)cmd.param[2];
                     i32 usage = (i32)(intptr_t)cmd.param[3];
 
-                    /*LOG_DBG("CT_ARRAY_BUFFER_DATA> buffer=%d data=%x dataSize=%d",
-                            buffer, data, dataSize);*/
+                    LOG_DBG("CT_ARRAY_BUFFER_DATA> buffer=%d data=%x dataSize=%d",
+                            buffer, data, dataSize);
 
                     assert(buffer != 0);
                     glBindBuffer(GL_ARRAY_BUFFER, buffer);
@@ -367,15 +366,11 @@ void handleQueue()
                     OGL_DBG_GROUP_END(IMGUI_GROUP);
 
                     client.swapBuffers();
-                    /*frameReady[frameRenderId] = false;
-                    frameRenderId = (frameRenderId + 1) % FRAME_COUNT;*/
-                    //LOG_DBG("Renderer> CT_END_FRAME");
+                    frameTime = timeDurSince(framet0);
+                    framet0 = timeNow();
                     break; }
 
                 case CommandList::CT_EXECUTE:
-                    /*frameReady[frameRenderId] = false;
-                    frameRenderId = (frameRenderId + 1) % FRAME_COUNT;*/
-                    //LOG_DBG("Renderer> CT_EXECUTE");
                     break;
                 default:
                     assert(0);
@@ -386,7 +381,6 @@ void handleQueue()
         OGL_DBG_GROUP_END(RENDERER_COMMAND_EXEC);
 
         cmdList[backQueueId].clearPOD();
-        frameTime = timeDurSince(t0);
     }
 }
 

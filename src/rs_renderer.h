@@ -214,7 +214,7 @@ struct CommandList
         cmds.pushPOD(&cmd, 1);
     }
 
-    inline void bufferData(GLuint* buffer, const void* data, i32 dataSize, GLenum usage) {
+    inline void arrayBufferData(GLuint* buffer, const void* data, i32 dataSize, GLenum usage) {
         Cmd cmd;
         cmd.type = CT_ARRAY_BUFFER_DATA;
         cmd.param[0] = (void*)buffer;

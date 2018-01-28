@@ -251,7 +251,7 @@ static_assert(sizeof(PakTile) == 64, "sizeof(Tile) != 64");
 struct FloorEntry
 {
     i32 id;
-    i32 pakTileIds;
+    u32 pakTileIds;
     i32 varC;
     i32 nextFloorId;
 };

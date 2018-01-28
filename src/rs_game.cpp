@@ -21,7 +21,7 @@
  * 1750
  * 1752
  * 2123
- * 4878
+ * 4859
  * 5351
 */
 
@@ -115,7 +115,7 @@ struct TileShader
     i32 uModelMatrix;
     i32 uDiffuse;
     GLuint vao;
-    GLuint vertexBuffer;
+    GLuint vbo;
 
     void loadAndCompile()
     {
@@ -156,25 +156,25 @@ struct TileShader
         u32 vertexShaderLen = strlen(vertexShader);
         u32 fragmentShaderLen = strlen(fragmentShader);
 
-        MemBlock shaderBuffers[2];
+        static MemBlock shaderBuffers[2];
         shaderBuffers[0].ptr = (void*)vertexShader;
         shaderBuffers[0].size = vertexShaderLen;
         shaderBuffers[1].ptr = (void*)fragmentShader;
         shaderBuffers[1].size = fragmentShaderLen;
 
-        const i32 types[] = { GL_VERTEX_SHADER, GL_FRAGMENT_SHADER };
+        constexpr i32 types[] = { GL_VERTEX_SHADER, GL_FRAGMENT_SHADER };
 
         CommandList list;
         list.createShaderAndCompile(shaderBuffers, types, 2, &program);
 
-        i32* locations[] = {&uViewMatrix, &uDiffuse, &uModelMatrix};
-        const char* uniformNames[] = {"uViewMatrix", "uDiffuse", "uModelMatrix"};
+        static i32* locations[] = {&uViewMatrix, &uDiffuse, &uModelMatrix};
+        static const char* uniformNames[] = {"uViewMatrix", "uDiffuse", "uModelMatrix"};
         list.getUniformLocations(&program, locations, uniformNames, sizeof(locations)/sizeof(locations[0]));
 
-        list.genBuffers(&vertexBuffer, 1);
         list.genVertexArrays(&vao, 1);
         list.bindVertexArray(&vao);
-        list.bindArrayBuffer(&vertexBuffer);
+        list.genBuffers(&vbo, 1);
+        list.bindArrayBuffer(&vbo);
 
         enum Location {
             POSITION = 0,
@@ -182,7 +182,7 @@ struct TileShader
             COLOR = 2,
         };
 
-        i32 indexes[] = {POSITION, UV, COLOR};
+        static i32 indexes[] = {POSITION, UV, COLOR};
         list.enableVertexAttribArrays(indexes, sizeof(indexes)/sizeof(Location));
 
         list.vertexAttribPointer(Location::POSITION, 2, GL_FLOAT, GL_FALSE, sizeof(TileVertex),
@@ -191,15 +191,15 @@ struct TileShader
                                 (GLvoid*)OFFSETOF(TileVertex, u));
         list.vertexAttribPointer(Location::COLOR, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(TileVertex),
                                 (GLvoid*)OFFSETOF(TileVertex, color));
-
-        RBarrier barrierShader;
-        list.barrier(&barrierShader, "Tile shader");
-        list.execute();
         renderer_pushCommandList(list);
-
-        renderer_waitForBarrier(&barrierShader);
     }
 };
+
+
+#define MAX_TILE_COUNT 4096
+
+static TileVertex tileVertexData[6 * MAX_TILE_COUNT];
+static TileVertex tileFloorVertexData[6 * MAX_TILE_COUNT];
 
 struct Game
 {
@@ -208,10 +208,12 @@ struct Game
     GLuint* texBrowser_texGpu[PAGE_TEXTURES_COUNT];
     i32 pageId = 0;
     i32 testTileLocalId = 0;
-    TileVertex tileVertexData[6 * 4096];
     MutexSpin tileVertexMutex;
+    MutexSpin tileFloorVertexMutex;
 
     TileShader tileShader;
+    GLuint vboBaseTileMesh;
+    GLuint vboFloorTileMesh;
 
     bool viewIsIso = true;
     mat4 viewIso;
@@ -222,8 +224,8 @@ struct Game
     i32 viewZMul = -1;
     MutexSpin viewMutex;
 
-    i32 dbgTileDrawCount = 4096;
-    i32 dbgSectorId = 3322;
+    i32 dbgTileDrawCount = MAX_TILE_COUNT;
+    i32 dbgSectorId = 4859;
     i32 loadedSectorId = -1;
     SectorxData* sectorData = nullptr;
     SectorInfo sectorInfo;
@@ -232,7 +234,7 @@ struct Game
     bool dbgFloorOver = 0;
     i32 dbgOverlayFloor = 0;
 
-    GLuint* gpuFloorTexs[400];
+    GLuint* gpuFloorTexs[MAX_TILE_COUNT];
     i32 floorTexCount = 0;
 
     enum {
@@ -269,7 +271,8 @@ struct Game
         tileShader.loadAndCompile();
 
         CommandList list;
-        list.bufferData(&tileShader.vertexBuffer, 0, sizeof(tileVertexData), GL_STATIC_DRAW);
+        list.arrayBufferData(&tileShader.vbo, 0, sizeof(tileVertexData) + sizeof(tileFloorVertexData),
+                             GL_DYNAMIC_DRAW);
         renderer_pushCommandList(list);
     }
 
@@ -295,15 +298,14 @@ struct Game
         if(!sectorData) return;
         floorTexCount = 0;
 
-        constexpr i32 MAX_TILE_ENTRIES = 4096;
-        i32 diskSectorTexs[400];
+        /*i32 diskSectorTexs[MAX_TILE_COUNT];
 
         FloorEntry* floors = resource_getFloors();
         const i32 floorCount = resource_getFloorCount();
         u16* tileTexIds = resource_getTileTextureIds18();
         WldxEntry* sectorEntries = sectorData->data;
 
-        for(i32 i = 0; i < MAX_TILE_ENTRIES; ++i) {
+        for(i32 i = 0; i < MAX_TILE_COUNT; ++i) {
             WldxEntry& we = sectorEntries[i];
             i32 tileId = sectorEntries[i].tileId;
             if(we.floorId && dbgOverlayFloor) {
@@ -311,22 +313,12 @@ struct Game
                 tileId = dbgOverlayFloor == 1 ?
                             floors[we.floorId].pakTileIds & 0x1FFFF : floors[we.floorId].pakTileIds >> 17;
                 i32 texId = tileTexIds[tileId/18];
-
-                bool found = false;
-                for(i32 j = 0; j < floorTexCount && !found; ++j) {
-                    if(diskSectorTexs[j] == texId) {
-                        found = true;
-                    }
-                }
-
-                if(!found) {
-                    diskSectorTexs[floorTexCount++] = texId;
-                    assert(floorTexCount <= 400);
-                }
+                diskSectorTexs[floorTexCount++] = texId;
+                assert(floorTexCount <= MAX_TILE_COUNT);
             }
         }
 
-        resource_requestGpuTextures(diskSectorTexs, gpuFloorTexs, floorTexCount);
+        resource_requestGpuTextures(diskSectorTexs, gpuFloorTexs, floorTexCount);*/
     }
 
     void ui_textureBrowser()
@@ -439,61 +431,51 @@ struct Game
 
     void drawTestTiles()
     {
-        constexpr i32 MAX_SECTOR_TEXTURE_COUNT = 300;
-        constexpr i32 MAX_TILE_ENTRIES = 4096;
-        i32 diskSectorTexs[MAX_SECTOR_TEXTURE_COUNT];
-        GLuint* gpuSectorTexs[MAX_SECTOR_TEXTURE_COUNT];
-        i32 sectorTextureCount = 0;
-        GLuint* tileGpuTexId[MAX_TILE_ENTRIES];
-        i32 sectorTileIds[MAX_TILE_ENTRIES];
-        i32 sectorTileTexIds[MAX_TILE_ENTRIES];
+        static GLuint* gpuBaseTex[MAX_TILE_COUNT];
+        static i32 baseTileIds[MAX_TILE_COUNT];
+        static i32 baseTileTexIds[MAX_TILE_COUNT];
 
-        FloorEntry* floors = resource_getFloors();
-        const i32 floorCount = resource_getFloorCount();
-        u16* tileTexIds = resource_getTileTextureIds18();
+        static GLuint* gpuFloorTex[MAX_TILE_COUNT];
+        static i32 floorTileIds[MAX_TILE_COUNT];
+        static i32 floorTileTexIds[MAX_TILE_COUNT];
+        static i32 floorPosIndex[MAX_TILE_COUNT];
+        i32 floorCount = 0;
+
+        const FloorEntry* floors = resource_getFloors();
+        const i32 floorMaxCount = resource_getFloorCount();
+        const u16* tileTexIds = resource_getTileTextureIds18();
         const i32 tileCount = resource_getTileCount18() * 18;
-        WldxEntry* sectorEntries = sectorData->data;
+        const WldxEntry* sectorEntries = sectorData->data;
 
-        for(i32 i = 0; i < MAX_TILE_ENTRIES; ++i) {
-            WldxEntry& we = sectorEntries[i];
+        for(i32 i = 0; i < MAX_TILE_COUNT; ++i) {
+            const WldxEntry& we = sectorEntries[i];
             i32 tileId = sectorEntries[i].tileId;
-            if(we.floorId && dbgOverlayFloor) {
-                assert(we.floorId < floorCount);
-                tileId = dbgOverlayFloor == 1 ?
-                            floors[we.floorId].pakTileIds & 0x1FFFF : floors[we.floorId].pakTileIds >> 17;
-            }
+            i32 texId = tileTexIds[tileId/18];
+            baseTileIds[i] = tileId;
+            baseTileTexIds[i] = texId;
             assert(tileId < tileCount);
 
-            i32 texId = tileTexIds[tileId/18];
+            if(we.floorId && dbgOverlayFloor) {
+                assert(we.floorId < floorMaxCount);
+                tileId = dbgOverlayFloor == 1 ?
+                            (floors[we.floorId].pakTileIds & 0x1FFFF) : (floors[we.floorId].pakTileIds >> 17);
 
-            sectorTileIds[i] = tileId;
-            sectorTileTexIds[i] = texId;
+                /*LOG_DBG("%d %x tileId1=%d tileId2=%d", i,
+                        floors[we.floorId].pakTileIds,
+                        floors[we.floorId].pakTileIds & 0x1FFFF,
+                        floors[we.floorId].pakTileIds >> 17);*/
 
-            bool found = false;
-            for(i32 j = 0; j < sectorTextureCount && !found; ++j) {
-                if(diskSectorTexs[j] == texId) {
-                    found = true;
-                }
-            }
-
-            if(!found) {
-                diskSectorTexs[sectorTextureCount++] = texId;
-                assert(sectorTextureCount <= MAX_SECTOR_TEXTURE_COUNT);
-            }
-        }
-
-        resource_requestGpuTextures(diskSectorTexs, gpuSectorTexs, sectorTextureCount);
-
-        // assign gpu textures to tiles
-        for(i32 i = 0; i < MAX_TILE_ENTRIES; ++i) {
-            i32 texId = sectorTileTexIds[i];
-
-            for(i32 j = 0; j < sectorTextureCount; ++j) {
-                if(diskSectorTexs[j] == texId) {
-                    tileGpuTexId[i] = gpuSectorTexs[j];
+                if(tileId > 0) {
+                    i32 fid = floorCount++;
+                    floorTileIds[fid] = tileId;
+                    floorTileTexIds[fid] = tileTexIds[tileId/18];
+                    floorPosIndex[fid] = i;
                 }
             }
         }
+
+        resource_requestGpuTextures(baseTileTexIds, gpuBaseTex, MAX_TILE_COUNT);
+        resource_requestGpuTextures(floorTileTexIds, gpuFloorTex, floorCount);
 
         CommandList list;
         list.useProgram(&tileShader.program);
@@ -522,7 +504,7 @@ struct Game
         for(i32 y = 0; y < 64; ++y) {
             for(i32 x = 0; x < 64; ++x) {
                 i32 id = y*64 + x;
-                WldxEntry& we = sectorEntries[id];
+                const WldxEntry& we = sectorEntries[id];
                 u32 color = 0xff000000;
 
                 switch(dbgViewMode) {
@@ -561,23 +543,46 @@ struct Game
                     }
                 }
 
-                makeTileMesh(&tileVertexData[6 * (tileMeshId++)], sectorTileIds[id] % 18, x, y, color);
+                makeTileMesh(&tileVertexData[6 * (tileMeshId++)], baseTileIds[id] % 18, x, y, color);
             }
+        }
+
+        tileMeshId = 0;
+        for(i32 i = 0; i < floorCount; ++i) {
+            i32 posIndx = floorPosIndex[i];
+            i32 x = posIndx & 63;
+            i32 y = posIndx / 64;
+            makeTileMesh(&tileFloorVertexData[6 * (tileMeshId++)], floorTileIds[i] % 18, x, y, 0xffffffff);
         }
         tileVertexMutex.unlock();
 
         list.mutexLock(&tileVertexMutex);
-        list.arrayBufferSubData(&tileShader.vertexBuffer, 0, tileVertexData, sizeof(tileVertexData));
+        list.arrayBufferSubData(&tileShader.vbo, 0, tileVertexData, sizeof(tileVertexData));
+        list.arrayBufferSubData(&tileShader.vbo, sizeof(tileVertexData), tileFloorVertexData,
+                                sizeof(tileVertexData[0]) * tileMeshId * 6);
         list.mutexUnlock(&tileVertexMutex);
         renderer_pushCommandList(list);
 
 
         list.bindVertexArray(&tileShader.vao);
 
+        // DRAW BASE TILE MESH
         // TODO: pack same texture calls or bind more textures
         for(i32 i = 0; i < dbgTileDrawCount; ++i) {
-            list.textureSlot(tileGpuTexId[i], 0);
+            list.textureSlot(gpuBaseTex[i], 0);
             list.drawTriangles(i * 6, 6);
+
+            if(i % 200 == 0) {
+                renderer_pushCommandList(list);
+            }
+        }
+
+        renderer_pushCommandList(list);
+
+        // DRAW FLOOR MESH
+        for(i32 i = 0; i < floorCount; ++i) {
+            list.textureSlot(gpuFloorTex[i], 0);
+            list.drawTriangles(MAX_TILE_COUNT * 6 + i * 6, 6);
 
             if(i % 200 == 0) {
                 renderer_pushCommandList(list);
@@ -589,23 +594,23 @@ struct Game
 
     void drawFloorTest()
     {
+#if 0
         constexpr i32 MAX_SECTOR_TEXTURE_COUNT = 3000;
-        constexpr i32 MAX_TILE_ENTRIES = 4096;
-        constexpr i32 MAX_TILE_ENTRIES_HALF = MAX_TILE_ENTRIES/2;
+        constexpr i32 MAX_TILE_COUNT_HALF = MAX_TILE_COUNT/2;
         i32 diskSectorTexs[MAX_SECTOR_TEXTURE_COUNT] = {};
         GLuint* gpuFloorTex[MAX_SECTOR_TEXTURE_COUNT];
         i32 floorTexCount = 0;
-        GLuint* tileGpuTexId[MAX_TILE_ENTRIES];
-        i32 floorTileIds[MAX_TILE_ENTRIES];
-        i32 floorTexIds[MAX_TILE_ENTRIES];
-        u32 floorColor[MAX_TILE_ENTRIES];
+        GLuint* tileGpuTexId[MAX_TILE_COUNT];
+        i32 floorTileIds[MAX_TILE_COUNT];
+        i32 floorTexIds[MAX_TILE_COUNT];
+        u32 floorColor[MAX_TILE_COUNT];
 
         u16* tileTexIds = resource_getTileTextureIds18();
         FloorEntry* floors = resource_getFloors();
         const i32 floorCount = resource_getFloorCount();
 
         i32 fid = dbgFloorOffset;
-        for(i32 i = 0; i < MAX_TILE_ENTRIES_HALF; ++i) {
+        for(i32 i = 0; i < MAX_TILE_COUNT_HALF; ++i) {
             assert(fid < floorCount);
 
             FloorEntry& fe = floors[fid];
@@ -651,7 +656,7 @@ struct Game
         resource_requestGpuTextures(diskSectorTexs, gpuFloorTex, floorTexCount);
 
         // assign gpu textures to tiles
-        for(i32 i = 0; i < MAX_TILE_ENTRIES; ++i) {
+        for(i32 i = 0; i < MAX_TILE_COUNT; ++i) {
             i32 texId = floorTexIds[i];
 
             for(i32 j = 0; j < floorTexCount; ++j) {
@@ -686,7 +691,7 @@ struct Game
         const i32 over = dbgFloorOver;
         tileVertexMutex.lock();
         i32 tileMeshId = 0;
-        for(i32 i = 0; i < MAX_TILE_ENTRIES; ++i) {
+        for(i32 i = 0; i < MAX_TILE_COUNT; ++i) {
             //i32 fid = i*2 + over;
             i32 fid = i;
             i32 tileId = floorTileIds[fid];
@@ -704,7 +709,7 @@ struct Game
         list.bindVertexArray(&tileShader.vao);
 
         // TODO: pack same texture calls or bind more textures
-        for(i32 i = 0; i < MAX_TILE_ENTRIES; ++i) {
+        for(i32 i = 0; i < MAX_TILE_COUNT; ++i) {
             list.textureSlot(tileGpuTexId[i], 0);
             list.drawTriangles(i * 6, 6);
 
@@ -714,6 +719,7 @@ struct Game
         }
 
         renderer_pushCommandList(list);
+#endif
     }
 
     // NOTE: async (coming from another thread)
@@ -776,7 +782,7 @@ void ui_videoInfo()
                  ImGuiWindowFlags_NoTitleBar|ImGuiWindowFlags_NoResize|
                  ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoSavedSettings);
 
-    ImGui::Text("Current/Total %dmb/%dmb", currentAvailMem/1024, availMemory/1024);
+    ImGui::Text("Current/Total %dmb/%dmb", (availMemory-currentAvailMem)/1024, availMemory/1024);
     ImGui::ProgressBar(1.0 - (currentAvailMem / (f64)availMemory));
     ImGui::Separator();
     ImGui::Text("Renderer frametime: %.5fms", renderer_getFrameTime() * 1000.0);
