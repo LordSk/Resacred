@@ -230,6 +230,10 @@ struct Game
 
     i32 dbgFloorOffset = 0;
     bool dbgFloorOver = 0;
+    i32 dbgOverlayFloor = 0;
+
+    GLuint* gpuFloorTexs[400];
+    i32 floorTexCount = 0;
 
     enum {
         MODE_NORMAL = 0,
@@ -284,6 +288,45 @@ struct Game
             texBrowser_texIds[i] = i + (pageId * PAGE_TEXTURES_COUNT) + 1;
         }
         resource_requestGpuTextures(texBrowser_texIds, texBrowser_texGpu, PAGE_TEXTURES_COUNT);
+    }
+
+    void requestFloorTextures()
+    {
+        if(!sectorData) return;
+        floorTexCount = 0;
+
+        constexpr i32 MAX_TILE_ENTRIES = 4096;
+        i32 diskSectorTexs[400];
+
+        FloorEntry* floors = resource_getFloors();
+        const i32 floorCount = resource_getFloorCount();
+        u16* tileTexIds = resource_getTileTextureIds18();
+        WldxEntry* sectorEntries = sectorData->data;
+
+        for(i32 i = 0; i < MAX_TILE_ENTRIES; ++i) {
+            WldxEntry& we = sectorEntries[i];
+            i32 tileId = sectorEntries[i].tileId;
+            if(we.floorId && dbgOverlayFloor) {
+                assert(we.floorId < floorCount);
+                tileId = dbgOverlayFloor == 1 ?
+                            floors[we.floorId].pakTileIds & 0x1FFFF : floors[we.floorId].pakTileIds >> 17;
+                i32 texId = tileTexIds[tileId/18];
+
+                bool found = false;
+                for(i32 j = 0; j < floorTexCount && !found; ++j) {
+                    if(diskSectorTexs[j] == texId) {
+                        found = true;
+                    }
+                }
+
+                if(!found) {
+                    diskSectorTexs[floorTexCount++] = texId;
+                    assert(floorTexCount <= 400);
+                }
+            }
+        }
+
+        resource_requestGpuTextures(diskSectorTexs, gpuFloorTexs, floorTexCount);
     }
 
     void ui_textureBrowser()
@@ -341,6 +384,8 @@ struct Game
 
         dbgSectorId = clamp(dbgSectorId, 1, 6049);
 
+        ImGui::SliderInt("Overlay floors", &dbgOverlayFloor, 0, 2);
+
 
         if(sectorData) {
             ImGui::Text("#%d (%s)", dbgSectorId, sectorData->name);
@@ -364,6 +409,14 @@ struct Game
                 sprintf(path, "sector_data.%d", dbgSectorId);
                 fileWriteBuffer(path, (const char*)sectorData, sectorInfo.uncompressedSize);
             }
+
+            ImGui::BeginChild("floor_textures");
+
+            for(i32 i = 0; i < floorTexCount; ++i) {
+                ImGui::Image((ImTextureID)(intptr_t)*gpuFloorTexs[i], ImVec2(256, 256));
+            }
+
+            ImGui::EndChild();
         }
 
         //ImGui::Image((ImTextureID)(intptr_t)resource_defaultGpuTexture(), ImVec2(256, 256));
@@ -388,17 +441,33 @@ struct Game
     {
         constexpr i32 MAX_SECTOR_TEXTURE_COUNT = 300;
         constexpr i32 MAX_TILE_ENTRIES = 4096;
-        i32 diskSectorTexs[MAX_SECTOR_TEXTURE_COUNT] = {};
+        i32 diskSectorTexs[MAX_SECTOR_TEXTURE_COUNT];
         GLuint* gpuSectorTexs[MAX_SECTOR_TEXTURE_COUNT];
         i32 sectorTextureCount = 0;
         GLuint* tileGpuTexId[MAX_TILE_ENTRIES];
+        i32 sectorTileIds[MAX_TILE_ENTRIES];
+        i32 sectorTileTexIds[MAX_TILE_ENTRIES];
 
+        FloorEntry* floors = resource_getFloors();
+        const i32 floorCount = resource_getFloorCount();
         u16* tileTexIds = resource_getTileTextureIds18();
+        const i32 tileCount = resource_getTileCount18() * 18;
         WldxEntry* sectorEntries = sectorData->data;
 
         for(i32 i = 0; i < MAX_TILE_ENTRIES; ++i) {
+            WldxEntry& we = sectorEntries[i];
             i32 tileId = sectorEntries[i].tileId;
+            if(we.floorId && dbgOverlayFloor) {
+                assert(we.floorId < floorCount);
+                tileId = dbgOverlayFloor == 1 ?
+                            floors[we.floorId].pakTileIds & 0x1FFFF : floors[we.floorId].pakTileIds >> 17;
+            }
+            assert(tileId < tileCount);
+
             i32 texId = tileTexIds[tileId/18];
+
+            sectorTileIds[i] = tileId;
+            sectorTileTexIds[i] = texId;
 
             bool found = false;
             for(i32 j = 0; j < sectorTextureCount && !found; ++j) {
@@ -417,8 +486,7 @@ struct Game
 
         // assign gpu textures to tiles
         for(i32 i = 0; i < MAX_TILE_ENTRIES; ++i) {
-            i32 tileId = sectorEntries[i].tileId;
-            i32 texId = tileTexIds[tileId/18];
+            i32 texId = sectorTileTexIds[i];
 
             for(i32 j = 0; j < sectorTextureCount; ++j) {
                 if(diskSectorTexs[j] == texId) {
@@ -453,7 +521,8 @@ struct Game
         i32 tileMeshId = 0;
         for(i32 y = 0; y < 64; ++y) {
             for(i32 x = 0; x < 64; ++x) {
-                WldxEntry& we = sectorEntries[y*64 + x];
+                i32 id = y*64 + x;
+                WldxEntry& we = sectorEntries[id];
                 u32 color = 0xff000000;
 
                 switch(dbgViewMode) {
@@ -485,13 +554,14 @@ struct Game
                         break;
 
                     case MODE_POS_INFO: {
-                        u32 red = clamp(we.posInfo % 64 * 5, 0, 255);
-                        u32 green = clamp(we.posInfo / 64 * 5, 0, 255);
-                        color = 0xff000000 | (green << 8) | red;
+                        if(we.floorId) {
+                            color = 0xffff00ff;
+                        }
                         break;
                     }
                 }
-                makeTileMesh(&tileVertexData[6 * (tileMeshId++)], we.tileId % 18, x, y, color);
+
+                makeTileMesh(&tileVertexData[6 * (tileMeshId++)], sectorTileIds[id] % 18, x, y, color);
             }
         }
         tileVertexMutex.unlock();
@@ -744,14 +814,15 @@ unsigned long thread_game(void*)
         resource_newFrame();
 
         game.requestTexBrowserTextures();
+        game.requestFloorTextures();
 
         // NOTE: dont push render command inside UI code
 #ifdef CONF_ENABLE_UI
         client.dbguiNewFrameBegin();
         if(client.imguiSetup) {
             game.ui_textureBrowser();
-            //game.ui_tileTest();
-            game.ui_floorTest();
+            game.ui_tileTest();
+            //game.ui_floorTest();
             ui_videoInfo();
             //ImGui::ShowTestWindow();
         }
@@ -764,8 +835,8 @@ unsigned long thread_game(void*)
         list.clear();
         renderer_pushCommandList(list);
 
-        //game.drawTestTiles();
-        game.drawFloorTest();
+        game.drawTestTiles();
+        //game.drawFloorTest();
 
         list.queryVramInfo(&dedicated, &availMemory, &currentAvailMem, &evictionCount, &evictedMem);
         list.endFrame();

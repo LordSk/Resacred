@@ -86,6 +86,10 @@ bool init()
     glClearColor(0.15f, 0.15f, 0.15f, 1.0f);
     glDisable(GL_CULL_FACE);
 
+    glEnable(GL_BLEND);
+    glBlendEquation(GL_FUNC_ADD);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
 #ifdef CONF_DEBUG
     glEnable(GL_DEBUG_OUTPUT);
     glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);

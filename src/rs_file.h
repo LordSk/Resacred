@@ -157,7 +157,7 @@ struct WldxEntry
     i32 tileId;
     i32 staticId;
     i32 entityId;
-    i32 posInfo;
+    i32 floorId;
     u8 rest[8];
     i8 smthX; // probably color related
     i8 smthY;

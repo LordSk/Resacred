@@ -36,6 +36,7 @@ u32 resource_defaultGpuTexture();
 SectorxData* resource_loadSector(i32 sectorId);
 const SectorInfo& resource_getSectorInfo(i32 sectorId);
 u16* resource_getTileTextureIds18(); // Usage: textures[tileId/18]
+i32 resource_getTileCount18(); // Real tile count: count * 18
 
 i32 resource_getTextureCount();
 PakTextureInfo* resource_getTextureInfos();

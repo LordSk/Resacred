@@ -278,6 +278,7 @@ MemBlock tempTextureBuffBlock;
 GPUResources gpu;
 
 u16* tileTextureId;
+i32 tileTextureIdCount;
 MemBlock tileTextureIdBlock;
 
 SectorInfo* sectorInfo;
@@ -395,7 +396,9 @@ bool loadTileTextureIds()
     PakHeader* header = (PakHeader*)top;
     const i32 entryCount = header->entryCount;
 
+
     const i32 tileCount = entryCount / 18 + 1;
+    tileTextureIdCount = tileCount;
     tileTextureIdBlock = MEM_ALLOC(sizeof(*tileTextureId) * tileCount);
     assert(tileTextureIdBlock.ptr);
     tileTextureId = (u16*)tileTextureIdBlock.ptr;
@@ -748,4 +751,9 @@ FloorEntry* resource_getFloors()
 i32 resource_getFloorCount()
 {
     return DR.floorEntryCount;
+}
+
+i32 resource_getTileCount18()
+{
+    return DR.tileTextureIdCount;
 }
