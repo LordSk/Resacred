@@ -208,9 +208,11 @@ struct TileShader
 
 
 #define MAX_TILE_COUNT 4096
+#define MAX_MIXED_QUAD 7168
 
 static TileVertex tileVertexData[6 * MAX_TILE_COUNT];
 static TileVertex tileFloorVertexData[6 * MAX_TILE_COUNT];
+static TileVertex mixedQuadMesh[6 * MAX_MIXED_QUAD];
 
 struct Game
 {
@@ -221,6 +223,7 @@ struct Game
     i32 testTileLocalId = 0;
     MutexSpin tileVertexMutex;
     MutexSpin tileFloorVertexMutex;
+    MutexSpin mixedQuadMeshMutex;
 
     TileShader tileShader;
     GLuint vboBaseTileMesh;
@@ -249,6 +252,7 @@ struct Game
     i32 floorTexCount = 0;
 
     i32 dbgMixedId = 0;
+    bool dbgShowMixed = false;
 
     enum {
         MODE_NORMAL = 0,
@@ -284,8 +288,10 @@ struct Game
         tileShader.loadAndCompile();
 
         CommandList list;
-        list.arrayBufferData(&tileShader.vbo, 0, sizeof(tileVertexData) + sizeof(tileFloorVertexData),
-                             GL_DYNAMIC_DRAW);
+        list.arrayBufferData(&tileShader.vbo, 0, sizeof(tileVertexData) +
+                             sizeof(tileFloorVertexData) +
+                             sizeof(mixedQuadMesh),
+                             GL_STATIC_DRAW);
         renderer_pushCommandList(list);
     }
 
@@ -464,19 +470,21 @@ struct Game
                 ImGui::EndChild();
             }
 
+            ImGui::Checkbox("Show mixed", &dbgShowMixed);
+
             if(ImGui::Button("Dump data to file")) {
                 char path[256];
                 sprintf(path, "sector_data.%d", dbgSectorId);
                 fileWriteBuffer(path, (const char*)sectorData, sectorInfo.uncompressedSize);
             }
 
-            ImGui::BeginChild("floor_textures");
+            /*ImGui::BeginChild("floor_textures");
 
             for(i32 i = 0; i < floorTexCount; ++i) {
                 ImGui::Image((ImTextureID)(intptr_t)*gpuFloorTexs[i], ImVec2(256, 256));
             }
 
-            ImGui::EndChild();
+            ImGui::EndChild();*/
         }
 
         //ImGui::Image((ImTextureID)(intptr_t)resource_defaultGpuTexture(), ImVec2(256, 256));
@@ -500,15 +508,25 @@ struct Game
     void ui_mixedViewer()
     {
         const i32 descCount = resource_getMixedDescsCount();
+        PakMixedDesc* desc = resource_getMixedDescs();
 
         ImGui::Begin("Mixed viewer");
 
         ImGui::Checkbox("Isometric view", &viewIsIso);
         ImGui::SliderInt("id", &dbgMixedId, 0, descCount);
         ImGui::InputInt("##id_input", &dbgMixedId);
-        ImGui::Text("%d", resource_getMixedDescs()[dbgMixedId].count);
+        ImGui::Text("%d", desc[dbgMixedId].count);
+
+        if(ImGui::Button("Skip 0s")) {
+            for(; dbgMixedId < descCount; dbgMixedId++) {
+                if(desc[dbgMixedId].count > 0) {
+                    break;
+                }
+            }
+        }
 
         dbgMixedId = clamp(dbgMixedId, 0, descCount);
+
 
         ImGui::End();
     }
@@ -525,11 +543,27 @@ struct Game
         static i32 floorPosIndex[MAX_TILE_COUNT];
         i32 floorCount = 0;
 
-        const FloorEntry* floors = resource_getFloors();
-        const i32 floorMaxCount = resource_getFloorCount();
+        static GLuint* gpuMixedQuadTex[MAX_MIXED_QUAD];
+        static i32 mixedQuadTexId[MAX_MIXED_QUAD];
+        i32 mixedQuadCount = 0;
+
+
+        const WldxEntry* sectorEntries = sectorData->data;
         const u16* tileTexIds = resource_getTileTextureIds18();
         const i32 tileCount = resource_getTileCount18() * 18;
-        const WldxEntry* sectorEntries = sectorData->data;
+
+        const FloorEntry* floors = resource_getFloors();
+        const i32 floorMaxCount = resource_getFloorCount();
+
+        const PakStatic* statics = resource_getStatic();
+        const PakMixedDesc* mixedDescs = resource_getMixedDescs();
+        const PakMixedData* mixed = resource_getMixedData();
+        const PakItemType* itemTypes = resource_getItemTypes();
+        const i32 mixedDescCount = resource_getMixedDescsCount();
+        const i32 staticCount = resource_getStaticCount();
+        const i32 itemTypeCount = resource_getItemTypesCount();
+
+        mixedQuadMeshMutex.lock();
 
         for(i32 i = 0; i < MAX_TILE_COUNT; ++i) {
             const WldxEntry& we = sectorEntries[i];
@@ -559,10 +593,45 @@ struct Game
                 }
                 floorId = floors[floorId].nextFloorId;
             }
+
+            if(we.staticId) {
+                assert(we.staticId < staticCount);
+                i32 itemTypeId = statics[we.staticId].itemTypeId;
+
+                if(itemTypeId) {
+                    assert(itemTypeId < itemTypeCount);
+                    i32 mixedId = itemTypes[itemTypeId].mixedId;
+
+                    if(mixedId && dbgShowMixed) {
+                        assert(mixedId < mixedDescCount);
+                        const i32 mcount = mixedDescs[mixedId].count;
+                        const i32 mixedStartId = mixedDescs[mixedId].mixedDataId;
+                        const f32 orgnX = (i & 63) * 53.65625;
+                        const f32 orgnY = (i / 63) * 53.65625;
+
+
+                        for(i32 m = 0; m < mcount; ++m) {
+                            const PakMixedData& md = mixed[m + mixedStartId];
+                            assert(mixedQuadCount < MAX_MIXED_QUAD);
+                            i32 mid = mixedQuadCount++;
+                            mixedQuadTexId[mid] = md.textureId;
+                            f32 x = md.x + orgnX;
+                            f32 y = md.y + orgnY;
+                            i32 w = md.width - md.x;
+                            i32 h = md.height - md.y;
+                            meshAddQuad(mixedQuadMesh + mid * 6, x, y, w, h, md.uvX1, md.uvY1,
+                                        md.uvX2, md.uvY2, 0xffffffff);
+                        }
+                    }
+                }
+            }
         }
+
+        mixedQuadMeshMutex.unlock();
 
         resource_requestGpuTextures(baseTileTexIds, gpuBaseTex, MAX_TILE_COUNT);
         resource_requestGpuTextures(floorTileTexIds, gpuFloorTex, floorCount);
+        resource_requestGpuTextures(mixedQuadTexId, gpuMixedQuadTex, mixedQuadCount);
 
         CommandList list;
         list.useProgram(&tileShader.program);
@@ -639,15 +708,25 @@ struct Game
             i32 posIndx = floorPosIndex[i];
             i32 x = posIndx & 63;
             i32 y = posIndx / 64;
-            makeTileMesh(&tileFloorVertexData[6 * (tileMeshId++)], floorTileIds[i] % 18, x, y, 0xffffffff);
+            makeTileMesh(&tileFloorVertexData[6 * i], floorTileIds[i] % 18, x, y, 0xffffffff);
         }
         tileVertexMutex.unlock();
 
         list.mutexLock(&tileVertexMutex);
-        list.arrayBufferSubData(&tileShader.vbo, 0, tileVertexData, sizeof(tileVertexData));
-        list.arrayBufferSubData(&tileShader.vbo, sizeof(tileVertexData), tileFloorVertexData,
-                                sizeof(tileVertexData[0]) * tileMeshId * 6);
+        i32 offset = 0;
+        list.arrayBufferSubData(&tileShader.vbo, offset, tileVertexData, sizeof(tileVertexData));
+        offset += sizeof(tileVertexData);
+
+        list.arrayBufferSubData(&tileShader.vbo, offset, tileFloorVertexData,
+                                sizeof(tileVertexData[0]) * floorCount * 6);
+        offset += sizeof(tileFloorVertexData[0]) * floorCount * 6;
         list.mutexUnlock(&tileVertexMutex);
+
+        list.mutexLock(&mixedQuadMeshMutex);
+        list.arrayBufferSubData(&tileShader.vbo, offset, mixedQuadMesh,
+                                sizeof(mixedQuadMesh[0]) * mixedQuadCount * 6);
+        list.mutexUnlock(&mixedQuadMeshMutex);
+
         renderer_pushCommandList(list);
 
 
@@ -669,9 +748,26 @@ struct Game
         list.setTransparencyEnabled(true);
 
         // DRAW FLOOR MESH
+        i32 vertOffset = MAX_TILE_COUNT * 6;
         for(i32 i = 0; i < floorCount; ++i) {
             list.textureSlot(gpuFloorTex[i], 0);
-            list.drawTriangles(MAX_TILE_COUNT * 6 + i * 6, 6);
+            list.drawTriangles(vertOffset + i * 6, 6);
+
+            if(i % 200 == 0) {
+                renderer_pushCommandList(list);
+            }
+        }
+
+        renderer_pushCommandList(list);
+
+        static mat4 mixedModel = mat4Scale(vec3f(1, 1, 1));
+        list.uniformMat4(tileShader.uModelMatrix, &mixedModel);
+
+        // DRAW MIXED MESH
+        vertOffset += floorCount * 6;
+        for(i32 i = 0; i < mixedQuadCount; ++i) {
+            list.textureSlot(gpuMixedQuadTex[i], 0);
+            list.drawTriangles(vertOffset + i * 6, 6);
 
             if(i % 200 == 0) {
                 renderer_pushCommandList(list);
@@ -1003,9 +1099,9 @@ unsigned long thread_game(void*)
         client.dbguiNewFrameBegin();
         if(client.imguiSetup) {
             game.ui_textureBrowser();
-            //game.ui_tileTest();
+            game.ui_tileTest();
             //game.ui_floorTest();
-            game.ui_mixedViewer();
+            //game.ui_mixedViewer();
             ui_videoInfo();
 
             //ImGui::ShowTestWindow();
@@ -1019,9 +1115,9 @@ unsigned long thread_game(void*)
         list.clear();
         renderer_pushCommandList(list);
 
-        //game.drawTestTiles();
+        game.drawTestTiles();
         //game.drawFloorTest();
-        game.drawTestMixed();
+        //game.drawTestMixed();
 
         list.queryVramInfo(&dedicated, &availMemory, &currentAvailMem, &evictionCount, &evictedMem);
         list.endFrame();
