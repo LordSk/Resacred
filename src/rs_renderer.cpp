@@ -87,7 +87,7 @@ bool init()
     glClearColor(0.15f, 0.15f, 0.15f, 1.0f);
     glDisable(GL_CULL_FACE);
 
-    glEnable(GL_BLEND);
+    //glEnable(GL_BLEND);
     glBlendEquation(GL_FUNC_ADD);
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
@@ -264,8 +264,8 @@ void handleQueue()
                     i32 dataSize = (i32)(intptr_t)cmd.param[2];
                     i32 usage = (i32)(intptr_t)cmd.param[3];
 
-                    LOG_DBG("CT_ARRAY_BUFFER_DATA> buffer=%d data=%x dataSize=%d",
-                            buffer, data, dataSize);
+                    /*LOG_DBG("CT_ARRAY_BUFFER_DATA> buffer=%d data=%x dataSize=%d",
+                            buffer, data, dataSize);*/
 
                     assert(buffer != 0);
                     glBindBuffer(GL_ARRAY_BUFFER, buffer);
@@ -319,6 +319,16 @@ void handleQueue()
                     i32 slot = (i32)(intptr_t)cmd.param[1];
                     glActiveTexture(GL_TEXTURE0 + slot);
                     glBindTexture(GL_TEXTURE_2D, textureId);
+                    break; }
+
+                case CommandList::CT_SET_TRANSPARENCY_ENABLED: {
+                    bool enabled = (bool)(intptr_t)cmd.param[0];
+                    if(enabled) {
+                        glEnable(GL_BLEND);
+                    }
+                    else {
+                        glDisable(GL_BLEND);
+                    }
                     break; }
 
                 case CommandList::CT_QUERY_VRAM_INFO: {

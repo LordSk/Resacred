@@ -76,6 +76,7 @@ struct Array
     }
 
     void reserve(u32 newCapacity) {
+        assert(allocator);
         if(newCapacity <= _capacity) return;
         MemBlock memblock = allocator->reallocate(_memBlock, newCapacity * sizeof(T), alignof(T));
         assert_msg(memblock.ptr, "Out of memory");
@@ -117,7 +118,7 @@ struct Array
     }
 
     T& pushPOD(const T* elements, const u32 eltCount = 1) {
-        if(_count + eltCount >= _capacity) {
+        if(_count + eltCount > _capacity) {
             reserve(max(_capacity * 2, _count + eltCount));
         }
 

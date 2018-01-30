@@ -43,3 +43,12 @@ PakTextureInfo* resource_getTextureInfos();
 
 FloorEntry* resource_getFloors();
 i32 resource_getFloorCount();
+
+PakStatic* resource_getStatic();
+i32 resource_getStaticCount();
+PakItemType* resource_getItemTypes();
+i32 resource_getItemTypesCount();
+
+PakMixedDesc* resource_getMixedDescs();
+i32 resource_getMixedDescsCount();
+PakMixedData* resource_getMixedData();

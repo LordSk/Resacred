@@ -202,8 +202,9 @@ struct GPUResources
             desc.magFilter = GL_NEAREST;
 
 
+            texLoaded[gpuId].increment();
             cmds.createTexture2D(&desc, &texGpuId[gpuId]);
-            cmds.counterIncrement(&texLoaded[gpuId]);
+            //cmds.counterIncrement(&texLoaded[gpuId]); // TODO: set loaded to 2
         }
         renderer_pushCommandList(cmds);
     }
@@ -298,6 +299,11 @@ FloorEntry* floors;
 //const i32 floorCount = 10000;
 i32 floorEntryCount;
 
+Array<PakStatic> statics;
+Array<PakItemType> itemTypes;
+
+PakMixedFileData mixed;
+
 enum class LoadStatus: i32 {
     NONE = 0,
     PROCESSED,
@@ -376,6 +382,18 @@ bool init()
     }
 
     if(!loadFloorData()) {
+        return false;
+    }
+
+    if(!pak_mixedRead(&mixed)) {
+        return false;
+    }
+
+    if(!pak_staticRead("../sacred_data/Static.pak", &statics)) {
+        return false;
+    }
+
+    if(!pak_itemRead("../sacred_data/items.pak", &itemTypes)) {
         return false;
     }
 
@@ -492,9 +510,7 @@ SectorxData* loadSectorData(i32 sectorId)
     assert(outputBlock.ptr);
     SectorxData* output = (SectorxData*)outputBlock.ptr;
 
-    fileReadFromPos(&fileSectors, fileOffset, compSize, fileBuffer);
-    i32 ret = zlib_decompress((char*)fileBuffer, compSize, (u8*)output, uncompSize);
-    assert(ret == 0); // Z_OK
+    deflateSectorData(&fileSectors, fileOffset, compSize, uncompSize, fileBuffer, (u8*)output);
 
 #if 0
     char path[256];
@@ -545,6 +561,7 @@ void deinit()
     MEM_DEALLOC(sectorInfoBlock);
     MEM_DEALLOC(sectorDataBlock);
     MEM_DEALLOC(floorData);
+    MEM_DEALLOC(mixed.block);
 
     fileClose(&fileTexture);
     gpu.deinit();
@@ -765,4 +782,39 @@ i32 resource_getFloorCount()
 i32 resource_getTileCount18()
 {
     return DR.tileTextureIdCount;
+}
+
+PakStatic* resource_getStatic()
+{
+    return DR.statics.data();
+}
+
+PakItemType* resource_getItemTypes()
+{
+    return DR.itemTypes.data();
+}
+
+i32 resource_getStaticCount()
+{
+    return DR.statics.count();
+}
+
+i32 resource_getItemTypesCount()
+{
+    return DR.itemTypes.count();
+}
+
+PakMixedDesc* resource_getMixedDescs()
+{
+    return DR.mixed.desc;
+}
+
+i32 resource_getMixedDescsCount()
+{
+    return DR.mixed.descCount;
+}
+
+PakMixedData* resource_getMixedData()
+{
+    return DR.mixed.mixed;
 }

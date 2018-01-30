@@ -68,6 +68,8 @@ struct CommandList
         CT_UNIFORM_MAT4,                // 18
         CT_TEXTURE_SLOT,                // 19
 
+        CT_SET_TRANSPARENCY_ENABLED,    // 20
+
         CT_QUERY_VRAM_INFO,
 
         CT_LOCK,
@@ -285,6 +287,13 @@ struct CommandList
         cmd.type = CT_TEXTURE_SLOT;
         cmd.param[0] = (void*)gpuTex;
         cmd.param[1] = (void*)(intptr_t)slot;
+        cmds.pushPOD(&cmd, 1);
+    }
+
+    inline void setTransparencyEnabled(bool enabled) {
+        Cmd cmd;
+        cmd.type = CT_SET_TRANSPARENCY_ENABLED;
+        cmd.param[0] = (void*)(intptr_t)enabled;
         cmds.pushPOD(&cmd, 1);
     }
 

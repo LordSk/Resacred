@@ -108,6 +108,17 @@ void makeTileMesh(TileVertex* mesh, i32 localTileId, f32 offsetX, f32 offsetY, u
     mesh[5] = TileVertex(0.0 + offsetX, 1.0 + offsetY, tileUV[localTileId][0].x, tileUV[localTileId][0].y, color);
 }
 
+void meshAddQuad(TileVertex* mesh, f32 x, f32 y, f32 width, f32 height, f32 uvX1, f32 uvY1, f32 uvX2, f32 uvY2,
+                 u32 color)
+{
+    mesh[0] = TileVertex(x        , y         , uvX1, uvY1, color);
+    mesh[1] = TileVertex(x + width, y         , uvX2, uvY1, color);
+    mesh[2] = TileVertex(x + width, y + height, uvX2, uvY2, color);
+    mesh[3] = TileVertex(x        , y         , uvX1, uvY1, color);
+    mesh[4] = TileVertex(x + width, y + height, uvX2, uvY2, color);
+    mesh[5] = TileVertex(x        , y + height, uvX1, uvY2, color);
+}
+
 struct TileShader
 {
     GLuint program;
@@ -237,6 +248,8 @@ struct Game
     GLuint* gpuFloorTexs[MAX_TILE_COUNT];
     i32 floorTexCount = 0;
 
+    i32 dbgMixedId = 0;
+
     enum {
         MODE_NORMAL = 0,
         MODE_STATIC,
@@ -325,7 +338,16 @@ struct Game
     {
 #if 1
         ImGui::Begin("Textures");
-        ImGui::SliderInt("page", &pageId, 0, resource_getTextureCount()/PAGE_TEXTURES_COUNT - 1);
+        ImGui::SliderInt("##page", &pageId, 0, resource_getTextureCount()/PAGE_TEXTURES_COUNT - 1);
+        //ImGui::SameLine();
+
+        static i32 searchTexId = 0;
+        ImGui::InputInt("##page_search", &searchTexId);
+        ImGui::SameLine();
+        if(ImGui::Button("Go")) {
+            searchTexId = clamp(searchTexId, 0, resource_getTextureCount());
+            pageId = searchTexId/PAGE_TEXTURES_COUNT;
+        }
 
         PakTextureInfo* texInfo = resource_getTextureInfos();
         ImGui::BeginChild("texture_list");
@@ -367,12 +389,13 @@ struct Game
 
 
         ImGui::SliderInt("Sector ID", &dbgSectorId, 1, 6049);
+        ImGui::InputInt("##sector_id_input", &dbgSectorId);
 
-        ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(10, 5));
+        /*ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(10, 5));
         if(ImGui::Button("-")) dbgSectorId--;
         ImGui::SameLine();
         if(ImGui::Button("+")) dbgSectorId++;
-        ImGui::PopStyleVar(1);
+        ImGui::PopStyleVar(1);*/
 
         dbgSectorId = clamp(dbgSectorId, 1, 6049);
 
@@ -394,6 +417,51 @@ struct Game
                         ImGui::Text("offset=%d", sectorData->heightData[i].offsetData);
                     }
                 }
+            }
+
+            if(ImGui::CollapsingHeader("Static")) {
+                ImGui::BeginChild("static_entries"/*, ImVec2(0, 300)*/);
+
+                const PakStatic* statics = resource_getStatic();
+                const PakItemType* itemTypes = resource_getItemTypes();
+                //const PakItemType* itemTypes = resource_getMixed();
+                const i32 staticsCount = resource_getStaticCount();
+                const i32 itemTypesCount = resource_getItemTypesCount();
+                char staticIdStr[256];
+
+
+                for(i32 i = 0; i < MAX_TILE_COUNT; ++i) {
+                    WldxEntry& we = sectorData->data[i];
+                    if(we.staticId) {
+                        assert(we.staticId < staticsCount);
+
+                        sprintf(staticIdStr, "#%d", we.staticId);
+                        if(ImGui::CollapsingHeader(staticIdStr)) {
+                            const PakStatic& s = statics[we.staticId];
+                            assert(s.itemTypeId < itemTypesCount);
+
+                            ImGui::Text("itemTypeId     : %d", s.itemTypeId);
+                            ImGui::Text("name           : %s", itemTypes[s.itemTypeId].grnName);
+                            ImGui::Text("mixedId        : %d", itemTypes[s.itemTypeId].mixedId);
+
+                            ImGui::Separator();
+
+                            ImGui::Text("field_8        : %d", s.field_8);
+                            ImGui::Text("field_C        : %d", s.field_C);
+                            ImGui::Text("field_E        : %d", s.field_E);
+                            ImGui::Text("field_12       : %d", s.field_12);
+                            ImGui::Text("unk_0          : %d", s.unk_0);
+                            ImGui::Text("parentId       : %d", s.parentId);
+                            ImGui::Text("anotherParentId: %d", s.anotherParentId);
+                            ImGui::Text("nextStaticId   : %d", s.nextStaticId);
+                            ImGui::Text("patchX         : %d", s.patchX);
+                            ImGui::Text("patchY         : %d", s.patchY);
+                            ImGui::Text("triggerId      : %d", s.triggerId);
+                        }
+                    }
+                }
+
+                ImGui::EndChild();
             }
 
             if(ImGui::Button("Dump data to file")) {
@@ -429,6 +497,22 @@ struct Game
         ImGui::End();
     }
 
+    void ui_mixedViewer()
+    {
+        const i32 descCount = resource_getMixedDescsCount();
+
+        ImGui::Begin("Mixed viewer");
+
+        ImGui::Checkbox("Isometric view", &viewIsIso);
+        ImGui::SliderInt("id", &dbgMixedId, 0, descCount);
+        ImGui::InputInt("##id_input", &dbgMixedId);
+        ImGui::Text("%d", resource_getMixedDescs()[dbgMixedId].count);
+
+        dbgMixedId = clamp(dbgMixedId, 0, descCount);
+
+        ImGui::End();
+    }
+
     void drawTestTiles()
     {
         static GLuint* gpuBaseTex[MAX_TILE_COUNT];
@@ -455,10 +539,11 @@ struct Game
             baseTileTexIds[i] = texId;
             assert(tileId < tileCount);
 
-            if(we.floorId && dbgOverlayFloor) {
-                assert(we.floorId < floorMaxCount);
+            i32 floorId = we.floorId;
+            while(floorId && dbgOverlayFloor) {
+                assert(floorId < floorMaxCount);
                 tileId = dbgOverlayFloor == 1 ?
-                            (floors[we.floorId].pakTileIds & 0x1FFFF) : (floors[we.floorId].pakTileIds >> 17);
+                            (floors[floorId].pakTileIds & 0x1FFFF) : (floors[floorId].pakTileIds >> 17);
 
                 /*LOG_DBG("%d %x tileId1=%d tileId2=%d", i,
                         floors[we.floorId].pakTileIds,
@@ -466,11 +551,13 @@ struct Game
                         floors[we.floorId].pakTileIds >> 17);*/
 
                 if(tileId > 0) {
+                    assert(floorCount < MAX_TILE_COUNT);
                     i32 fid = floorCount++;
                     floorTileIds[fid] = tileId;
                     floorTileTexIds[fid] = tileTexIds[tileId/18];
                     floorPosIndex[fid] = i;
                 }
+                floorId = floors[floorId].nextFloorId;
             }
         }
 
@@ -565,6 +652,7 @@ struct Game
 
 
         list.bindVertexArray(&tileShader.vao);
+        list.setTransparencyEnabled(false);
 
         // DRAW BASE TILE MESH
         // TODO: pack same texture calls or bind more textures
@@ -578,6 +666,7 @@ struct Game
         }
 
         renderer_pushCommandList(list);
+        list.setTransparencyEnabled(true);
 
         // DRAW FLOOR MESH
         for(i32 i = 0; i < floorCount; ++i) {
@@ -722,6 +811,89 @@ struct Game
 #endif
     }
 
+    void drawTestMixed()
+    {
+        constexpr i32 TEX_MAXCOUNT = 10;
+        constexpr i32 VERTICES_MAXCOUNT = 6 * 256;
+        static GLuint* gpuMixedTex[TEX_MAXCOUNT];
+        static i32 mixedTexIds[TEX_MAXCOUNT];
+        static TileVertex mixedMesh[VERTICES_MAXCOUNT];
+        i32 mixedTexCount = 0;
+        i32 mixedVertCount = 0;
+
+        const PakMixedDesc* descs = resource_getMixedDescs();
+        const PakMixedData* mixed = resource_getMixedData();
+        const i32 descCount = resource_getMixedDescsCount();
+
+        assert(dbgMixedId < descCount);
+        const i32 mixedCount = descs[dbgMixedId].count;
+        const i32 mixedStartId = descs[dbgMixedId].mixedDataId;
+
+        if(mixedCount == 0) {
+            return;
+        }
+
+        tileVertexMutex.lock();
+        for(i32 i = 0; i < mixedCount; ++i) {
+            const PakMixedData& md = mixed[i + mixedStartId];
+            mixedTexIds[mixedTexCount++] = md.textureId;
+
+            /*meshAddQuad(mixedMesh + mixedVertCount, md.x, md.y, md.width, md.height, md.uvX1, md.uvY1,
+                        md.uvX2, md.uvY2, 0xffffffff);*/
+            i32 w = md.width - md.x;
+            i32 h = md.height - md.y;
+            meshAddQuad(mixedMesh + mixedVertCount, md.x, md.y, w, h, md.uvX1, md.uvY1,
+                        md.uvX2, md.uvY2, 0xffffffff);
+            mixedVertCount += 6;
+        }
+        tileVertexMutex.unlock();
+
+        resource_requestGpuTextures(mixedTexIds, gpuMixedTex, mixedTexCount);
+
+        CommandList list;
+        list.useProgram(&tileShader.program);
+
+        viewMutex.lock();
+        viewIso = mat4Orthographic(0, 1600 * viewZoom, 900 * viewZoom, 0, -10000.f, 10000.f);
+        viewIso = mat4Mul(viewIso, mat4Translate(vec3f(-viewX, -viewY, 0)));
+        if(viewIsIso) {
+            viewIso = mat4Mul(viewIso, mat4RotateAxisX(VIEW_X_ANGLE));
+            viewIso = mat4Mul(viewIso, mat4RotateAxisZ(RS_HALFPI/2 * viewZMul));
+        }
+        viewMutex.unlock();
+
+        list.mutexLock(&viewMutex);
+        list.uniformMat4(tileShader.uViewMatrix, &viewIso);
+        list.mutexUnlock(&viewMutex);
+
+        static mat4 mixedModel = mat4Scale(vec3f(5, 5, 1));
+        list.uniformMat4(tileShader.uModelMatrix, &mixedModel);
+
+        static i32 slot = 0;
+        list.uniformInt(tileShader.uDiffuse, &slot);
+
+        list.mutexLock(&tileVertexMutex);
+        list.arrayBufferSubData(&tileShader.vbo, 0, mixedMesh, sizeof(mixedMesh[0]) * mixedVertCount);
+        list.mutexUnlock(&tileVertexMutex);
+        renderer_pushCommandList(list);
+
+
+        list.bindVertexArray(&tileShader.vao);
+        list.setTransparencyEnabled(true);
+
+        i32 quadCount = mixedVertCount / 6;
+        for(i32 i = 0; i < quadCount; ++i) {
+            list.textureSlot(gpuMixedTex[i], 0);
+            list.drawTriangles(i * 6, 6);
+
+            if(i % 200 == 0) {
+                renderer_pushCommandList(list);
+            }
+        }
+
+        renderer_pushCommandList(list);
+    }
+
     // NOTE: async (coming from another thread)
     // TODO: mutex?
     void receiveInput(const SDL_Event& event)
@@ -801,7 +973,11 @@ unsigned long thread_game(void*)
 
     renderer_waitForInit();
     client.dbguiWaitForInit();
-    resource_init();
+
+    if(!resource_init()) {
+        client.clientRunning = false;
+        return 1;
+    }
 
     Game game;
     pGame = &game;
@@ -827,9 +1003,11 @@ unsigned long thread_game(void*)
         client.dbguiNewFrameBegin();
         if(client.imguiSetup) {
             game.ui_textureBrowser();
-            game.ui_tileTest();
+            //game.ui_tileTest();
             //game.ui_floorTest();
+            game.ui_mixedViewer();
             ui_videoInfo();
+
             //ImGui::ShowTestWindow();
         }
         client.dbguiNewFrameEnd();
@@ -841,8 +1019,9 @@ unsigned long thread_game(void*)
         list.clear();
         renderer_pushCommandList(list);
 
-        game.drawTestTiles();
+        //game.drawTestTiles();
         //game.drawFloorTest();
+        game.drawTestMixed();
 
         list.queryVramInfo(&dedicated, &availMemory, &currentAvailMem, &evictionCount, &evictedMem);
         list.endFrame();

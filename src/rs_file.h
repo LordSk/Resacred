@@ -258,14 +258,117 @@ struct FloorEntry
 
 static_assert(sizeof(FloorEntry) == 16, "sizeof(FloorEntry) != 16");
 
-i32 zlib_decompress(const char* input, const i32 inputSize, u8* output, const i32 outputMaxSize,
-                    i32* outputSize = nullptr);
-
 bool pak_tilesRead(const char* filepath, DiskTiles* diskTiles);
 //bool pak_texturesRead(const char* filepath, DiskTextures* textures);
 bool bin_WorldRead(const char* filepath);
 bool pak_FloorRead(const char* filepath);
 bool keyx_sectorsRead(const char* keyx_filepath, const char* wldx_filepath, DiskSectors* diskSectors);
+void deflateSectorData(DiskFile* file, i32 offset, i32 compSize, i32 uncompSize, u8* outFileBuffer, u8* outData);
 
 bool pak_textureRead(char* fileBuff, i64 size, i32* out_width, i32* out_height, i32* out_type,
                      u8* out_data, i32* out_size, char* out_name);
+
+
+struct PakMixedDesc
+{
+    i32 count;
+    i32 unk[2];
+    i32 mixedDataId;
+};
+
+static_assert(sizeof(PakMixedDesc) == 16, "sizeof(PakMixedDesc) != 16");
+
+struct PakMixedData
+{
+    i32 textureId;
+    u16 width;
+    u16 height;
+    u16 x;
+    u16 y;
+    u16 unk[2];
+    f32 uvX1;
+    f32 uvY1;
+    f32 uvX2;
+    f32 uvY2;
+};
+
+static_assert(sizeof(PakMixedData) == 32, "sizeof(PakMixedData) != 32");
+
+struct PakMixedEntry
+{
+    char name[32];
+    PakMixedData data;
+};
+
+static_assert(sizeof(PakMixedEntry) == 64, "sizeof(PakMixedEntry) != 64");
+
+struct PakMixedFileData
+{
+    PakMixedDesc* desc;
+    PakMixedData* mixed;
+    i32 descCount = 0;
+    i32 mixedCount = 0;
+    MemBlock block;
+};
+
+bool pak_mixedRead(PakMixedFileData* out);
+
+#pragma pack(1)
+struct PakStatic
+{
+    i32 id;
+    i32 itemTypeId;
+    i32 field_8;
+    i16 field_C;
+    i32 field_E;
+    i32 field_12;
+    u8 unk_0;
+    i32 parentId;
+    i32 anotherParentId;
+    i32 nextStaticId;
+    i16 patchX;
+    i16 patchY;
+    i32 triggerId;
+    i8 field_2B;
+    i8 field_2C;
+    u8 layer;
+    i8 smthX;
+    i8 smthY;
+    i8 smthZ;
+    i8 field_31;
+    i8 field_32;
+    i8 field_33;
+    u8 unk_1;
+    i8 field_35;
+    i8 unk_2[10];
+};
+#pragma pack()
+
+//MESSAGE_SIZEOF(PakStatic);
+static_assert(sizeof(PakStatic) == 64, "sizeof(PakStatic) != 64");
+
+bool pak_staticRead(const char* path, Array<PakStatic>* out);
+
+#pragma pack(1)
+struct PakItemType
+{
+    i32 flags;
+    i32 int_1;
+    i32 itemTextureId;
+    i32 field_C;
+    i32 mixedId;
+    i32 field_14;
+    i32 spawnInfoId;
+    i32 field_1C;
+    i32 field_20;
+    i32 soundProfileId;
+    u8 unk[15];
+    char grnName[32];
+    u8 unk2[41];
+};
+#pragma pack()
+
+//MESSAGE_SIZEOF(PakItemType);
+static_assert(sizeof(PakItemType) == 128, "sizeof(PakItemType) != 128");
+
+bool pak_itemRead(const char* path, Array<PakItemType>* out);
