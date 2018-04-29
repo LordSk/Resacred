@@ -760,6 +760,9 @@ bool pak_mixedRead(PakMixedFileData* out)
 
             for(i32 m = 0; m < desc.count; ++m) {
                 out->mixed[out->mixedCount++] = ((PakMixedEntry*)(&desc + 1))[m].data;
+                PakMixedData& e = out->mixed[out->mixedCount-1];
+                assert(e.zero[0] == 0);
+                assert(e.zero[1] == 0);
             }
         }
     }

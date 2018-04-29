@@ -272,7 +272,10 @@ bool pak_textureRead(char* fileBuff, i64 size, i32* out_width, i32* out_height, 
 struct PakMixedDesc
 {
     i32 count;
-    i32 unk[2];
+    i16 width;
+    i16 height;
+    i16 offX;
+    i16 offY;
     i32 mixedDataId;
 };
 
@@ -285,7 +288,7 @@ struct PakMixedData
     u16 height;
     u16 x;
     u16 y;
-    u16 unk[2];
+    u16 zero[2]; // probably padding
     f32 uvX1;
     f32 uvY1;
     f32 uvX2;
