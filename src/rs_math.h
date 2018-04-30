@@ -1204,6 +1204,7 @@ inline vec4f& operator/=(vec4f& v, f32 scalar) {
 
 //
 // Matrix 4x4
+// Column-major
 //
 union alignas(16) mat4
 {
@@ -1418,10 +1419,13 @@ inline mat4 mat4Inv(mat4 mat) {
 
 inline vec3f vec3fMulMat4(vec3f vec, mat4 mat) {
     vec3f o;
-	f32* md = mat.data;
-	o.x = vec.x * md[0] + vec.y * md[4] + vec.z * md[8] + md[12];
+    f32*__restrict md = mat.data;
+    o.x = vec.x * md[0] + vec.y * md[4] + vec.z * md[8] + md[12];
 	o.y = vec.x * md[1] + vec.y * md[5] + vec.z * md[9] + md[13];
-	o.z = vec.x * md[2] + vec.y * md[6] + vec.z * md[10] + md[14];
+    o.z = vec.x * md[2] + vec.y * md[6] + vec.z * md[10] + md[14];
+    /*o.x = vec.x * md[0] + vec.y * md[1] + vec.z * md[2] + md[3];
+    o.y = vec.x * md[4] + vec.y * md[5] + vec.z * md[6] + md[7];
+    o.z = vec.x * md[8] + vec.y * md[9] + vec.z * md[10] + md[11];*/
 	return o;
 }
 
@@ -1460,7 +1464,7 @@ inline mat4 mat4RotateAxisX(f32 angle)
     return mat4{
 		1.f, 0.f, 0.f, 0.f,
 		0.f, cosf(angle), -sinf(angle), 0.f,
-		0.f, sinf(angle), cosf(angle), 0.f,
+        0.f, sinf(angle),  cosf(angle), 0.f,
 		0.f, 0.f, 0.f, 1.f
 	};
 }

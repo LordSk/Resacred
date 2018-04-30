@@ -7,6 +7,7 @@
 #include "imgui.h"
 #include "stb_image.h"
 #include "rs_resources.h"
+#include "rs_dbg_draw.h"
 
 
 
@@ -29,7 +30,6 @@
 // interesting texture page: 27 (minimap)
 
 #define PAGE_TEXTURES_COUNT 160
-#define OFFSETOF(TYPE, ELEMENT) ((size_t)&(((TYPE *)0)->ELEMENT))
 #define VIEW_X_ANGLE rs_radians(53.66563)
 #define TILE_WIDTH 64
 
@@ -234,8 +234,9 @@ f32 viewZoom = 1.0f;
 i32 viewZMul = -1;
 MutexSpin viewMutex;
 
+bool showUi = true;
 i32 dbgTileDrawCount = MAX_TILE_COUNT;
-i32 dbgSectorId = 1307;
+i32 dbgSectorId = 1317;
 i32 loadedSectorId = -1;
 SectorxData* sectorData = nullptr;
 SectorInfo sectorInfo;
@@ -252,7 +253,9 @@ bool dbgShowMixed = false;
 f32 dbgMixedOffX = 0.0;
 f32 dbgMixedOffY = 0.0;
 bool dbgMixedUseBaseOffset = false;
-f32 dbgTileWidth = 64.0f;
+bool dbgMixedUseStaticOffset = false;
+i32 dbgMixedObjMax = 1;
+f32 dbgTileWidth = 60.0f;
 
 enum {
     MODE_NORMAL = 0,
@@ -342,10 +345,12 @@ void ui_videoInfo()
 
 void ui_all()
 {
+    if(!showUi) return;
+
     ui_textureBrowser();
     ui_tileTest();
     //game.ui_floorTest();
-    //game.ui_mixedViewer();
+    ui_mixedViewer();
     ui_videoInfo();
 
     //ImGui::ShowTestWindow();
@@ -412,6 +417,8 @@ void ui_tileTest()
     ImGui::SliderFloat("mixOffX", &dbgMixedOffX, -200, 200, "%.1f");
     ImGui::SliderFloat("mixOffY", &dbgMixedOffY, -200, 200, "%.1f");
     ImGui::Checkbox("Mixed use base offset", &dbgMixedUseBaseOffset);
+    ImGui::Checkbox("Mixed use static offset", &dbgMixedUseStaticOffset);
+    ImGui::SliderInt("Mixed max objects drawn", &dbgMixedObjMax, 0, 4096);
 
     /*ImGui::PushStyleVar(ImGuiStyleVar_FramePadding, ImVec2(10, 5));
     if(ImGui::Button("-")) dbgSectorId--;
@@ -456,10 +463,14 @@ void ui_tileTest()
                 WldxEntry& we = sectorData->data[i];
                 if(we.staticId) {
                     assert(we.staticId < staticsCount);
+                    const PakStatic& s = statics[we.staticId];
+                    if(!itemTypes[s.itemTypeId].mixedId) {
+                        continue;
+                    }
 
                     sprintf(staticIdStr, "#%d", we.staticId);
                     if(ImGui::CollapsingHeader(staticIdStr)) {
-                        const PakStatic& s = statics[we.staticId];
+
                         assert(s.itemTypeId < itemTypesCount);
 
                         ImGui::Text("itemTypeId     : %d", s.itemTypeId);
@@ -470,8 +481,10 @@ void ui_tileTest()
 
                         ImGui::Text("field_8        : %d", s.field_8);
                         ImGui::Text("field_C        : %d", s.field_C);
-                        ImGui::Text("field_E        : %d", s.field_E);
-                        ImGui::Text("field_12       : %d", s.field_12);
+                        ImGui::Text("sx sy          : %d %d", s.sx, s.sy);
+                        ImGui::Text("field_E_2      : %d", s.field_E_2);
+                        ImGui::Text("s1x s1y        : %d %d", s.s1x, s.s1y);
+                        ImGui::Text("field_12_2     : %d", s.field_12_2);
                         ImGui::Text("unk_0          : %d", s.unk_0);
                         ImGui::Text("parentId       : %d", s.parentId);
                         ImGui::Text("anotherParentId: %d", s.anotherParentId);
@@ -479,6 +492,20 @@ void ui_tileTest()
                         ImGui::Text("patchX         : %d", s.patchX);
                         ImGui::Text("patchY         : %d", s.patchY);
                         ImGui::Text("triggerId      : %d", s.triggerId);
+
+                        ImGui::Separator();
+
+                        ImGui::Text("field_2B      : %d", s.field_2B);
+                        ImGui::Text("field_2C      : %d", s.field_2C);
+                        ImGui::Text("layer         : %d", s.layer);
+                        ImGui::Text("smthX         : %d", s.smthX);
+                        ImGui::Text("smthY         : %d", s.smthY);
+                        ImGui::Text("smthZ         : %d", s.smthZ);
+                        ImGui::Text("field_31      : %d", s.field_31);
+                        ImGui::Text("field_32      : %d", s.field_32);
+                        ImGui::Text("field_33      : %d", s.field_33);
+                        ImGui::Text("unk_1         : %d", s.unk_1);
+                        ImGui::Text("field_35      : %d", s.field_35);
                     }
                 }
             }
@@ -566,10 +593,8 @@ void ui_mixedViewer()
 
     ImGui::Begin("Mixed viewer");
 
-    ImGui::Checkbox("Isometric view", &viewIsIso);
     ImGui::SliderInt("id", &dbgMixedId, 0, descCount);
     ImGui::InputInt("##id_input", &dbgMixedId);
-    ImGui::Text("%d", desc[dbgMixedId].count);
 
     if(ImGui::Button("Skip 0s")) {
         for(; dbgMixedId < descCount; dbgMixedId++) {
@@ -580,7 +605,13 @@ void ui_mixedViewer()
     }
 
     dbgMixedId = clamp(dbgMixedId, 0, descCount);
+    const PakMixedDesc& d = desc[dbgMixedId];
 
+    ImGui::Text("count    : %d", d.count);
+    ImGui::Text("width    : %d", d.width);
+    ImGui::Text("height   : %d", d.height);
+    ImGui::Text("offx     : %d", d.offX);
+    ImGui::Text("offy     : %d", d.offY);
 
     ImGui::End();
 }
@@ -619,6 +650,8 @@ void drawTestTiles()
 
     mixedQuadMeshMutex.lock();
 
+    i32 mixedObjCount = 0;
+
     for(i32 i = 0; i < MAX_TILE_COUNT; ++i) {
         const WldxEntry& we = sectorEntries[i];
         i32 tileId = sectorEntries[i].tileId;
@@ -650,32 +683,40 @@ void drawTestTiles()
 
         if(we.staticId) {
             assert(we.staticId < staticCount);
-            i32 itemTypeId = statics[we.staticId].itemTypeId;
+            const PakStatic& sta = statics[we.staticId];
+            i32 itemTypeId = sta.itemTypeId;
+            const i32 staX = sta.sx;
+            const i32 staY = sta.sy;
 
             if(itemTypeId) {
                 assert(itemTypeId < itemTypeCount);
                 i32 mixedId = itemTypes[itemTypeId].mixedId;
 
-                if(mixedId && dbgShowMixed) {
+                if(mixedId && dbgShowMixed && mixedObjCount < dbgMixedObjMax) {
+                    mixedObjCount++;
                     assert(mixedId < mixedDescCount);
                     const PakMixedDesc& desc = mixedDescs[mixedId];
                     const i32 mcount = desc.count;
                     const i32 mixedStartId = desc.mixedDataId;
-                    const f32 orgnX = (i & 63) * dbgTileWidth;
-                    const f32 orgnY = (i / 63) * dbgTileWidth;
+                    const f32 orgnX = (i & 63) * dbgTileWidth + (staX * dbgMixedUseStaticOffset);
+                    const f32 orgnY = (i / 64) * dbgTileWidth + (staY * dbgMixedUseStaticOffset)
+                                      - desc.height;
                     vec3f orgnPosIso = vec3f(orgnX, orgnY, 0);
-                    if(viewIsIso) {
-                        orgnPosIso = posWorldToIso(vec3f(orgnX, orgnY, 0));
-                    }
+                    /*if(viewIsIso) {
+                        orgnPosIso = posWorldToIso(orgnPosIso);
+                    }*/
 
                     for(i32 m = 0; m < mcount; ++m) {
                         const PakMixedData& md = mixed[m + mixedStartId];
                         assert(mixedQuadCount < MAX_MIXED_QUAD);
                         i32 mid = mixedQuadCount++;
                         mixedQuadTexId[mid] = md.textureId;
-                        f32 x = (desc.offX * dbgMixedUseBaseOffset) + orgnPosIso.x + md.x + dbgMixedOffX;
+                        /*f32 x = (desc.offX * dbgMixedUseBaseOffset) + orgnPosIso.x + md.x + dbgMixedOffX
+                                 ;
                         f32 y = (desc.offY * dbgMixedUseBaseOffset) + orgnPosIso.y + md.y
-                                - desc.height + dbgMixedOffY;
+                                - desc.height + dbgMixedOffY;*/
+                        f32 x = orgnPosIso.x + md.x;
+                        f32 y = orgnPosIso.y + md.y;
                         i32 w = md.width - md.x;
                         i32 h = md.height - md.y;
                         meshAddQuad(mixedQuadMesh + mid * 6, x, y, w, h, md.uvX1, md.uvY1,
@@ -694,15 +735,6 @@ void drawTestTiles()
 
     CommandList list;
     list.useProgram(&tileShader.program);
-
-    /*viewMutex.lock();
-    matProjIso = mat4Orthographic(0, 1600 * viewZoom, 900 * viewZoom, 0, -10000.f, 10000.f);
-    matProjIso = mat4Mul(matProjIso, mat4Translate(vec3f(-viewX, -viewY, 0)));
-    if(viewIsIso) {
-        matProjIso = mat4Mul(matProjIso, mat4RotateAxisX(VIEW_X_ANGLE));
-        matProjIso = mat4Mul(matProjIso, mat4RotateAxisZ(RS_HALFPI/2 * viewZMul));
-    }
-    viewMutex.unlock();*/
 
     matProjOrtho = mat4Orthographic(0, winWidth * viewZoom, winHeight * viewZoom, 0, -10000.f, 10000.f);
     matViewIso = mat4Translate(vec3f(-viewX, -viewY, 0));
@@ -828,6 +860,12 @@ void drawTestTiles()
     renderer_pushCommandList(list);
 
     static mat4 mixedModel = mat4Scale(vec3f(1, 1, 1));
+    /*if(viewIsIso) {
+        mixedModel = mat4Mul(matIsoRotation, mat4Scale(vec3f(1, 1, 1)));
+    }
+    else {
+        mixedModel = mat4Scale(vec3f(1, 1, 1));
+    }*/
     list.uniformMat4(tileShader.uModelMatrix, &mixedModel);
 
     // DRAW MIXED MESH
@@ -976,77 +1014,77 @@ void drawFloorTest()
 
 void drawTestMixed()
 {
-    constexpr i32 TEX_MAXCOUNT = 10;
-    constexpr i32 VERTICES_MAXCOUNT = 6 * 256;
-    static GLuint* gpuMixedTex[TEX_MAXCOUNT];
-    static i32 mixedTexIds[TEX_MAXCOUNT];
-    static TileVertex mixedMesh[VERTICES_MAXCOUNT];
-    i32 mixedTexCount = 0;
-    i32 mixedVertCount = 0;
+    static GLuint* gpuMixedQuadTex[MAX_MIXED_QUAD];
+    static i32 mixedQuadTexId[MAX_MIXED_QUAD];
+    i32 mixedQuadCount = 0;
 
     const PakMixedDesc* descs = resource_getMixedDescs();
     const PakMixedData* mixed = resource_getMixedData();
     const i32 descCount = resource_getMixedDescsCount();
 
     assert(dbgMixedId < descCount);
-    const i32 mixedCount = descs[dbgMixedId].count;
+    const i32 mcount = descs[dbgMixedId].count;
     const i32 mixedStartId = descs[dbgMixedId].mixedDataId;
 
-    if(mixedCount == 0) {
+    if(mcount == 0) {
         return;
     }
 
-    tileVertexMutex.lock();
-    for(i32 i = 0; i < mixedCount; ++i) {
-        const PakMixedData& md = mixed[i + mixedStartId];
-        mixedTexIds[mixedTexCount++] = md.textureId;
+    mixedQuadMeshMutex.lock();
 
-        /*meshAddQuad(mixedMesh + mixedVertCount, md.x, md.y, md.width, md.height, md.uvX1, md.uvY1,
-                    md.uvX2, md.uvY2, 0xffffffff);*/
+    for(i32 m = 0; m < mcount; ++m) {
+        const PakMixedData& md = mixed[m + mixedStartId];
+        assert(mixedQuadCount < MAX_MIXED_QUAD);
+        i32 mid = mixedQuadCount++;
+        mixedQuadTexId[mid] = md.textureId;
+        f32 x = md.x;
+        f32 y = md.y;
         i32 w = md.width - md.x;
         i32 h = md.height - md.y;
-        meshAddQuad(mixedMesh + mixedVertCount, md.x, md.y, w, h, md.uvX1, md.uvY1,
+        meshAddQuad(mixedQuadMesh + mid * 6, x, y, w, h, md.uvX1, md.uvY1,
                     md.uvX2, md.uvY2, 0xffffffff);
-        mixedVertCount += 6;
     }
-    tileVertexMutex.unlock();
 
-    resource_requestGpuTextures(mixedTexIds, gpuMixedTex, mixedTexCount);
+    mixedQuadMeshMutex.unlock();
+
+    resource_requestGpuTextures(mixedQuadTexId, gpuMixedQuadTex, mixedQuadCount);
 
     CommandList list;
     list.useProgram(&tileShader.program);
 
-    viewMutex.lock();
-    matIsoRotation = mat4Orthographic(0, 1600 * viewZoom, 900 * viewZoom, 0, -10000.f, 10000.f);
-    matIsoRotation = mat4Mul(matIsoRotation, mat4Translate(vec3f(-viewX, -viewY, 0)));
+    matProjOrtho = mat4Orthographic(0, winWidth * viewZoom, winHeight * viewZoom, 0, -10000.f, 10000.f);
+    matViewIso = mat4Translate(vec3f(-viewX, -viewY, 0));
+
+    list.uniformMat4(tileShader.uProjMatrix, &matProjOrtho);
+    list.uniformMat4(tileShader.uViewMatrix, &matViewIso);
+
+    //testTileModel = mat4Scale(vec3f(53.65625, 53.65625, 1));
     if(viewIsIso) {
-        matIsoRotation = mat4Mul(matIsoRotation, mat4RotateAxisX(VIEW_X_ANGLE));
-        matIsoRotation = mat4Mul(matIsoRotation, mat4RotateAxisZ(RS_HALFPI/2 * viewZMul));
+        testTileModel = mat4Mul(matIsoRotation, mat4Scale(vec3f(dbgTileWidth, dbgTileWidth, 1)));
     }
-    viewMutex.unlock();
+    else {
+        testTileModel = mat4Scale(vec3f(dbgTileWidth, dbgTileWidth, 1));
+    }
+    list.uniformMat4(tileShader.uModelMatrix, &testTileModel);
 
-    list.mutexLock(&viewMutex);
-    list.uniformMat4(tileShader.uViewMatrix, &matIsoRotation);
-    list.mutexUnlock(&viewMutex);
-
-    static mat4 mixedModel = mat4Scale(vec3f(5, 5, 1));
+    static mat4 mixedModel = mat4Scale(vec3f(1, 1, 1));
     list.uniformMat4(tileShader.uModelMatrix, &mixedModel);
 
     static i32 slot = 0;
     list.uniformInt(tileShader.uDiffuse, &slot);
 
-    list.mutexLock(&tileVertexMutex);
-    list.arrayBufferSubData(&tileShader.vbo, 0, mixedMesh, sizeof(mixedMesh[0]) * mixedVertCount);
-    list.mutexUnlock(&tileVertexMutex);
+    list.mutexLock(&mixedQuadMeshMutex);
+    list.arrayBufferSubData(&tileShader.vbo, 0, mixedQuadMesh,
+                            sizeof(mixedQuadMesh[0]) * mixedQuadCount * 6);
+    list.mutexUnlock(&mixedQuadMeshMutex);
     renderer_pushCommandList(list);
 
 
     list.bindVertexArray(&tileShader.vao);
     list.setTransparencyEnabled(true);
 
-    i32 quadCount = mixedVertCount / 6;
-    for(i32 i = 0; i < quadCount; ++i) {
-        list.textureSlot(gpuMixedTex[i], 0);
+    for(i32 i = 0; i < mixedQuadCount; ++i) {
+        list.textureSlot(gpuMixedQuadTex[i], 0);
         list.drawTriangles(i * 6, 6);
 
         if(i % 200 == 0) {
@@ -1055,6 +1093,25 @@ void drawTestMixed()
     }
 
     renderer_pushCommandList(list);
+}
+
+void render()
+{
+    drawTestTiles();
+    //drawFloorTest();
+    //drawTestMixed();
+
+    matProjOrtho = mat4Orthographic(0, winWidth * viewZoom, winHeight * viewZoom, 0, -10000.f, 10000.f);
+    matViewIso = mat4Translate(vec3f(-viewX, -viewY, 0));
+    dbgDrawSetView(matProjOrtho, matViewIso);
+
+    vec3f testPos(100, 150, 0);
+    dbgDrawSolidSquare(testPos, vec3f(20, 20, 1), 0xff0000ff);
+    if(viewIsIso) {
+        testPos = posWorldToIso(testPos);
+    }
+
+    dbgDrawSolidSquare(testPos, vec3f(20, 20, 1), 0xff00ffff);
 }
 
 // NOTE: async (coming from another thread)
@@ -1075,6 +1132,11 @@ void receiveInput(const SDL_Event& event)
     }
     else if(event.type == SDL_MOUSEWHEEL) {
         input.mouseWheelRelY += event.wheel.y;
+    }
+    else if(event.type == SDL_KEYDOWN) {
+        if(event.key.keysym.sym == SDLK_w) {
+            showUi ^= 1;
+        }
     }
 }
 
@@ -1133,6 +1195,8 @@ unsigned long thread_game(void*)
     client.addInputCallback(receiveGameInput, &game);
     game.loadShaders();
 
+    dbgDrawInit();
+
     //pak_FloorRead("../sacred_data/Floor.pak");
     //bin_WorldRead("../sacred_data/World.bin");
 
@@ -1160,9 +1224,7 @@ unsigned long thread_game(void*)
         list.clear();
         renderer_pushCommandList(list);
 
-        game.drawTestTiles();
-        //game.drawFloorTest();
-        //game.drawTestMixed();
+        game.render();
 
         list.queryVramInfo(&dedicated, &availMemory, &currentAvailMem, &evictionCount, &evictedMem);
         list.endFrame();

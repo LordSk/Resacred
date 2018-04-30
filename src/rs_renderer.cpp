@@ -229,6 +229,7 @@ void handleQueue()
 
                     for(i32 i = 0; i < count; ++i) {
                         *locations[i] = glGetUniformLocation(program, unifromNames[i]);
+                        assert(*locations[i] != -1);
                     }
 
                     break; }

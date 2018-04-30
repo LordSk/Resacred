@@ -13,6 +13,8 @@
     #define OGL_DBG_GROUP_END(name)
 #endif
 
+#define OFFSETOF(TYPE, ELEMENT) ((size_t)&(((TYPE *)0)->ELEMENT))
+
 struct RBarrier
 {
     String32 name;

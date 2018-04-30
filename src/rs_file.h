@@ -323,8 +323,12 @@ struct PakStatic
     i32 itemTypeId;
     i32 field_8;
     i16 field_C;
-    i32 field_E;
-    i32 field_12;
+    i8 sx;
+    i8 sy;
+    i16 field_E_2;
+    i8 s1x;
+    i8 s1y;
+    i16 field_12_2;
     u8 unk_0;
     i32 parentId;
     i32 anotherParentId;
