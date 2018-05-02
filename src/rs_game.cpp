@@ -66,47 +66,48 @@ void initTileUVs()
 
 struct TileVertex
 {
-    f32 x, y;
+    f32 x, y, z;
     f32 u, v;
     u32 color;
 
     TileVertex() = default;
-    TileVertex(f32 _x, f32 _y, f32 _u, f32 _v, u32 _c) {
+    TileVertex(f32 _x, f32 _y, f32 _z, f32 _u, f32 _v, u32 _c) {
         x = _x;
         y = _y;
+        z = _z;
         u = _u;
         v = _v;
         color = _c;
     }
 };
 
-void makeTileMesh(TileVertex* mesh, i32 localTileId, f32 offsetX, f32 offsetY, u32 color)
+void makeTileMesh(TileVertex* mesh, i32 localTileId, f32 x, f32 y, f32 z, u32 color)
 {
     assert(localTileId >= 0 && localTileId < 18);
 
-    mesh[0] = TileVertex(0.0 + offsetX, 0.0 + offsetY, tileUV[localTileId][1].x,
+    mesh[0] = TileVertex(0.0 + x, 0.0 + y, z, tileUV[localTileId][1].x,
             tileUV[localTileId][1].y, color);
-    mesh[1] = TileVertex(1.0 + offsetX, 0.0 + offsetY, tileUV[localTileId][2].x,
+    mesh[1] = TileVertex(1.0 + x, 0.0 + y, z, tileUV[localTileId][2].x,
             tileUV[localTileId][2].y, color);
-    mesh[2] = TileVertex(1.0 + offsetX, 1.0 + offsetY, tileUV[localTileId][3].x,
+    mesh[2] = TileVertex(1.0 + x, 1.0 + y, z, tileUV[localTileId][3].x,
             tileUV[localTileId][3].y, color);
-    mesh[3] = TileVertex(0.0 + offsetX, 0.0 + offsetY, tileUV[localTileId][1].x,
+    mesh[3] = TileVertex(0.0 + x, 0.0 + y, z, tileUV[localTileId][1].x,
             tileUV[localTileId][1].y, color);
-    mesh[4] = TileVertex(1.0 + offsetX, 1.0 + offsetY, tileUV[localTileId][3].x,
+    mesh[4] = TileVertex(1.0 + x, 1.0 + y, z, tileUV[localTileId][3].x,
             tileUV[localTileId][3].y, color);
-    mesh[5] = TileVertex(0.0 + offsetX, 1.0 + offsetY, tileUV[localTileId][0].x,
+    mesh[5] = TileVertex(0.0 + x, 1.0 + y, z, tileUV[localTileId][0].x,
             tileUV[localTileId][0].y, color);
 }
 
-void meshAddQuad(TileVertex* mesh, f32 x, f32 y, f32 width, f32 height, f32 uvX1, f32 uvY1,
+void meshAddQuad(TileVertex* mesh, f32 x, f32 y, f32 z, f32 width, f32 height, f32 uvX1, f32 uvY1,
                  f32 uvX2, f32 uvY2, u32 color)
 {
-    mesh[0] = TileVertex(x        , y         , uvX1, uvY1, color);
-    mesh[1] = TileVertex(x + width, y         , uvX2, uvY1, color);
-    mesh[2] = TileVertex(x + width, y + height, uvX2, uvY2, color);
-    mesh[3] = TileVertex(x        , y         , uvX1, uvY1, color);
-    mesh[4] = TileVertex(x + width, y + height, uvX2, uvY2, color);
-    mesh[5] = TileVertex(x        , y + height, uvX1, uvY2, color);
+    mesh[0] = TileVertex(x        , y         , z, uvX1, uvY1, color);
+    mesh[1] = TileVertex(x + width, y         , z, uvX2, uvY1, color);
+    mesh[2] = TileVertex(x + width, y + height, z, uvX2, uvY2, color);
+    mesh[3] = TileVertex(x        , y         , z, uvX1, uvY1, color);
+    mesh[4] = TileVertex(x + width, y + height, z, uvX2, uvY2, color);
+    mesh[5] = TileVertex(x        , y + height, z, uvX1, uvY2, color);
 }
 
 struct TileShader
@@ -124,7 +125,7 @@ struct TileShader
         // ui shader
         constexpr const char* vertexShader = R"FOO(
             #version 330 core
-            layout(location = 0) in vec2 position;
+            layout(location = 0) in vec3 position;
             layout(location = 1) in vec2 uv;
             layout(location = 2) in vec4 color;
             uniform mat4 uProjMatrix;
@@ -138,7 +139,7 @@ struct TileShader
             {
                 vert_uv = uv;
                 vert_color = color;
-                gl_Position = uProjMatrix * uViewMatrix * uModelMatrix * vec4(position, 0.0, 1.0);
+                gl_Position = uProjMatrix * uViewMatrix * uModelMatrix * vec4(position, 1.0);
             }
             )FOO";
 
@@ -188,7 +189,7 @@ struct TileShader
         static i32 indexes[] = {POSITION, UV, COLOR};
         list.enableVertexAttribArrays(indexes, sizeof(indexes)/sizeof(Location));
 
-        list.vertexAttribPointer(Location::POSITION, 2, GL_FLOAT, GL_FALSE, sizeof(TileVertex),
+        list.vertexAttribPointer(Location::POSITION, 3, GL_FLOAT, GL_FALSE, sizeof(TileVertex),
                                 (GLvoid*)OFFSETOF(TileVertex, x));
         list.vertexAttribPointer(Location::UV, 2, GL_FLOAT, GL_FALSE, sizeof(TileVertex),
                                 (GLvoid*)OFFSETOF(TileVertex, u));
@@ -226,6 +227,7 @@ GLuint vboFloorTileMesh;
 bool viewIsIso = true;
 mat4 matProjOrtho;
 mat4 matIsoRotation;
+mat4 matViewOrtho;
 mat4 matViewIso;
 mat4 testTileModel;
 f32 viewX = 0;
@@ -281,6 +283,8 @@ struct {
     u8 mouseLeft = 0;
     u8 mouseRight = 0;
 
+    i32 mouseX = 0;
+    i32 mouseY = 0;
     i32 mouseRelX = 0;
     i32 mouseRelY = 0;
     i32 mouseWheelRelY = 0;
@@ -352,6 +356,15 @@ void ui_all()
     //game.ui_floorTest();
     ui_mixedViewer();
     ui_videoInfo();
+
+    ImGui::Begin("Mouse test");
+
+    const vec2f mpos(input.mouseX, input.mouseY);
+    const vec3f mWorldPos = screenToWorldPos(mpos);
+    ImGui::Text("mouse: %d %d", (i32)mpos.x, (i32)mpos.y);
+    ImGui::Text("world: %d %d", (i32)mWorldPos.x, (i32)mWorldPos.y);
+
+    ImGui::End();
 
     //ImGui::ShowTestWindow();
 }
@@ -698,13 +711,15 @@ void drawTestTiles()
                     const PakMixedDesc& desc = mixedDescs[mixedId];
                     const i32 mcount = desc.count;
                     const i32 mixedStartId = desc.mixedDataId;
-                    const f32 orgnX = (i & 63) * dbgTileWidth + (staX * dbgMixedUseStaticOffset);
-                    const f32 orgnY = (i / 64) * dbgTileWidth + (staY * dbgMixedUseStaticOffset)
-                                      - desc.height;
+                    const f32 orgnX = (i & 63) * dbgTileWidth;
+                    const f32 orgnY = (i / 64) * dbgTileWidth;
                     vec3f orgnPosIso = vec3f(orgnX, orgnY, 0);
-                    /*if(viewIsIso) {
+                    if(viewIsIso) {
                         orgnPosIso = posWorldToIso(orgnPosIso);
-                    }*/
+                    }
+
+                    dbgDrawSolidSquare(vec3fAdd(orgnPosIso, vec3f(0, -desc.height, 0)),
+                                       vec3f(desc.width, desc.height, 1), 0x7f00ff00);
 
                     for(i32 m = 0; m < mcount; ++m) {
                         const PakMixedData& md = mixed[m + mixedStartId];
@@ -715,11 +730,11 @@ void drawTestTiles()
                                  ;
                         f32 y = (desc.offY * dbgMixedUseBaseOffset) + orgnPosIso.y + md.y
                                 - desc.height + dbgMixedOffY;*/
-                        f32 x = orgnPosIso.x + md.x;
-                        f32 y = orgnPosIso.y + md.y;
+                        f32 x = orgnPosIso.x + md.x + (staX * dbgMixedUseStaticOffset);
+                        f32 y = orgnPosIso.y + md.y - desc.height + (staY * dbgMixedUseStaticOffset);
                         i32 w = md.width - md.x;
                         i32 h = md.height - md.y;
-                        meshAddQuad(mixedQuadMesh + mid * 6, x, y, w, h, md.uvX1, md.uvY1,
+                        meshAddQuad(mixedQuadMesh + mid * 6, x, y, 0.0, w, h, md.uvX1, md.uvY1,
                                     md.uvX2, md.uvY2, 0xffffffff);
                     }
                 }
@@ -736,19 +751,16 @@ void drawTestTiles()
     CommandList list;
     list.useProgram(&tileShader.program);
 
-    matProjOrtho = mat4Orthographic(0, winWidth * viewZoom, winHeight * viewZoom, 0, -10000.f, 10000.f);
-    matViewIso = mat4Translate(vec3f(-viewX, -viewY, 0));
-
     list.uniformMat4(tileShader.uProjMatrix, &matProjOrtho);
-    list.uniformMat4(tileShader.uViewMatrix, &matViewIso);
-
-    //testTileModel = mat4Scale(vec3f(53.65625, 53.65625, 1));
+    list.uniformMat4(tileShader.uViewMatrix, &matViewOrtho);
     if(viewIsIso) {
-        testTileModel = mat4Mul(matIsoRotation, mat4Scale(vec3f(dbgTileWidth, dbgTileWidth, 1)));
+        list.uniformMat4(tileShader.uViewMatrix, &matViewIso);
     }
     else {
-        testTileModel = mat4Scale(vec3f(dbgTileWidth, dbgTileWidth, 1));
+        list.uniformMat4(tileShader.uViewMatrix, &matViewOrtho);
     }
+
+    testTileModel = mat4Scale(vec3f(dbgTileWidth, dbgTileWidth, 1));
     list.uniformMat4(tileShader.uModelMatrix, &testTileModel);
 
     static i32 slot = 0;
@@ -798,7 +810,7 @@ void drawTestTiles()
                 }
             }
 
-            makeTileMesh(&tileVertexData[6 * (tileMeshId++)], baseTileIds[id] % 18, x, y, color);
+            makeTileMesh(&tileVertexData[6 * (tileMeshId++)], baseTileIds[id] % 18, x, y, 0.0, color);
         }
     }
 
@@ -807,7 +819,7 @@ void drawTestTiles()
         i32 posIndx = floorPosIndex[i];
         i32 x = posIndx & 63;
         i32 y = posIndx / 64;
-        makeTileMesh(&tileFloorVertexData[6 * i], floorTileIds[i] % 18, x, y, 0xffffffff);
+        makeTileMesh(&tileFloorVertexData[6 * i], floorTileIds[i] % 18, x, y, 0.0, 0xffffffff);
     }
     tileVertexMutex.unlock();
 
@@ -860,12 +872,7 @@ void drawTestTiles()
     renderer_pushCommandList(list);
 
     static mat4 mixedModel = mat4Scale(vec3f(1, 1, 1));
-    /*if(viewIsIso) {
-        mixedModel = mat4Mul(matIsoRotation, mat4Scale(vec3f(1, 1, 1)));
-    }
-    else {
-        mixedModel = mat4Scale(vec3f(1, 1, 1));
-    }*/
+    list.uniformMat4(tileShader.uViewMatrix, &matViewOrtho);
     list.uniformMat4(tileShader.uModelMatrix, &mixedModel);
 
     // DRAW MIXED MESH
@@ -1041,7 +1048,7 @@ void drawTestMixed()
         f32 y = md.y;
         i32 w = md.width - md.x;
         i32 h = md.height - md.y;
-        meshAddQuad(mixedQuadMesh + mid * 6, x, y, w, h, md.uvX1, md.uvY1,
+        meshAddQuad(mixedQuadMesh + mid * 6, x, y, 0.0, w, h, md.uvX1, md.uvY1,
                     md.uvX2, md.uvY2, 0xffffffff);
     }
 
@@ -1052,11 +1059,8 @@ void drawTestMixed()
     CommandList list;
     list.useProgram(&tileShader.program);
 
-    matProjOrtho = mat4Orthographic(0, winWidth * viewZoom, winHeight * viewZoom, 0, -10000.f, 10000.f);
-    matViewIso = mat4Translate(vec3f(-viewX, -viewY, 0));
-
     list.uniformMat4(tileShader.uProjMatrix, &matProjOrtho);
-    list.uniformMat4(tileShader.uViewMatrix, &matViewIso);
+    list.uniformMat4(tileShader.uViewMatrix, &matViewOrtho);
 
     //testTileModel = mat4Scale(vec3f(53.65625, 53.65625, 1));
     if(viewIsIso) {
@@ -1095,23 +1099,41 @@ void drawTestMixed()
     renderer_pushCommandList(list);
 }
 
+void updateCameraMatrices()
+{
+    matProjOrtho = mat4Orthographic(0, winWidth, winHeight, 0, -10000.f, 10000.f);
+    matViewOrtho = mat4Mul(
+                       mat4Scale(vec3f(1.0f/viewZoom, 1.0f/viewZoom, 1)),
+                       mat4Translate(vec3f(-viewX, -viewY, 0))
+                       );
+    matViewIso = mat4Mul(matViewOrtho, matIsoRotation);
+}
+
 void render()
 {
+    updateCameraMatrices();
+
     drawTestTiles();
     //drawFloorTest();
     //drawTestMixed();
 
-    matProjOrtho = mat4Orthographic(0, winWidth * viewZoom, winHeight * viewZoom, 0, -10000.f, 10000.f);
-    matViewIso = mat4Translate(vec3f(-viewX, -viewY, 0));
-    dbgDrawSetView(matProjOrtho, matViewIso);
+#if 1
+    dbgDrawSetView(matProjOrtho, mat4Identity(), DbgCoordSpace::SCREEN);
+    dbgDrawSetView(matProjOrtho, viewIsIso ? matViewIso : matViewOrtho, DbgCoordSpace::WORLD);
 
-    vec3f testPos(100, 150, 0);
-    dbgDrawSolidSquare(testPos, vec3f(20, 20, 1), 0xff0000ff);
-    if(viewIsIso) {
-        testPos = posWorldToIso(testPos);
-    }
+    const vec2f mpos(input.mouseX, input.mouseY);
+    const vec3f mWorldPos = screenToWorldPos(mpos); // actual world position
 
-    dbgDrawSolidSquare(testPos, vec3f(20, 20, 1), 0xff00ffff);
+    dbgDrawSolidSquare(vec3f(mpos.x, mpos.y, 0), vec3f(10, 10, 1), 0xff0000ff);
+    dbgDrawSolidSquare(mWorldPos, vec3f(20, 20, 1), 0xff00ffff, DbgCoordSpace::WORLD);
+
+    // origin
+    dbgDrawSolidSquare(vec3f(0,0,0), vec3f(200, 10, 10), 0xffff0000, DbgCoordSpace::WORLD);
+    dbgDrawSolidSquare(vec3f(0,0,0), vec3f(10, 200, 10), 0xff00ff00, DbgCoordSpace::WORLD);
+    dbgDrawSolidSquare(vec3f(0,0,0), vec3f(10, 10, 200), 0xff0000ff, DbgCoordSpace::WORLD);
+
+    dbgDrawRender();
+#endif
 }
 
 // NOTE: async (coming from another thread)
@@ -1127,6 +1149,8 @@ void receiveInput(const SDL_Event& event)
         input.mouseRight &= !(event.button.button == SDL_BUTTON_RIGHT);
     }
     else if(event.type == SDL_MOUSEMOTION) {
+        input.mouseX = event.motion.x;
+        input.mouseY = event.motion.y;
         input.mouseRelX += event.motion.xrel;
         input.mouseRelY += event.motion.yrel;
     }
@@ -1157,6 +1181,22 @@ void processInput()
     input.mouseRelX = 0;
     input.mouseRelY = 0;
     input.mouseWheelRelY = 0;
+}
+
+vec3f screenToWorldPos(const vec2f screenPos)
+{
+    mat4 mvp;
+    if(viewIsIso) {
+        mvp = mat4Mul(matProjOrtho, matViewIso);
+    }
+    else {
+        mvp = mat4Mul(matProjOrtho, matViewOrtho);
+    }
+
+    const mat4 inv = mat4Inv(mvp);
+    const vec4f v = vec4fMulMat4(vec4f((screenPos.x / winWidth * 2.0f) - 1.0f,
+                                       -((screenPos.y / winHeight * 2.0f) - 1.0f), 0.0, 1.0), inv);
+    return vec3fDiv(vec3f(v.x, v.y, v.z), v.w);
 }
 
 void deinit()

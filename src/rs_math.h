@@ -1285,8 +1285,8 @@ inline mat4 mat4Mul(const mat4& m1, const mat4& m2)
 
 inline mat4 mat4Inv(mat4 mat) {
     mat4 tmp;
-	f32* td = tmp.data;
-	const f32* md = mat.data;
+    f32*__restrict td = tmp.data;
+    const f32*__restrict md = mat.data;
 
 	td[0] = md[5]  * md[10] * md[15] -
 			md[5]  * md[11] * md[14] -
