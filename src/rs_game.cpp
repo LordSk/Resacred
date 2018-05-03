@@ -259,6 +259,9 @@ bool dbgMixedUseStaticOffset = false;
 i32 dbgMixedObjMax = 1;
 f32 dbgTileWidth = 60.0f;
 
+f32 dbgWorldSqX = 100.0f;
+f32 dbgWorldSqY = 100.0f;
+
 enum {
     MODE_NORMAL = 0,
     MODE_STATIC,
@@ -295,7 +298,7 @@ inline vec3f posWorldToIso(vec3f v)
     return vec3fMulMat4(v, matIsoRotation);
 }
 
-void loadShaders()
+void init()
 {
     tileShader.loadAndCompile();
 
@@ -362,7 +365,9 @@ void ui_all()
     const vec2f mpos(input.mouseX, input.mouseY);
     const vec3f mWorldPos = screenToWorldPos(mpos);
     ImGui::Text("mouse: %d %d", (i32)mpos.x, (i32)mpos.y);
-    ImGui::Text("world: %d %d", (i32)mWorldPos.x, (i32)mWorldPos.y);
+    ImGui::Text("world: %d %d %d", (i32)mWorldPos.x, (i32)mWorldPos.y, (i32)mWorldPos.z);
+    ImGui::SliderFloat("x", &dbgWorldSqX, 0.0, 5000.0);
+    ImGui::SliderFloat("y", &dbgWorldSqY, 0.0, 5000.0);
 
     ImGui::End();
 
@@ -1104,7 +1109,7 @@ void updateCameraMatrices()
     matProjOrtho = mat4Orthographic(0, winWidth, winHeight, 0, -10000.f, 10000.f);
     matViewOrtho = mat4Mul(
                        mat4Scale(vec3f(1.0f/viewZoom, 1.0f/viewZoom, 1)),
-                       mat4Translate(vec3f(-viewX, -viewY, 0))
+                       mat4Translate(vec3f(-viewX, -viewY, 1))
                        );
     matViewIso = mat4Mul(matViewOrtho, matIsoRotation);
 }
@@ -1124,13 +1129,15 @@ void render()
     const vec2f mpos(input.mouseX, input.mouseY);
     const vec3f mWorldPos = screenToWorldPos(mpos); // actual world position
 
-    dbgDrawSolidSquare(vec3f(mpos.x, mpos.y, 0), vec3f(10, 10, 1), 0xff0000ff);
-    dbgDrawSolidSquare(mWorldPos, vec3f(20, 20, 1), 0xff00ffff, DbgCoordSpace::WORLD);
+    dbgDrawSolidSquare(vec3f(mpos.x, mpos.y, 1000), vec3f(10, 10, 0), 0xff0000ff);
+    dbgDrawSolidSquare(mWorldPos, vec3f(20, 20, 0), 0xff00ffff, DbgCoordSpace::WORLD);
 
     // origin
-    dbgDrawSolidSquare(vec3f(0,0,0), vec3f(200, 10, 10), 0xffff0000, DbgCoordSpace::WORLD);
-    dbgDrawSolidSquare(vec3f(0,0,0), vec3f(10, 200, 10), 0xff00ff00, DbgCoordSpace::WORLD);
-    dbgDrawSolidSquare(vec3f(0,0,0), vec3f(10, 10, 200), 0xff0000ff, DbgCoordSpace::WORLD);
+    dbgDrawSolidSquare(vec3f(0,0,0), vec3f(200, 10, 1), 0xffff0000, DbgCoordSpace::WORLD);
+    dbgDrawSolidSquare(vec3f(0,0,0), vec3f(10, 200, 1), 0xff00ff00, DbgCoordSpace::WORLD);
+    dbgDrawSolidSquare(vec3f(0,0,0), vec3f(10, 10, 1), 0xff0000ff, DbgCoordSpace::WORLD);
+
+    dbgDrawSolidSquare(vec3f(dbgWorldSqX,dbgWorldSqY,0), vec3f(10, 10, 1), 0xffff00ff, DbgCoordSpace::WORLD);
 
     dbgDrawRender();
 #endif
@@ -1183,6 +1190,7 @@ void processInput()
     input.mouseWheelRelY = 0;
 }
 
+// project to z=0 plane
 vec3f screenToWorldPos(const vec2f screenPos)
 {
     mat4 mvp;
@@ -1196,7 +1204,20 @@ vec3f screenToWorldPos(const vec2f screenPos)
     const mat4 inv = mat4Inv(mvp);
     const vec4f v = vec4fMulMat4(vec4f((screenPos.x / winWidth * 2.0f) - 1.0f,
                                        -((screenPos.y / winHeight * 2.0f) - 1.0f), 0.0, 1.0), inv);
-    return vec3fDiv(vec3f(v.x, v.y, v.z), v.w);
+    const vec3f camWorldPos = vec3fDiv(vec3f(v.x, v.y, v.z), v.w);
+
+
+    if(viewIsIso) {
+        // inverse rotation
+        quat camRot = quatMul(quatAxisRotation(vec3f(0, 0, 1), -RS_HALFPI/2),
+                              quatAxisRotation(vec3f(1, 0, 0), VIEW_X_ANGLE));
+        camRot = rs_normalize(camRot);
+        vec3f camDir = rs_normalize(quatRotateVec3(vec3f(0, 0, -1), camRot));
+        f32 d = rs_dot(vec3fMinus(camWorldPos), vec3f(0,0,1)) / rs_dot(camDir, vec3f(0,0,1));
+        return vec3fAdd(camWorldPos, vec3fMul(camDir, d));
+    }
+
+    return vec3f(camWorldPos.x, camWorldPos.y, 0);
 }
 
 void deinit()
@@ -1233,7 +1254,7 @@ unsigned long thread_game(void*)
     pGame = &game;
 
     client.addInputCallback(receiveGameInput, &game);
-    game.loadShaders();
+    game.init();
 
     dbgDrawInit();
 

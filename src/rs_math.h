@@ -1564,7 +1564,7 @@ inline vec3f operator*(const vec3f& v, const mat4& m) {
 }
 #endif
 
-union alignas(16) rs_Quat
+union alignas(16) quat
 {
 	struct { f32 x, y, z, w; };
 	f32 data[4];
@@ -1572,14 +1572,14 @@ union alignas(16) rs_Quat
 	__m128 wide;
 #endif
 
-	constexpr rs_Quat(): data{0.f, 0.f, 0.f, 1.f}{}
+    constexpr quat(): data{0.f, 0.f, 0.f, 1.f}{}
 
-	constexpr rs_Quat(f32 x_, f32 y_, f32 z_, f32 w_)
+    constexpr quat(f32 x_, f32 y_, f32 z_, f32 w_)
 	: data{x_, y_, z_, w_} {
 	}
 };
 
-inline rs_Quat rs_normalize(rs_Quat quat) {
+inline quat rs_normalize(quat quat) {
 	f32 lengthInv = 1.f / sqrtf(quat.x * quat.x + quat.y * quat.y + quat.z * quat.z + quat.w * quat.w);
 	quat.x *= lengthInv;
 	quat.y *= lengthInv;
@@ -1588,16 +1588,16 @@ inline rs_Quat rs_normalize(rs_Quat quat) {
 	return quat;
 }
 
-inline bool rs_QuatIsNull(const rs_Quat& quat) {
+inline bool quatIsNull(const quat& quat) {
 	return (quat.x == 0 && quat.y == 0 && quat.z && quat.w == 1.f);
 }
 
-inline rs_Quat rs_QuatConjugate(rs_Quat q) {
+inline quat quatConjugate(quat q) {
 	return {-q.x, -q.y, -q.z, q.w};
 }
 
-inline rs_Quat rs_QuatAxisRotation(vec3f axis, f32 angle) {
-	rs_Quat quat;
+inline quat quatAxisRotation(vec3f axis, f32 angle) {
+    quat quat;
 	f32 sa = sinf(angle * 0.5f);
 	quat.x = axis.x * sa;
 	quat.y = axis.y * sa;
@@ -1607,8 +1607,8 @@ inline rs_Quat rs_QuatAxisRotation(vec3f axis, f32 angle) {
 	return quat;
 }
 
-inline rs_Quat rs_QuatGetRotVec3(vec3f v1, vec3f v2) {
-	rs_Quat quat;
+inline quat quatGetRotVec3(vec3f v1, vec3f v2) {
+    quat quat;
     vec3f c = rs_cross(v1, v2);
 	quat.x = c.x;
 	quat.y = c.y;
@@ -1617,7 +1617,7 @@ inline rs_Quat rs_QuatGetRotVec3(vec3f v1, vec3f v2) {
 	return rs_normalize(quat);
 }
 
-inline mat4 rs_QuatMatrix(const rs_Quat& quat) {
+inline mat4 quatMatrix(const quat& quat) {
 	f32 xx = quat.x * quat.x;
 	f32 xy = quat.x * quat.y;
 	f32 xz = quat.x * quat.z;
@@ -1653,7 +1653,7 @@ inline mat4 rs_QuatMatrix(const rs_Quat& quat) {
 	};
 }
 
-inline rs_Quat rs_QuatMul(rs_Quat qa, rs_Quat qb) {
+inline quat quatMul(quat qa, quat qb) {
 	// Grassman product (equivalent methods)
 #if 0
     vec3f qav{qa.x, qa.y, qa.z};
@@ -1662,7 +1662,7 @@ inline rs_Quat rs_QuatMul(rs_Quat qa, rs_Quat qb) {
 							  rs_cross(qav, qbv));
 	return {qv.x, qv.y, qv.z, qa.w * qb.w - rs_dot(qav, qbv)};
 #endif
-	rs_Quat quat;
+    quat quat;
 	quat.x = qa.w * qb.x + qa.x * qb.w + qa.y * qb.z - qa.z * qb.y;
 	quat.y = qa.w * qb.y + qa.y * qb.w + qa.z * qb.x - qa.x * qb.z;
 	quat.z = qa.w * qb.z + qa.z * qb.w + qa.x * qb.y - qa.y * qb.x;
@@ -1680,9 +1680,9 @@ inline rs_Quat& operator*=(rs_Quat& q, const rs_Quat& other) {
 }
 #endif
 
-inline vec3f rs_QuatRotateVec3(vec3f vec, rs_Quat quat) {
-	rs_Quat qvec = {vec.x, vec.y, vec.z, 0};
-	qvec = rs_QuatMul(rs_QuatMul(quat, qvec), rs_QuatConjugate(quat));
+inline vec3f quatRotateVec3(vec3f vec, quat q) {
+    quat qvec = {vec.x, vec.y, vec.z, 0};
+    qvec = quatMul(quatMul(q, qvec), quatConjugate(q));
 	return {qvec.x, qvec.y, qvec.z};
 }
 
