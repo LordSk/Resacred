@@ -369,9 +369,17 @@ struct PakItemType
     i32 field_1C;
     i32 field_20;
     i32 soundProfileId;
-    u8 unk[15];
-    char grnName[32];
-    u8 unk2[41];
+    u8 unk[4];
+    u16 unk3;
+    u8 category;
+    u8 unk4[8];
+    char nameStr[32];
+    i16 field_57;
+    i16 field_59;
+    i16 someVectorId;
+    i16 marginX;
+    i16 marginY;
+    u8 unk2[31];
 };
 #pragma pack()
 

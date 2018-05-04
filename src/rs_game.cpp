@@ -68,46 +68,89 @@ struct TileVertex
 {
     f32 x, y, z;
     f32 u, v;
+    f32 amu, amv; // alpha mask UV
     u32 color;
 
     TileVertex() = default;
-    TileVertex(f32 _x, f32 _y, f32 _z, f32 _u, f32 _v, u32 _c) {
+    TileVertex(f32 _x, f32 _y, f32 _z, f32 _u, f32 _v, f32 _amu, f32 _amv, u32 _c) {
         x = _x;
         y = _y;
         z = _z;
         u = _u;
         v = _v;
+        amu = _amu;
+        amv = _amv;
         color = _c;
     }
 };
 
-void makeTileMesh(TileVertex* mesh, i32 localTileId, f32 x, f32 y, f32 z, u32 color)
+void makeTileMesh(TileVertex* mesh, i32 localTileId, f32 x, f32 y, f32 z, u32 color, i32 alphaMaskTileId = 0)
 {
     assert(localTileId >= 0 && localTileId < 18);
 
-    mesh[0] = TileVertex(0.0 + x, 0.0 + y, z, tileUV[localTileId][1].x,
-            tileUV[localTileId][1].y, color);
-    mesh[1] = TileVertex(1.0 + x, 0.0 + y, z, tileUV[localTileId][2].x,
-            tileUV[localTileId][2].y, color);
-    mesh[2] = TileVertex(1.0 + x, 1.0 + y, z, tileUV[localTileId][3].x,
-            tileUV[localTileId][3].y, color);
-    mesh[3] = TileVertex(0.0 + x, 0.0 + y, z, tileUV[localTileId][1].x,
-            tileUV[localTileId][1].y, color);
-    mesh[4] = TileVertex(1.0 + x, 1.0 + y, z, tileUV[localTileId][3].x,
-            tileUV[localTileId][3].y, color);
-    mesh[5] = TileVertex(0.0 + x, 1.0 + y, z, tileUV[localTileId][0].x,
-            tileUV[localTileId][0].y, color);
+    if(alphaMaskTileId) {
+        mesh[0] = TileVertex(0.0 + x, 0.0 + y, z,
+                tileUV[localTileId][1].x, tileUV[localTileId][1].y,
+                tileUV[alphaMaskTileId][1].x, tileUV[alphaMaskTileId][1].y,
+                color);
+        mesh[1] = TileVertex(1.0 + x, 0.0 + y, z,
+                tileUV[localTileId][2].x, tileUV[localTileId][2].y,
+                tileUV[alphaMaskTileId][2].x, tileUV[alphaMaskTileId][2].y,
+                color);
+        mesh[2] = TileVertex(1.0 + x, 1.0 + y, z,
+                tileUV[localTileId][3].x, tileUV[localTileId][3].y,
+                tileUV[alphaMaskTileId][3].x, tileUV[alphaMaskTileId][3].y,
+                color);
+        mesh[3] = TileVertex(0.0 + x, 0.0 + y, z,
+                tileUV[localTileId][1].x, tileUV[localTileId][1].y,
+                tileUV[alphaMaskTileId][1].x, tileUV[alphaMaskTileId][1].y,
+                color);
+        mesh[4] = TileVertex(1.0 + x, 1.0 + y, z,
+                tileUV[localTileId][3].x, tileUV[localTileId][3].y,
+                tileUV[alphaMaskTileId][3].x, tileUV[alphaMaskTileId][3].y,
+                color);
+        mesh[5] = TileVertex(0.0 + x, 1.0 + y, z,
+                tileUV[localTileId][0].x, tileUV[localTileId][0].y,
+                tileUV[alphaMaskTileId][0].x, tileUV[alphaMaskTileId][0].y,
+                color);
+    }
+    else {
+        mesh[0] = TileVertex(0.0 + x, 0.0 + y, z,
+                tileUV[localTileId][1].x, tileUV[localTileId][1].y,
+                -1, -1,
+                color);
+        mesh[1] = TileVertex(1.0 + x, 0.0 + y, z,
+                tileUV[localTileId][2].x, tileUV[localTileId][2].y,
+                -1, -1,
+                color);
+        mesh[2] = TileVertex(1.0 + x, 1.0 + y, z,
+                tileUV[localTileId][3].x, tileUV[localTileId][3].y,
+                -1, -1,
+                color);
+        mesh[3] = TileVertex(0.0 + x, 0.0 + y, z,
+                tileUV[localTileId][1].x, tileUV[localTileId][1].y,
+                -1, -1,
+                color);
+        mesh[4] = TileVertex(1.0 + x, 1.0 + y, z,
+                tileUV[localTileId][3].x, tileUV[localTileId][3].y,
+                -1, -1,
+                color);
+        mesh[5] = TileVertex(0.0 + x, 1.0 + y, z,
+                tileUV[localTileId][0].x, tileUV[localTileId][0].y,
+                -1, -1,
+                color);
+    }
 }
 
 void meshAddQuad(TileVertex* mesh, f32 x, f32 y, f32 z, f32 width, f32 height, f32 uvX1, f32 uvY1,
                  f32 uvX2, f32 uvY2, u32 color)
 {
-    mesh[0] = TileVertex(x        , y         , z, uvX1, uvY1, color);
-    mesh[1] = TileVertex(x + width, y         , z, uvX2, uvY1, color);
-    mesh[2] = TileVertex(x + width, y + height, z, uvX2, uvY2, color);
-    mesh[3] = TileVertex(x        , y         , z, uvX1, uvY1, color);
-    mesh[4] = TileVertex(x + width, y + height, z, uvX2, uvY2, color);
-    mesh[5] = TileVertex(x        , y + height, z, uvX1, uvY2, color);
+    mesh[0] = TileVertex(x        , y         , z, uvX1, uvY1, -1, -1, color);
+    mesh[1] = TileVertex(x + width, y         , z, uvX2, uvY1, -1, -1, color);
+    mesh[2] = TileVertex(x + width, y + height, z, uvX2, uvY2, -1, -1, color);
+    mesh[3] = TileVertex(x        , y         , z, uvX1, uvY1, -1, -1, color);
+    mesh[4] = TileVertex(x + width, y + height, z, uvX2, uvY2, -1, -1, color);
+    mesh[5] = TileVertex(x        , y + height, z, uvX1, uvY2, -1, -1, color);
 }
 
 struct TileShader
@@ -117,6 +160,7 @@ struct TileShader
     i32 uViewMatrix;
     i32 uModelMatrix;
     i32 uDiffuse;
+    i32 uAlphaMask;
     GLuint vao;
     GLuint vbo;
 
@@ -127,17 +171,22 @@ struct TileShader
             #version 330 core
             layout(location = 0) in vec3 position;
             layout(location = 1) in vec2 uv;
-            layout(location = 2) in vec4 color;
+            layout(location = 2) in vec2 am_uv;
+            layout(location = 3) in vec4 color;
             uniform mat4 uProjMatrix;
             uniform mat4 uViewMatrix;
             uniform mat4 uModelMatrix;
 
             out vec2 vert_uv;
+            out vec2 vert_am_uv;
+            flat out int vert_isAlphaMasked;
             out vec4 vert_color;
 
             void main()
             {
                 vert_uv = uv;
+                vert_am_uv = am_uv;
+                vert_isAlphaMasked = int(am_uv.x != -1);
                 vert_color = color;
                 gl_Position = uProjMatrix * uViewMatrix * uModelMatrix * vec4(position, 1.0);
             }
@@ -146,14 +195,20 @@ struct TileShader
         constexpr const char* fragmentShader = R"FOO(
             #version 330 core
             uniform sampler2D uDiffuse;
+            uniform sampler2D uAlphaMask;
 
             in vec2 vert_uv;
+            in vec2 vert_am_uv;
+            flat in int vert_isAlphaMasked;
             in vec4 vert_color;
             out vec4 fragmentColor;
 
             void main()
             {
-                fragmentColor = texture(uDiffuse, vert_uv) * vert_color;
+                vec4 diff = texture(uDiffuse, vert_uv);
+                vec4 mask = texture(uAlphaMask, vert_am_uv);
+                fragmentColor = diff * vert_color;
+                fragmentColor.a = (1.0-vert_isAlphaMasked) * diff.a + (vert_isAlphaMasked * mask.a);
             }
             )FOO";
 
@@ -171,8 +226,9 @@ struct TileShader
         CommandList list;
         list.createShaderAndCompile(shaderBuffers, types, 2, &program);
 
-        static i32* locations[] = {&uProjMatrix, &uViewMatrix, &uDiffuse, &uModelMatrix};
-        static const char* uniformNames[] = {"uProjMatrix", "uViewMatrix", "uDiffuse", "uModelMatrix"};
+        static i32* locations[] = {&uProjMatrix, &uViewMatrix, &uModelMatrix, &uDiffuse, &uAlphaMask};
+        static const char* uniformNames[] = {"uProjMatrix", "uViewMatrix", "uModelMatrix",
+                                             "uDiffuse", "uAlphaMask"};
         list.getUniformLocations(&program, locations, uniformNames, sizeof(locations)/sizeof(locations[0]));
 
         list.genVertexArrays(&vao, 1);
@@ -182,17 +238,20 @@ struct TileShader
 
         enum Location {
             POSITION = 0,
-            UV = 1,
-            COLOR = 2,
+            UV,
+            AM_UV,
+            COLOR,
         };
 
-        static i32 indexes[] = {POSITION, UV, COLOR};
+        static i32 indexes[] = {POSITION, UV, AM_UV, COLOR};
         list.enableVertexAttribArrays(indexes, sizeof(indexes)/sizeof(Location));
 
         list.vertexAttribPointer(Location::POSITION, 3, GL_FLOAT, GL_FALSE, sizeof(TileVertex),
                                 (GLvoid*)OFFSETOF(TileVertex, x));
         list.vertexAttribPointer(Location::UV, 2, GL_FLOAT, GL_FALSE, sizeof(TileVertex),
                                 (GLvoid*)OFFSETOF(TileVertex, u));
+        list.vertexAttribPointer(Location::AM_UV, 2, GL_FLOAT, GL_FALSE, sizeof(TileVertex),
+                                (GLvoid*)OFFSETOF(TileVertex, amu));
         list.vertexAttribPointer(Location::COLOR, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(TileVertex),
                                 (GLvoid*)OFFSETOF(TileVertex, color));
         renderer_pushCommandList(list);
@@ -238,7 +297,7 @@ MutexSpin viewMutex;
 
 bool showUi = true;
 i32 dbgTileDrawCount = MAX_TILE_COUNT;
-i32 dbgSectorId = 1317;
+i32 dbgSectorId = 3073;
 i32 loadedSectorId = -1;
 SectorxData* sectorData = nullptr;
 SectorInfo sectorInfo;
@@ -257,10 +316,10 @@ f32 dbgMixedOffY = 0.0;
 bool dbgMixedUseBaseOffset = false;
 bool dbgMixedUseStaticOffset = false;
 i32 dbgMixedObjMax = 1;
-f32 dbgTileWidth = 60.0f;
+f32 dbgTileWidth = 64.0f;
 
-f32 dbgWorldSqX = 100.0f;
-f32 dbgWorldSqY = 100.0f;
+i32 dbgHoveredTileId = 0;
+i32 dbgSelectedTileId = -1;
 
 enum {
     MODE_NORMAL = 0,
@@ -293,7 +352,7 @@ struct {
     i32 mouseWheelRelY = 0;
 } input;
 
-inline vec3f posWorldToIso(vec3f v)
+inline vec3f posOrthoToIso(vec3f v)
 {
     return vec3fMulMat4(v, matIsoRotation);
 }
@@ -360,16 +419,7 @@ void ui_all()
     ui_mixedViewer();
     ui_videoInfo();
 
-    ImGui::Begin("Mouse test");
-
-    const vec2f mpos(input.mouseX, input.mouseY);
-    const vec3f mWorldPos = screenToWorldPos(mpos);
-    ImGui::Text("mouse: %d %d", (i32)mpos.x, (i32)mpos.y);
-    ImGui::Text("world: %d %d %d", (i32)mWorldPos.x, (i32)mWorldPos.y, (i32)mWorldPos.z);
-    ImGui::SliderFloat("x", &dbgWorldSqX, 0.0, 5000.0);
-    ImGui::SliderFloat("y", &dbgWorldSqY, 0.0, 5000.0);
-
-    ImGui::End();
+    ui_tileInspector();
 
     //ImGui::ShowTestWindow();
 }
@@ -492,7 +542,7 @@ void ui_tileTest()
                         assert(s.itemTypeId < itemTypesCount);
 
                         ImGui::Text("itemTypeId     : %d", s.itemTypeId);
-                        ImGui::Text("name           : %s", itemTypes[s.itemTypeId].grnName);
+                        ImGui::Text("name           : %s", itemTypes[s.itemTypeId].nameStr);
                         ImGui::Text("mixedId        : %d", itemTypes[s.itemTypeId].mixedId);
 
                         ImGui::Separator();
@@ -634,6 +684,115 @@ void ui_mixedViewer()
     ImGui::End();
 }
 
+void ui_tileInspector()
+{
+    if(dbgSelectedTileId == -1 || loadedSectorId != dbgSectorId) return;
+    const WldxEntry& tile = sectorData->data[dbgSelectedTileId];
+
+    ImGui::Begin("Tile inspector");
+
+    ImGui::Text("Tile %d", dbgSelectedTileId);
+
+    ImGui::Separator();
+
+    ImGui::Text("texture tileId: %d", tile.tileId);
+
+    ImGui::Text("staticId: %d", tile.staticId);
+    if(tile.staticId && ImGui::CollapsingHeader("Static")) {
+        const ImVec4 staticCol(0, 1, 1, 1);
+        assert(tile.staticId < resource_getStaticCount());
+        const PakStatic& s = resource_getStatic()[tile.staticId];
+
+        ImGui::Text("itemTypeId     : %d", s.itemTypeId);
+        if(s.itemTypeId && ImGui::CollapsingHeader("ItemType")) {
+            const ImVec4 itemTypeCol(1, 1, 0, 1);
+            assert(s.itemTypeId < resource_getItemTypesCount());
+            PakItemType& itemType = resource_getItemTypes()[s.itemTypeId];
+
+            constexpr auto unkElementGet = [](void* data, i32 id, const char** outStr) -> bool {
+                static char outBuff[32];
+                sprintf(outBuff, "%d", ((u8*)data)[id]);
+                *outStr = outBuff;
+                return true;
+            };
+
+            ImGui::TextColored(itemTypeCol, "flags          : %x", itemType.flags);
+            ImGui::TextColored(itemTypeCol, "int_1          : %d", itemType.int_1);
+            ImGui::TextColored(itemTypeCol, "itemTextureId  : %d", itemType.itemTextureId);
+            ImGui::TextColored(itemTypeCol, "field_C        : %d", itemType.field_C);
+            ImGui::TextColored(itemTypeCol, "mixedId        : %d", itemType.mixedId);
+            ImGui::TextColored(itemTypeCol, "field_14       : %d", itemType.field_14);
+            ImGui::TextColored(itemTypeCol, "spawnInfoId    : %d", itemType.spawnInfoId);
+            ImGui::TextColored(itemTypeCol, "field_1C       : %d", itemType.field_1C);
+            ImGui::TextColored(itemTypeCol, "field_20       : %d", itemType.field_20);
+            ImGui::TextColored(itemTypeCol, "soundProfileId : %d", itemType.soundProfileId);
+
+            static i32 unk_id = 0;
+            ImGui::ListBox("unk", &unk_id, unkElementGet, itemType.unk, IM_ARRAYSIZE(itemType.unk),
+                           IM_ARRAYSIZE(itemType.unk));
+
+            ImGui::TextColored(itemTypeCol, "unk3           : %d", itemType.unk3);
+            ImGui::TextColored(itemTypeCol, "category       : %d", itemType.category);
+
+            static i32 unk4_id = 0;
+            ImGui::ListBox("unk4", &unk4_id, unkElementGet, itemType.unk4,
+                           IM_ARRAYSIZE(itemType.unk4), IM_ARRAYSIZE(itemType.unk4));
+
+            ImGui::TextColored(itemTypeCol, "name           : %s", itemType.nameStr);
+            ImGui::TextColored(itemTypeCol, "field_57       : %d", itemType.field_57);
+            ImGui::TextColored(itemTypeCol, "field_59       : %d", itemType.field_59);
+            ImGui::TextColored(itemTypeCol, "someVectorId   : %d", itemType.someVectorId);
+            ImGui::TextColored(itemTypeCol, "marginX        : %d", itemType.marginX);
+            ImGui::TextColored(itemTypeCol, "marginY        : %d", itemType.marginY);
+
+            static i32 unk2_id = 0;
+            ImGui::ListBox("unk2", &unk2_id, unkElementGet, itemType.unk2, IM_ARRAYSIZE(itemType.unk2), 5);
+
+            ImGui::Separator();
+        }
+
+        ImGui::TextColored(staticCol, "field_8        : %d", s.field_8);
+        ImGui::TextColored(staticCol, "field_C        : %d", s.field_C);
+        ImGui::TextColored(staticCol, "f1             : %d", *(i16*)&s.sy);
+        ImGui::TextColored(staticCol, "sx sy          : %d %d", s.sx, s.sy);
+        ImGui::TextColored(staticCol, "field_E_2      : %d", s.field_E_2);
+        ImGui::TextColored(staticCol, "f2             : %d", *(i16*)&s.s1y);
+        ImGui::TextColored(staticCol, "s1x s1y        : %d %d", s.s1x, s.s1y);
+        ImGui::TextColored(staticCol, "field_12_2     : %d", s.field_12_2);
+        ImGui::TextColored(staticCol, "unk_0          : %d", s.unk_0);
+        ImGui::TextColored(staticCol, "parentId       : %d", s.parentId);
+        ImGui::TextColored(staticCol, "anotherParentId: %d", s.anotherParentId);
+        ImGui::TextColored(staticCol, "nextStaticId   : %d", s.nextStaticId);
+        ImGui::TextColored(staticCol, "patchX         : %d", s.patchX);
+        ImGui::TextColored(staticCol, "patchY         : %d", s.patchY);
+        ImGui::TextColored(staticCol, "triggerId      : %d", s.triggerId);
+
+        ImGui::Separator();
+
+        ImGui::TextColored(staticCol, "field_2B      : %d", s.field_2B);
+        ImGui::TextColored(staticCol, "field_2C      : %d", s.field_2C);
+        ImGui::TextColored(staticCol, "layer         : %d", s.layer);
+        ImGui::TextColored(staticCol, "smthX         : %d", s.smthX);
+        ImGui::TextColored(staticCol, "smthY         : %d", s.smthY);
+        ImGui::TextColored(staticCol, "smthZ         : %d", s.smthZ);
+        ImGui::TextColored(staticCol, "field_31      : %d", s.field_31);
+        ImGui::TextColored(staticCol, "field_32      : %d", s.field_32);
+        ImGui::TextColored(staticCol, "field_33      : %d", s.field_33);
+        ImGui::TextColored(staticCol, "unk_1         : %d", s.unk_1);
+        ImGui::TextColored(staticCol, "field_35      : %d", s.field_35);
+
+        ImGui::Separator();
+    }
+
+    ImGui::Text("floorId: %d", tile.floorId);
+    ImGui::Text("rest: %llx", *(u64*)tile.rest);
+    ImGui::Text("smth: %d %d %d %d", tile.smthX, tile.smthY, tile.smthZ, tile.smthW);
+    ImGui::Text("offset: %d %d", tile.offsetX, tile.offsetY);
+    ImGui::Text("someTypeId: %d", tile.someTypeId);
+
+    ImGui::End();
+}
+
 void drawTestTiles()
 {
     static GLuint* gpuBaseTex[MAX_TILE_COUNT];
@@ -641,8 +800,11 @@ void drawTestTiles()
     static i32 baseTileTexIds[MAX_TILE_COUNT];
 
     static GLuint* gpuFloorTex[MAX_TILE_COUNT];
+    static GLuint* gpuFloorTexAlphaMask[MAX_TILE_COUNT];
     static i32 floorTileIds[MAX_TILE_COUNT];
+    static i32 floorAlphaMaskTileIds[MAX_TILE_COUNT];
     static i32 floorTileTexIds[MAX_TILE_COUNT];
+    static i32 floorAlphaMaskTexIds[MAX_TILE_COUNT];
     static i32 floorPosIndex[MAX_TILE_COUNT];
     i32 floorCount = 0;
 
@@ -681,8 +843,8 @@ void drawTestTiles()
         i32 floorId = we.floorId;
         while(floorId && dbgOverlayFloor) {
             assert(floorId < floorMaxCount);
-            tileId = dbgOverlayFloor == 1 ?
-                        (floors[floorId].pakTileIds & 0x1FFFF) : (floors[floorId].pakTileIds >> 17);
+            i32 tileId = floors[floorId].pakTileIds & 0x1FFFF;
+            i32 tileIdAlphaMask = floors[floorId].pakTileIds >> 17;
 
             /*LOG_DBG("%d %x tileId1=%d tileId2=%d", i,
                     floors[we.floorId].pakTileIds,
@@ -694,6 +856,8 @@ void drawTestTiles()
                 i32 fid = floorCount++;
                 floorTileIds[fid] = tileId;
                 floorTileTexIds[fid] = tileTexIds[tileId/18];
+                floorAlphaMaskTileIds[fid] = tileIdAlphaMask;
+                floorAlphaMaskTexIds[fid] = tileTexIds[tileIdAlphaMask/18];
                 floorPosIndex[fid] = i;
             }
             floorId = floors[floorId].nextFloorId;
@@ -703,8 +867,8 @@ void drawTestTiles()
             assert(we.staticId < staticCount);
             const PakStatic& sta = statics[we.staticId];
             i32 itemTypeId = sta.itemTypeId;
-            const i32 staX = sta.sx;
-            const i32 staY = sta.sy;
+            const i32 staX = -sta.s1x;
+            const i32 staY = -sta.s1y;
 
             if(itemTypeId) {
                 assert(itemTypeId < itemTypeCount);
@@ -716,27 +880,30 @@ void drawTestTiles()
                     const PakMixedDesc& desc = mixedDescs[mixedId];
                     const i32 mcount = desc.count;
                     const i32 mixedStartId = desc.mixedDataId;
-                    const f32 orgnX = (i & 63) * dbgTileWidth;
-                    const f32 orgnY = (i / 64) * dbgTileWidth;
+                    const f32 orgnX = (i & 63) * dbgTileWidth + dbgTileWidth
+                                      + desc.offX * dbgMixedUseBaseOffset;
+                    const f32 orgnY = (i / 64) * dbgTileWidth + dbgTileWidth
+                                      + desc.offY * dbgMixedUseBaseOffset;
                     vec3f orgnPosIso = vec3f(orgnX, orgnY, 0);
                     if(viewIsIso) {
-                        orgnPosIso = posWorldToIso(orgnPosIso);
+                        orgnPosIso = posOrthoToIso(orgnPosIso);
                     }
 
-                    dbgDrawSolidSquare(vec3fAdd(orgnPosIso, vec3f(0, -desc.height, 0)),
-                                       vec3f(desc.width, desc.height, 1), 0x7f00ff00);
+                    /*dbgDrawSolidSquare(vec3fAdd(orgnPosIso, vec3f(0, -desc.height, 0)),
+                                       vec3f(desc.width, desc.height, 1), 0x7f00ff00);*/
 
                     for(i32 m = 0; m < mcount; ++m) {
                         const PakMixedData& md = mixed[m + mixedStartId];
                         assert(mixedQuadCount < MAX_MIXED_QUAD);
                         i32 mid = mixedQuadCount++;
                         mixedQuadTexId[mid] = md.textureId;
-                        /*f32 x = (desc.offX * dbgMixedUseBaseOffset) + orgnPosIso.x + md.x + dbgMixedOffX
+                        /*f32 x = () + orgnPosIso.x + md.x + dbgMixedOffX
                                  ;
-                        f32 y = (desc.offY * dbgMixedUseBaseOffset) + orgnPosIso.y + md.y
+                        f32 y = () + orgnPosIso.y + md.y
                                 - desc.height + dbgMixedOffY;*/
-                        f32 x = orgnPosIso.x + md.x + (staX * dbgMixedUseStaticOffset);
-                        f32 y = orgnPosIso.y + md.y - desc.height + (staY * dbgMixedUseStaticOffset);
+                        f32 x = orgnPosIso.x + md.x + (staX * dbgMixedUseStaticOffset) - desc.width * 0.5;
+                        f32 y = orgnPosIso.y + md.y - desc.height + (staY * dbgMixedUseStaticOffset)
+                                ;
                         i32 w = md.width - md.x;
                         i32 h = md.height - md.y;
                         meshAddQuad(mixedQuadMesh + mid * 6, x, y, 0.0, w, h, md.uvX1, md.uvY1,
@@ -751,25 +918,31 @@ void drawTestTiles()
 
     resource_requestGpuTextures(baseTileTexIds, gpuBaseTex, MAX_TILE_COUNT);
     resource_requestGpuTextures(floorTileTexIds, gpuFloorTex, floorCount);
+    resource_requestGpuTextures(floorAlphaMaskTexIds, gpuFloorTexAlphaMask, floorCount);
     resource_requestGpuTextures(mixedQuadTexId, gpuMixedQuadTex, mixedQuadCount);
 
     CommandList list;
     list.useProgram(&tileShader.program);
 
+    static mat4 viewOrtho, viewIso;
+    viewOrtho = matViewOrtho;
+    viewIso = matViewIso;
+
     list.uniformMat4(tileShader.uProjMatrix, &matProjOrtho);
-    list.uniformMat4(tileShader.uViewMatrix, &matViewOrtho);
     if(viewIsIso) {
-        list.uniformMat4(tileShader.uViewMatrix, &matViewIso);
+        list.uniformMat4(tileShader.uViewMatrix, &viewIso);
     }
     else {
-        list.uniformMat4(tileShader.uViewMatrix, &matViewOrtho);
+        list.uniformMat4(tileShader.uViewMatrix, &viewOrtho);
     }
 
     testTileModel = mat4Scale(vec3f(dbgTileWidth, dbgTileWidth, 1));
     list.uniformMat4(tileShader.uModelMatrix, &testTileModel);
 
-    static i32 slot = 0;
-    list.uniformInt(tileShader.uDiffuse, &slot);
+    static i32 diffSlot = 0;
+    static i32 alphaSlot = 1;
+    list.uniformInt(tileShader.uDiffuse, &diffSlot);
+    list.uniformInt(tileShader.uAlphaMask, &alphaSlot);
 
     tileVertexMutex.lock();
     i32 tileMeshId = 0;
@@ -779,39 +952,47 @@ void drawTestTiles()
             const WldxEntry& we = sectorEntries[id];
             u32 color = 0xff000000;
 
-            switch(dbgViewMode) {
-                case MODE_NORMAL:
-                    color = 0xffffffff;
-                    break;
+            if(id == dbgSelectedTileId) {
+                color = 0xffff0000;
+            }
+            else if(id == dbgHoveredTileId) {
+                color = 0xffff8f8f;
+            }
+            else {
+                switch(dbgViewMode) {
+                    case MODE_NORMAL:
+                        color = 0xffffffff;
+                        break;
 
-                case MODE_STATIC:
-                    color = 0xffffffff;
-                    if(we.staticId) {
-                        color = 0xff0000ff;
+                    case MODE_STATIC:
+                        color = 0xffffffff;
+                        if(we.staticId) {
+                            color = 0xff0000ff;
+                        }
+                        break;
+
+                    case MODE_ENTITY:
+                        if(we.entityId) {
+                            color = 0xffff0000;
+                        }
+                        break;
+
+                    case MODE_SMTH_TYPE:
+                        if(we.someTypeId) {
+                            color = 0xff000000 | (0x00000001 * (we.someTypeId*(255/15)));
+                        }
+                        break;
+
+                    case MODE_SMTH_POS:
+                        color = 0xff000000 | (we.smthZ << 16) | (we.smthY << 8) | (we.smthX);
+                        break;
+
+                    case MODE_POS_INFO: {
+                        if(we.floorId) {
+                            color = 0xffff00ff;
+                        }
+                        break;
                     }
-                    break;
-
-                case MODE_ENTITY:
-                    if(we.entityId) {
-                        color = 0xffff0000;
-                    }
-                    break;
-
-                case MODE_SMTH_TYPE:
-                    if(we.someTypeId) {
-                        color = 0xff000000 | (0x00000001 * (we.someTypeId*(255/15)));
-                    }
-                    break;
-
-                case MODE_SMTH_POS:
-                    color = 0xff000000 | (we.smthZ << 16) | (we.smthY << 8) | (we.smthX);
-                    break;
-
-                case MODE_POS_INFO: {
-                    if(we.floorId) {
-                        color = 0xffff00ff;
-                    }
-                    break;
                 }
             }
 
@@ -824,7 +1005,8 @@ void drawTestTiles()
         i32 posIndx = floorPosIndex[i];
         i32 x = posIndx & 63;
         i32 y = posIndx / 64;
-        makeTileMesh(&tileFloorVertexData[6 * i], floorTileIds[i] % 18, x, y, 0.0, 0xffffffff);
+        makeTileMesh(&tileFloorVertexData[6 * i], floorTileIds[i] % 18, x, y, 0.0, 0xffffffff,
+                    floorAlphaMaskTileIds[i] % 18);
     }
     tileVertexMutex.unlock();
 
@@ -866,7 +1048,8 @@ void drawTestTiles()
     // DRAW FLOOR MESH
     i32 vertOffset = MAX_TILE_COUNT * 6;
     for(i32 i = 0; i < floorCount; ++i) {
-        list.textureSlot(gpuFloorTex[i], 0);
+        list.textureSlot(gpuFloorTex[i], diffSlot);
+        list.textureSlot(gpuFloorTexAlphaMask[i], alphaSlot);
         list.drawTriangles(vertOffset + i * 6, 6);
 
         if(i % 200 == 0) {
@@ -877,7 +1060,7 @@ void drawTestTiles()
     renderer_pushCommandList(list);
 
     static mat4 mixedModel = mat4Scale(vec3f(1, 1, 1));
-    list.uniformMat4(tileShader.uViewMatrix, &matViewOrtho);
+    list.uniformMat4(tileShader.uViewMatrix, &viewOrtho);
     list.uniformMat4(tileShader.uModelMatrix, &mixedModel);
 
     // DRAW MIXED MESH
@@ -1118,6 +1301,20 @@ void render()
 {
     updateCameraMatrices();
 
+    // select tile to inspect
+    const vec2f mpos(input.mouseX, input.mouseY);
+    const vec3f mWorldPos = screenToWorldPos(mpos); // actual world position
+
+    const i32 tx = mWorldPos.x / dbgTileWidth;
+    const i32 ty = mWorldPos.y / dbgTileWidth;
+    if(tx >= 0 && tx < 64 && ty >= 0 && ty < 64) {
+        dbgHoveredTileId = ty * 64 + tx;
+
+        if(!ImGui::GetIO().WantCaptureMouse && input.mouseLeft) {
+            dbgSelectedTileId = dbgHoveredTileId;
+        }
+    }
+
     drawTestTiles();
     //drawFloorTest();
     //drawTestMixed();
@@ -1126,18 +1323,10 @@ void render()
     dbgDrawSetView(matProjOrtho, mat4Identity(), DbgCoordSpace::SCREEN);
     dbgDrawSetView(matProjOrtho, viewIsIso ? matViewIso : matViewOrtho, DbgCoordSpace::WORLD);
 
-    const vec2f mpos(input.mouseX, input.mouseY);
-    const vec3f mWorldPos = screenToWorldPos(mpos); // actual world position
-
-    dbgDrawSolidSquare(vec3f(mpos.x, mpos.y, 1000), vec3f(10, 10, 0), 0xff0000ff);
-    dbgDrawSolidSquare(mWorldPos, vec3f(20, 20, 0), 0xff00ffff, DbgCoordSpace::WORLD);
-
     // origin
     dbgDrawSolidSquare(vec3f(0,0,0), vec3f(200, 10, 1), 0xffff0000, DbgCoordSpace::WORLD);
     dbgDrawSolidSquare(vec3f(0,0,0), vec3f(10, 200, 1), 0xff00ff00, DbgCoordSpace::WORLD);
     dbgDrawSolidSquare(vec3f(0,0,0), vec3f(10, 10, 1), 0xff0000ff, DbgCoordSpace::WORLD);
-
-    dbgDrawSolidSquare(vec3f(dbgWorldSqX,dbgWorldSqY,0), vec3f(10, 10, 1), 0xffff00ff, DbgCoordSpace::WORLD);
 
     dbgDrawRender();
 #endif
@@ -1173,6 +1362,10 @@ void receiveInput(const SDL_Event& event)
 
 void processInput()
 {
+    if(ImGui::GetIO().WantCaptureMouse) {
+        return;
+    }
+
     if(input.mouseWheelRelY < 0) {
         viewZoom *= 1.10f;
     }
