@@ -282,6 +282,8 @@ u16* tileTextureId;
 i32 tileTextureIdCount;
 MemBlock tileTextureIdBlock;
 
+i32 worldOriginX;
+i32 worldOriginY;
 SectorInfo* sectorInfo;
 MemBlock sectorInfoBlock;
 DiskFile fileSectors;
@@ -459,6 +461,9 @@ bool loadSectorKeyx()
     PakHeader* header = (PakHeader*)top;
     const i32 entryCount = header->entryCount;
     sectorCount = entryCount;
+
+    LOG("loadSectorKeyx()> header.worldX=%d header.worldY=%d",
+        header->worldX, header->worldY);
 
     sectorInfoBlock = MEM_ALLOC(entryCount * sizeof(*sectorInfo));
     assert(sectorInfoBlock.ptr);
@@ -817,4 +822,10 @@ i32 resource_getMixedDescsCount()
 PakMixedData* resource_getMixedData()
 {
     return DR.mixed.mixed;
+}
+
+void resource_getWorldOrigin(i32* x, i32* y)
+{
+    *x = DR.worldOriginX;
+    *y = DR.worldOriginY;
 }

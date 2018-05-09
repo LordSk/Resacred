@@ -52,3 +52,5 @@ i32 resource_getItemTypesCount();
 PakMixedDesc* resource_getMixedDescs();
 i32 resource_getMixedDescsCount();
 PakMixedData* resource_getMixedData();
+
+void resource_getWorldOrigin(i32* x, i32* y);

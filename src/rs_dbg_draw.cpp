@@ -96,7 +96,7 @@ struct ColorShader
     }
 };
 
-#define MAX_QUAD_VERTICES 2048
+#define MAX_QUAD_VERTICES 30720 // TODO: dyn alloc this
 struct DbgDraw
 {
 
@@ -119,7 +119,7 @@ void init()
 {
     colorShader.loadAndCompile();
     CommandList list;
-    list.arrayBufferData(&colorShader.vbo, 0, sizeof(quadVertexData), GL_DYNAMIC_DRAW);
+    list.arrayBufferData(&colorShader.vbo, 0, sizeof(quadVertexData), GL_STATIC_DRAW);
     renderer_pushCommandList(list);
 }
 
@@ -150,6 +150,7 @@ void render()
         quadVertexDataMutex[space].lock();
         QuadVertex* qv = quadVertexData[space];
         for(i32 i = 0; i < solidSquareCount; i++) {
+            assert(qv - quadVertexData[space] <= MAX_QUAD_VERTICES);
             const SolidSquare& ss = spaceSolidSquares[i];
             const f32 x = ss.pos.x;
             const f32 y = ss.pos.y;
@@ -165,8 +166,6 @@ void render()
             qv[5] = QuadVertex(x + sx, y + sy, z, c);
             qv += 6;
         }
-
-        assert(qv - quadVertexData[space] <= MAX_QUAD_VERTICES);
 
         spaceSolidSquares.clear();
 

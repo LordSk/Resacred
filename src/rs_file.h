@@ -93,7 +93,10 @@ struct PakHeader
     char typeString[3];
     u8 version;
     i32 entryCount;
-    u8 _unkown[248];
+    u8 _unk[8];
+    i32 worldX;
+    i32 worldY;
+    u8 _unkown[232];
 };
 
 struct PakSubFileDesc
@@ -323,18 +326,14 @@ struct PakStatic
     i32 itemTypeId;
     i32 field_8;
     i16 field_C;
-    i8 sx;
-    i8 sy;
-    i16 field_E_2;
-    i8 s1x;
-    i8 s1y;
-    i16 field_12_2;
+    i32 worldX;
+    i32 worldY;
     u8 unk_0;
     i32 parentId;
     i32 anotherParentId;
     i32 nextStaticId;
-    i16 patchX;
-    i16 patchY;
+    i16 parentOffsetTx;
+    i16 parentOffsetTy;
     i32 triggerId;
     i8 field_2B;
     i8 field_2C;
