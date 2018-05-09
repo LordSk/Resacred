@@ -23,6 +23,7 @@
  * 1750
  * 1752
  * 2123
+ * 2529 <<<
  * 4859
  * 5351
 */
@@ -30,7 +31,7 @@
 // interesting texture page: 27 (minimap)
 
 #define PAGE_TEXTURES_COUNT 160
-#define VIEW_X_ANGLE rs_radians(53.66563)
+#define VIEW_X_ANGLE (1.04719755119659774615)
 #define TILE_WIDTH 64
 
 static i32 dedicated = 0, availMemory = 0, currentAvailMem = 0, evictionCount = 0, evictedMem = 0;
@@ -297,7 +298,7 @@ MutexSpin viewMutex;
 
 bool showUi = true;
 i32 dbgTileDrawCount = MAX_TILE_COUNT;
-i32 dbgSectorId = 2499;
+i32 dbgSectorId = 2529;
 i32 loadedSectorId = -1;
 SectorxData* sectorData = nullptr;
 SectorInfo sectorInfo;
@@ -314,9 +315,9 @@ bool dbgShowMixed = true;
 f32 dbgMixedOffX = 0.0;
 f32 dbgMixedOffY = 0.0;
 bool dbgMixedUseBaseOffset = false;
-bool dbgMixedUseStaticOffset = false;
+bool dbgMixedUseStaticOffset = true;
 i32 dbgMixedObjMax = 4096;
-f32 dbgTileWidth = 53.66563f;
+f32 dbgTileWidth = 67.9f;
 
 i32 dbgHoveredTileId = 0;
 i32 dbgSelectedTileId = -1;
@@ -483,7 +484,6 @@ void ui_tileTest()
 {
     ImGui::Begin("Sector viewer");
 
-    //ImGui::SliderInt("viewZMul", &viewZMul, -8, 8);
     ImGui::Checkbox("Isometric view", &viewIsIso);
     ImGui::Combo("viewMode", &dbgViewMode, viewModeCombo, MODE_COUNT);
 
@@ -511,8 +511,6 @@ void ui_tileTest()
         ImGui::Text("posY1: %d posY2: %d", sectorInfo.posY1, sectorInfo.posY2);
 
         vec3f sectorPos(sectorInfo.posX1, sectorInfo.posY1, 0);
-        /*mat4 mvp = mat4Mul(matProjOrtho, matViewIso);
-        sectorPos = vec3fMulMat4(sectorPos, mvp);*/
 
         sectorPos.x = sectorInfo.posX1 * 0.89442718 + sectorInfo.posY1 * -0.89442718;
         sectorPos.y = sectorInfo.posX1 * 0.44721359 + sectorInfo.posY1 * 0.44721359;
@@ -738,6 +736,7 @@ void drawSector()
 
     const i32 sectorX = sectorInfo.posX1;
     const i32 sectorY = sectorInfo.posY1;
+    const vec3f sectorSceen = sacred_worldToScreen(vec3f(sectorX, sectorY, 0));
 
     for(i32 i = 0; i < MAX_TILE_COUNT; ++i) {
         const WldxEntry& we = sectorEntries[i];
@@ -785,18 +784,12 @@ void drawSector()
                     const PakMixedDesc& desc = mixedDescs[mixedId];
                     const i32 mcount = desc.count;
                     const i32 mixedStartId = desc.mixedDataId;
-                    f32 orgnX = (i & 63) * dbgTileWidth + dbgTileWidth
-                                      + desc.offX * dbgMixedUseBaseOffset;
-                    f32 orgnY = (i / 64) * dbgTileWidth + dbgTileWidth
-                                      + desc.offY * dbgMixedUseBaseOffset;
 
-                    if(dbgMixedUseStaticOffset) {
-                        vec3f posIso = sacred_screenToWorld(vec3f(sta.worldX, sta.worldY, 0));
-                        orgnX = posIso.x - sectorX;
-                        orgnY = posIso.y - sectorY;
-                    }
+                    f32 orgnX = sta.worldX - sectorSceen.x;
+                    f32 orgnY = sta.worldY - sectorSceen.y;
+                    mat4 inv = mat4Inv(matIsoRotation);
+                    vec3f orgnPosIso = vec3fMulMat4(vec3f(orgnX, orgnY, 0), inv);
 
-                    vec3f orgnPosIso = vec3f(orgnX, orgnY, 0);
                     if(viewIsIso) {
                         orgnPosIso = posOrthoToIso(orgnPosIso);
                     }
@@ -807,8 +800,8 @@ void drawSector()
                         i32 mid = mixedQuadCount++;
                         mixedQuadTexId[mid] = md.textureId;
 
-                        f32 x = orgnPosIso.x + md.x/* - desc.width * 0.5*/;
-                        f32 y = orgnPosIso.y + md.y/* - desc.height*/;
+                        f32 x = orgnPosIso.x + md.x;
+                        f32 y = orgnPosIso.y + md.y;
                         i32 w = md.width - md.x;
                         i32 h = md.height - md.y;
                         meshAddQuad(mixedQuadMesh + mid * 6, x, y, 0.0, w, h, md.uvX1, md.uvY1,
