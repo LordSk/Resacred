@@ -310,6 +310,10 @@ void ui_all()
     ui_tileInspector();
 
     //ImGui::ShowTestWindow();
+
+    ImGui::Begin("GPU default texture");
+    ImGui::Image((ImTextureID)(intptr_t)resource_defaultGpuTexture(), ImVec2(256,256));
+    ImGui::End();
 }
 
 void ui_textureBrowser()
@@ -1257,7 +1261,6 @@ unsigned long thread_game(void*)
 
     while(client.clientRunning) {
         auto t0 = timeNow();
-        game.frameData.clear();
         game.processInput();
         resource_newFrame();
 
@@ -1275,6 +1278,7 @@ unsigned long thread_game(void*)
         game.render();
 
         renderer_pushFrame(game.frameData);
+        game.frameData.clear();
         game.frameTime = timeDurSince(t0);
     }
 
