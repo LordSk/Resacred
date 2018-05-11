@@ -65,6 +65,11 @@ struct Array
         }
     }
 
+    inline Array& operator=(const Array& other) {
+        copy(other);
+        return *this;
+    }
+
     ~Array() {
         destroy();
     }
@@ -131,6 +136,16 @@ struct Array
         _count += eltCount;
         memmove(_data + start, elements, eltCount * sizeof(T));
         return _data[start];
+    }
+
+    void fillPOD(const i32 eltCount, const T& elt = {}) {
+        if(eltCount > _capacity) {
+            reserve(max(_capacity * 2, eltCount));
+        }
+        _count = eltCount;
+        for(u32 i = 0; i < _count; ++i) {
+            _data[i] = elt;
+        }
     }
 
     inline void remove(i32 id) {

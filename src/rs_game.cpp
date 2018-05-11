@@ -32,10 +32,9 @@
 // interesting texture page: 27 (minimap)
 
 #define PAGE_TEXTURES_COUNT 160
-#define VIEW_X_ANGLE (1.04719755119659774615)
-#define TILE_WIDTH 64
+#define VIEW_X_ANGLE (1.04719755119659774615) // 60 degrees
+#define TILE_WIDTH 67.9
 
-static i32 dedicated = 0, availMemory = 0, currentAvailMem = 0, evictionCount = 0, evictedMem = 0;
 static vec2f tileUV[18][4];
 
 void initTileUVs()
@@ -135,13 +134,6 @@ void meshAddQuad(TileVertex* mesh, f32 x, f32 y, f32 z, f32 width, f32 height, f
     mesh[5] = TileVertex(x        , y + height, z, uvX1, uvY2, -1, -1, color);
 }
 
-#define MAX_TILE_COUNT 4096
-#define MAX_MIXED_QUAD 7168
-
-static TileVertex tileVertexData[6 * MAX_TILE_COUNT];
-static TileVertex tileFloorVertexData[6 * MAX_TILE_COUNT];
-static TileVertex mixedQuadMesh[6 * MAX_MIXED_QUAD];
-
 struct Game
 {
 RendererFrameData frameData;
@@ -152,9 +144,6 @@ i32 texBrowser_texIds[PAGE_TEXTURES_COUNT];
 GLuint* texBrowser_texGpu[PAGE_TEXTURES_COUNT];
 i32 pageId = 0;
 i32 testTileLocalId = 0;
-MutexSpin tileVertexMutex;
-MutexSpin tileFloorVertexMutex;
-MutexSpin mixedQuadMeshMutex;
 
 GLuint vboBaseTileMesh;
 GLuint vboFloorTileMesh;
@@ -169,28 +158,71 @@ f32 viewX = 0;
 f32 viewY = 0;
 f32 viewZoom = 1.0f;
 i32 viewZMul = -1;
-MutexSpin viewMutex;
 
-bool showUi = true;
-i32 dbgTileDrawCount = MAX_TILE_COUNT;
-i32 dbgSectorId = 2529;
 i32 loadedSectorId = -1;
 SectorxData* sectorData = nullptr;
 SectorInfo sectorInfo;
+
+// sector draw data
+struct SectorDrawData
+{
+    // TODO: merge all of these
+    Array<GLuint*,4096> gpuTexBase;
+    Array<GLuint*> gpuTexFloorDiffuse;
+    Array<GLuint*> gpuTexFloorAlphaMask;
+    Array<GLuint*> gpuTexMixed;
+
+    Array<i32,4096> baseTileId;
+    Array<i32,4096> baseTexId;
+    Array<i32> floorDiffuseTileId;
+    Array<i32> floorAlphaTileId;
+    Array<i32> floorDiffuseTexId;
+    Array<i32> floorAlphaTexId;
+    Array<i32> floorPosIndex;
+    Array<i32> mixedTexId;
+
+    // TODO: merge all of these
+    Array<TileVertex> baseVertexData;
+    Array<TileVertex> floorVertexData;
+    Array<TileVertex> mixedVertexData;
+
+    i32 floorCount = 0;
+    i32 mixedQuadCount = 0;
+
+    inline void clear() {
+        gpuTexBase.clearPOD();
+        gpuTexFloorDiffuse.clearPOD();
+        gpuTexFloorAlphaMask.clearPOD();
+        gpuTexMixed.clearPOD();
+        baseTileId.clearPOD();
+        baseTexId.clearPOD();
+        floorDiffuseTileId.clearPOD();
+        floorAlphaTileId.clearPOD();
+        floorDiffuseTexId.clearPOD();
+        floorAlphaTexId.clearPOD();
+        floorPosIndex.clearPOD();
+        mixedTexId.clearPOD();
+        baseVertexData.clearPOD();
+        floorVertexData.clearPOD();
+        mixedVertexData.clearPOD();
+        floorCount = 0;
+        mixedQuadCount = 0;
+    }
+};
+
+SectorDrawData currentSectorDrawData;
+
+bool showUi = true;
+i32 dbgSectorId = 2529;
 
 i32 dbgFloorOffset = 0;
 bool dbgFloorOver = 0;
 i32 dbgOverlayFloor = 1;
 
-GLuint* gpuFloorTexs[MAX_TILE_COUNT];
-i32 floorTexCount = 0;
-
 i32 dbgMixedId = 0;
 bool dbgShowMixed = true;
 f32 dbgMixedOffX = 0.0;
 f32 dbgMixedOffY = 0.0;
-bool dbgMixedUseBaseOffset = false;
-bool dbgMixedUseStaticOffset = true;
 i32 dbgMixedObjMax = 4096;
 f32 dbgTileWidth = 67.9f;
 
@@ -266,10 +298,172 @@ void init()
 
 void loadSectorIfNeeded()
 {
-    if(loadedSectorId != dbgSectorId) {
-        sectorData = resource_loadSector(dbgSectorId);
-        sectorInfo = resource_getSectorInfo(dbgSectorId);
-        loadedSectorId = dbgSectorId;
+    if(loadedSectorId == dbgSectorId) return;
+    sectorData = resource_loadSector(dbgSectorId);
+    sectorInfo = resource_getSectorInfo(dbgSectorId);
+    loadedSectorId = dbgSectorId;
+
+    SectorDrawData& dd = currentSectorDrawData;
+    dd.clear();
+
+    const WldxEntry* sectorEntries = sectorData->data;
+    const u16* tileTexIds = resource_getTileTextureIds18();
+    const i32 tileCount = resource_getTileCount18() * 18;
+
+    const FloorEntry* floors = resource_getFloors();
+    const i32 floorMaxCount = resource_getFloorCount();
+
+    const PakStatic* statics = resource_getStatic();
+    const PakMixedDesc* mixedDescs = resource_getMixedDescs();
+    const PakMixedData* mixed = resource_getMixedData();
+    const PakItemType* itemTypes = resource_getItemTypes();
+    const i32 mixedDescCount = resource_getMixedDescsCount();
+    const i32 staticCount = resource_getStaticCount();
+    const i32 itemTypeCount = resource_getItemTypesCount();
+
+    const i32 sectorX = sectorInfo.posX1;
+    const i32 sectorY = sectorInfo.posY1;
+    const vec3f sectorSceen = sacred_worldToScreen(vec3f(sectorX, sectorY, 0));
+
+    TileVertex quad[6];
+
+    // 64 * 64
+    for(i32 i = 0; i < 4096; ++i) {
+        const WldxEntry& we = sectorEntries[i];
+        const i32 tileId = sectorEntries[i].tileId;
+        const i32 texId = tileTexIds[tileId/18];
+        assert(tileId < tileCount);
+        dd.baseTexId.push(texId);
+        dd.baseTileId.push(tileId);
+
+        i32 floorId = we.floorId;
+        while(floorId && dbgOverlayFloor) {
+            assert(floorId < floorMaxCount);
+            const i32 diffuseTileId = floors[floorId].pakTileIds & 0x1FFFF;
+            const i32 tileIdAlphaMask = floors[floorId].pakTileIds >> 17;
+
+            if(diffuseTileId > 0) {
+                dd.floorCount++;
+                dd.floorDiffuseTileId.push(diffuseTileId);
+                dd.floorDiffuseTexId.push(tileTexIds[diffuseTileId/18]);
+                dd.floorAlphaTileId.push(tileIdAlphaMask);
+                dd.floorAlphaTexId.push(tileTexIds[tileIdAlphaMask/18]);
+                dd.floorPosIndex.push(i);
+            }
+            floorId = floors[floorId].nextFloorId;
+        }
+
+        if(we.staticId) {
+            assert(we.staticId < staticCount);
+            const PakStatic& sta = statics[we.staticId];
+            i32 itemTypeId = sta.itemTypeId;
+
+            if(itemTypeId) {
+                assert(itemTypeId < itemTypeCount);
+                const i32 mixedId = itemTypes[itemTypeId].mixedId;
+
+                if(mixedId) {
+                    assert(mixedId < mixedDescCount);
+                    const PakMixedDesc& desc = mixedDescs[mixedId];
+                    const i32 mcount = desc.count;
+                    const i32 mixedStartId = desc.mixedDataId;
+
+                    f32 orgnX = sta.worldX - sectorSceen.x;
+                    f32 orgnY = sta.worldY - sectorSceen.y;
+                    mat4 inv = mat4Inv(matIsoRotation);
+                    vec3f orgnPosIso = vec3fMulMat4(vec3f(orgnX, orgnY, 0), inv);
+
+                    if(viewIsIso) {
+                        orgnPosIso = posOrthoToIso(orgnPosIso);
+                    }
+
+                    for(i32 m = 0; m < mcount; ++m) {
+                        const PakMixedData& md = mixed[m + mixedStartId];
+                        f32 x = orgnPosIso.x + md.x;
+                        f32 y = orgnPosIso.y + md.y;
+                        i32 w = md.width - md.x;
+                        i32 h = md.height - md.y;
+                        meshAddQuad(quad, x, y, 0.0, w, h, md.uvX1, md.uvY1,
+                                    md.uvX2, md.uvY2, 0xffffffff);
+
+                        dd.mixedVertexData.pushPOD(quad, 6);
+                        dd.mixedTexId.push(md.textureId);
+                        dd.mixedQuadCount++;
+                    }
+                }
+            }
+        }
+    }
+
+    dd.gpuTexBase.fillPOD(dd.baseTexId.count());
+    dd.gpuTexFloorDiffuse.fillPOD(dd.floorDiffuseTexId.count());
+    dd.gpuTexFloorAlphaMask.fillPOD(dd.floorAlphaTexId.count());
+    dd.gpuTexMixed.fillPOD(dd.mixedTexId.count());
+
+    for(i32 y = 0; y < 64; ++y) {
+        for(i32 x = 0; x < 64; ++x) {
+            const i32 id = y * 64 + x;
+            makeTileMesh(quad, dd.baseTileId[id] % 18, x, y, 0.0, 0xffffffff);
+            dd.baseVertexData.pushPOD(quad, 6);
+
+#if 0
+            const WldxEntry& we = sectorEntries[id];
+            u32 color = 0xff000000;
+            if(id == dbgSelectedTileId) {
+                color = 0xffff0000;
+            }
+            else if(id == dbgHoveredTileId) {
+                color = 0xffff8f8f;
+            }
+            else {
+                switch(dbgViewMode) {
+                    case MODE_NORMAL:
+                        color = 0xffffffff;
+                        break;
+
+                    case MODE_STATIC:
+                        color = 0xffffffff;
+                        if(we.staticId) {
+                            color = 0xff0000ff;
+                        }
+                        break;
+
+                    case MODE_ENTITY:
+                        color = 0xffffffff;
+                        if(we.entityId) {
+                            color = 0xffff0000;
+                        }
+                        break;
+
+                    case MODE_SMTH_TYPE:
+                        color = 0xffffffff;
+                        if(we.someTypeId) {
+                            color = 0xff000000 | (0x00000001 * (we.someTypeId*(255/15)));
+                        }
+                        break;
+
+                    case MODE_SMTH_POS:
+                        color = 0xff000000 | (we.smthZ << 16) | (we.smthY << 8) | (we.smthX);
+                        break;
+                }
+            }
+
+            if(color != 0xffffffff) {
+                dbgDrawSolidSquare(vec3f(x*dbgTileWidth, y*dbgTileWidth, 0),
+                                   vec3f(dbgTileWidth, dbgTileWidth, 0), color,
+                                   DbgCoordSpace::WORLD);
+            }
+#endif
+        }
+    }
+
+    for(i32 i = 0; i < dd.floorCount; ++i) {
+        const i32 posIndx = dd.floorPosIndex[i];
+        const i32 x = posIndx & 63;
+        const i32 y = posIndx / 64;
+        makeTileMesh(quad, dd.floorDiffuseTileId[i] % 18, x, y, 0.0, 0xffffffff,
+                     dd.floorAlphaTileId[i] % 18);
+        dd.floorVertexData.pushPOD(quad, 6);
     }
 }
 
@@ -283,13 +477,14 @@ void requestTexBrowserTextures()
 
 void ui_videoInfo()
 {
+    VramInfo vi = renderer_getVramInfo();
     ImGui::SetNextWindowPos(ImVec2(5,5));
     ImGui::Begin("Video info", nullptr,
                  ImGuiWindowFlags_NoTitleBar|ImGuiWindowFlags_NoResize|
                  ImGuiWindowFlags_NoMove|ImGuiWindowFlags_NoSavedSettings);
 
-    ImGui::Text("Current/Total %dmb/%dmb", (availMemory-currentAvailMem)/1024, availMemory/1024);
-    ImGui::ProgressBar(1.0 - (currentAvailMem / (f64)availMemory));
+    ImGui::Text("Current/Total %dmb/%dmb", (vi.availMemory-vi.currentAvailMem)/1024, vi.availMemory/1024);
+    ImGui::ProgressBar(1.0 - (vi.currentAvailMem / (f64)vi.availMemory));
     ImGui::Separator();
     ImGui::Text("Renderer frametime: %.5fms", renderer_getFrameTime() * 1000.0);
     ImGui::Text("Game     frametime: %.5fms", frameTime * 1000.0);
@@ -303,7 +498,6 @@ void ui_all()
 
     ui_textureBrowser();
     ui_tileTest();
-    //game.ui_floorTest();
     ui_mixedViewer();
     ui_videoInfo();
 
@@ -366,23 +560,18 @@ void ui_tileTest()
     ImGui::Checkbox("Isometric view", &viewIsIso);
     ImGui::Combo("viewMode", &dbgViewMode, viewModeCombo, MODE_COUNT);
 
-    //ImGui::SliderInt("dbgTileDrawCount", &dbgTileDrawCount, 1, 4096);
-
-
     ImGui::SliderInt("Sector ID", &dbgSectorId, 1, 6049);
     ImGui::InputInt("##sector_id_input", &dbgSectorId);
 
     ImGui::SliderFloat("TILE_WIDTH", &dbgTileWidth, 1, 200, "%.1f");
     ImGui::SliderFloat("mixOffX", &dbgMixedOffX, -200, 200, "%.1f");
     ImGui::SliderFloat("mixOffY", &dbgMixedOffY, -200, 200, "%.1f");
-    ImGui::Checkbox("Mixed use base offset", &dbgMixedUseBaseOffset);
-    ImGui::Checkbox("Mixed use static offset", &dbgMixedUseStaticOffset);
     ImGui::SliderInt("Mixed max objects drawn", &dbgMixedObjMax, 0, 4096);
 
     dbgSectorId = clamp(dbgSectorId, 1, 6049);
 
     ImGui::SliderInt("Overlay floors", &dbgOverlayFloor, 0, 2);
-
+    ImGui::Checkbox("Show mixed", &dbgShowMixed);
 
     if(sectorData) {
         ImGui::Text("#%d (%s)", dbgSectorId, sectorData->name);
@@ -407,27 +596,12 @@ void ui_tileTest()
             }
         }
 
-        ImGui::Checkbox("Show mixed", &dbgShowMixed);
-
         if(ImGui::Button("Dump data to file")) {
             char path[256];
             sprintf(path, "sector_data.%d", dbgSectorId);
             fileWriteBuffer(path, (const char*)sectorData, sectorInfo.uncompressedSize);
         }
     }
-
-    ImGui::End();
-}
-
-void ui_floorTest()
-{
-    const i32 floorCount = resource_getFloorCount();
-
-    ImGui::Begin("Floor viewer");
-
-    ImGui::Checkbox("Isometric view", &viewIsIso);
-    ImGui::SliderInt("offset", &dbgFloorOffset, 0, floorCount-4096);
-    ImGui::Checkbox("Second tile", &dbgFloorOver);
 
     ImGui::End();
 }
@@ -574,500 +748,31 @@ void ui_tileInspector()
 
 void drawSector()
 {
-#if 0
-    static GLuint* gpuBaseTex[MAX_TILE_COUNT];
-    static i32 baseTileIds[MAX_TILE_COUNT];
-    static i32 baseTileTexIds[MAX_TILE_COUNT];
-
-    static GLuint* gpuFloorTex[MAX_TILE_COUNT];
-    static GLuint* gpuFloorTexAlphaMask[MAX_TILE_COUNT];
-    static i32 floorTileIds[MAX_TILE_COUNT];
-    static i32 floorAlphaMaskTileIds[MAX_TILE_COUNT];
-    static i32 floorTileTexIds[MAX_TILE_COUNT];
-    static i32 floorAlphaMaskTexIds[MAX_TILE_COUNT];
-    static i32 floorPosIndex[MAX_TILE_COUNT];
-    i32 floorCount = 0;
-
-    static GLuint* gpuMixedQuadTex[MAX_MIXED_QUAD];
-    static i32 mixedQuadTexId[MAX_MIXED_QUAD];
-    i32 mixedQuadCount = 0;
-
-
-    const WldxEntry* sectorEntries = sectorData->data;
-    const u16* tileTexIds = resource_getTileTextureIds18();
-    const i32 tileCount = resource_getTileCount18() * 18;
-
-    const FloorEntry* floors = resource_getFloors();
-    const i32 floorMaxCount = resource_getFloorCount();
-
-    const PakStatic* statics = resource_getStatic();
-    const PakMixedDesc* mixedDescs = resource_getMixedDescs();
-    const PakMixedData* mixed = resource_getMixedData();
-    const PakItemType* itemTypes = resource_getItemTypes();
-    const i32 mixedDescCount = resource_getMixedDescsCount();
-    const i32 staticCount = resource_getStaticCount();
-    const i32 itemTypeCount = resource_getItemTypesCount();
-
-    mixedQuadMeshMutex.lock();
-
-    i32 mixedObjCount = 0;
-    i32 worldOriginX, worldOriginY;
-    resource_getWorldOrigin(&worldOriginX, &worldOriginY);
-
-    const i32 sectorX = sectorInfo.posX1;
-    const i32 sectorY = sectorInfo.posY1;
-    const vec3f sectorSceen = sacred_worldToScreen(vec3f(sectorX, sectorY, 0));
-
-    for(i32 i = 0; i < MAX_TILE_COUNT; ++i) {
-        const WldxEntry& we = sectorEntries[i];
-        i32 tileId = sectorEntries[i].tileId;
-        i32 texId = tileTexIds[tileId/18];
-        baseTileIds[i] = tileId;
-        baseTileTexIds[i] = texId;
-        assert(tileId < tileCount);
-
-        i32 floorId = we.floorId;
-        while(floorId && dbgOverlayFloor) {
-            assert(floorId < floorMaxCount);
-            i32 tileId = floors[floorId].pakTileIds & 0x1FFFF;
-            i32 tileIdAlphaMask = floors[floorId].pakTileIds >> 17;
-
-            /*LOG_DBG("%d %x tileId1=%d tileId2=%d", i,
-                    floors[we.floorId].pakTileIds,
-                    floors[we.floorId].pakTileIds & 0x1FFFF,
-                    floors[we.floorId].pakTileIds >> 17);*/
-
-            if(tileId > 0) {
-                assert(floorCount < MAX_TILE_COUNT);
-                i32 fid = floorCount++;
-                floorTileIds[fid] = tileId;
-                floorTileTexIds[fid] = tileTexIds[tileId/18];
-                floorAlphaMaskTileIds[fid] = tileIdAlphaMask;
-                floorAlphaMaskTexIds[fid] = tileTexIds[tileIdAlphaMask/18];
-                floorPosIndex[fid] = i;
-            }
-            floorId = floors[floorId].nextFloorId;
-        }
-
-        if(we.staticId) {
-            assert(we.staticId < staticCount);
-            const PakStatic& sta = statics[we.staticId];
-            i32 itemTypeId = sta.itemTypeId;
-
-            if(itemTypeId) {
-                assert(itemTypeId < itemTypeCount);
-                i32 mixedId = itemTypes[itemTypeId].mixedId;
-
-                if(mixedId && dbgShowMixed && mixedObjCount < dbgMixedObjMax) {
-                    mixedObjCount++;
-                    assert(mixedId < mixedDescCount);
-                    const PakMixedDesc& desc = mixedDescs[mixedId];
-                    const i32 mcount = desc.count;
-                    const i32 mixedStartId = desc.mixedDataId;
-
-                    f32 orgnX = sta.worldX - sectorSceen.x;
-                    f32 orgnY = sta.worldY - sectorSceen.y;
-                    mat4 inv = mat4Inv(matIsoRotation);
-                    vec3f orgnPosIso = vec3fMulMat4(vec3f(orgnX, orgnY, 0), inv);
-
-                    if(viewIsIso) {
-                        orgnPosIso = posOrthoToIso(orgnPosIso);
-                    }
-
-                    for(i32 m = 0; m < mcount; ++m) {
-                        const PakMixedData& md = mixed[m + mixedStartId];
-                        assert(mixedQuadCount < MAX_MIXED_QUAD);
-                        i32 mid = mixedQuadCount++;
-                        mixedQuadTexId[mid] = md.textureId;
-
-                        f32 x = orgnPosIso.x + md.x;
-                        f32 y = orgnPosIso.y + md.y;
-                        i32 w = md.width - md.x;
-                        i32 h = md.height - md.y;
-                        meshAddQuad(mixedQuadMesh + mid * 6, x, y, 0.0, w, h, md.uvX1, md.uvY1,
-                                    md.uvX2, md.uvY2, 0xffffffff);
-                    }
-                }
-            }
-        }
-    }
-
-    mixedQuadMeshMutex.unlock();
-
-    resource_requestGpuTextures(baseTileTexIds, gpuBaseTex, MAX_TILE_COUNT);
-    resource_requestGpuTextures(floorTileTexIds, gpuFloorTex, floorCount);
-    resource_requestGpuTextures(floorAlphaMaskTexIds, gpuFloorTexAlphaMask, floorCount);
-    resource_requestGpuTextures(mixedQuadTexId, gpuMixedQuadTex, mixedQuadCount);
-
-    CommandList list;
-    list.useProgram(&tileShader.program);
-
-    static mat4 viewOrtho, viewIso;
-    viewOrtho = matViewOrtho;
-    viewIso = matViewIso;
-
-    list.uniformMat4(tileShader.uProjMatrix, &matProjOrtho);
-    if(viewIsIso) {
-        list.uniformMat4(tileShader.uViewMatrix, &viewIso);
-    }
-    else {
-        list.uniformMat4(tileShader.uViewMatrix, &viewOrtho);
-    }
-
-    testTileModel = mat4Scale(vec3f(dbgTileWidth, dbgTileWidth, 1));
-    list.uniformMat4(tileShader.uModelMatrix, &testTileModel);
-
-    static i32 diffSlot = 0;
-    static i32 alphaSlot = 1;
-    list.uniformInt(tileShader.uDiffuse, &diffSlot);
-    list.uniformInt(tileShader.uAlphaMask, &alphaSlot);
-
-    tileVertexMutex.lock();
-    i32 tileMeshId = 0;
-    for(i32 y = 0; y < 64; ++y) {
-        for(i32 x = 0; x < 64; ++x) {
-            i32 id = y*64 + x;
-            const WldxEntry& we = sectorEntries[id];
-            u32 color = 0xff000000;
-
-            if(id == dbgSelectedTileId) {
-                color = 0xffff0000;
-            }
-            else if(id == dbgHoveredTileId) {
-                color = 0xffff8f8f;
-            }
-            else {
-                switch(dbgViewMode) {
-                    case MODE_NORMAL:
-                        color = 0xffffffff;
-                        break;
-
-                    case MODE_STATIC:
-                        color = 0xffffffff;
-                        if(we.staticId) {
-                            color = 0xff0000ff;
-                        }
-                        break;
-
-                    case MODE_ENTITY:
-                        color = 0xffffffff;
-                        if(we.entityId) {
-                            color = 0xffff0000;
-                        }
-                        break;
-
-                    case MODE_SMTH_TYPE:
-                        color = 0xffffffff;
-                        if(we.someTypeId) {
-                            color = 0xff000000 | (0x00000001 * (we.someTypeId*(255/15)));
-                        }
-                        break;
-
-                    case MODE_SMTH_POS:
-                        color = 0xff000000 | (we.smthZ << 16) | (we.smthY << 8) | (we.smthX);
-                        break;
-                }
-            }
-
-            if(color != 0xffffffff) {
-                dbgDrawSolidSquare(vec3f(x*dbgTileWidth, y*dbgTileWidth, 0),
-                                   vec3f(dbgTileWidth, dbgTileWidth, 0), color,
-                                   DbgCoordSpace::WORLD);
-            }
-
-            makeTileMesh(&tileVertexData[6 * (tileMeshId++)], baseTileIds[id] % 18, x, y, 0.0,
-                    0xffffffff);
-        }
-    }
-
-    tileMeshId = 0;
-    for(i32 i = 0; i < floorCount; ++i) {
-        i32 posIndx = floorPosIndex[i];
-        i32 x = posIndx & 63;
-        i32 y = posIndx / 64;
-        makeTileMesh(&tileFloorVertexData[6 * i], floorTileIds[i] % 18, x, y, 0.0, 0xffffffff,
-                    floorAlphaMaskTileIds[i] % 18);
-    }
-    tileVertexMutex.unlock();
-
-    list.mutexLock(&tileVertexMutex);
-    i32 offset = 0;
-    list.arrayBufferSubData(&tileShader.vbo, offset, tileVertexData, sizeof(tileVertexData));
-    offset += sizeof(tileVertexData);
-
-    list.arrayBufferSubData(&tileShader.vbo, offset, tileFloorVertexData,
-                            sizeof(tileVertexData[0]) * floorCount * 6);
-    offset += sizeof(tileFloorVertexData[0]) * floorCount * 6;
-    list.mutexUnlock(&tileVertexMutex);
-
-    list.mutexLock(&mixedQuadMeshMutex);
-    list.arrayBufferSubData(&tileShader.vbo, offset, mixedQuadMesh,
-                            sizeof(mixedQuadMesh[0]) * mixedQuadCount * 6);
-    list.mutexUnlock(&mixedQuadMeshMutex);
-
-    renderer_pushCommandList(list);
-
-
-    list.bindVertexArray(&tileShader.vao);
-    list.setTransparencyEnabled(false);
-
-    // DRAW BASE TILE MESH
-    // TODO: pack same texture calls or bind more textures
-    for(i32 i = 0; i < dbgTileDrawCount; ++i) {
-        list.textureSlot(gpuBaseTex[i], 0);
-        list.drawTriangles(i * 6, 6);
-
-        if(i % 200 == 0) {
-            renderer_pushCommandList(list);
-        }
-    }
-
-    renderer_pushCommandList(list);
-    list.setTransparencyEnabled(true);
-
-    // DRAW FLOOR MESH
-    i32 vertOffset = MAX_TILE_COUNT * 6;
-    for(i32 i = 0; i < floorCount; ++i) {
-        list.textureSlot(gpuFloorTex[i], diffSlot);
-        list.textureSlot(gpuFloorTexAlphaMask[i], alphaSlot);
-        list.drawTriangles(vertOffset + i * 6, 6);
-
-        if(i % 200 == 0) {
-            renderer_pushCommandList(list);
-        }
-    }
-
-    renderer_pushCommandList(list);
-
-    static mat4 mixedModel = mat4Scale(vec3f(1, 1, 1));
-    list.uniformMat4(tileShader.uViewMatrix, &viewOrtho);
-    list.uniformMat4(tileShader.uModelMatrix, &mixedModel);
-
-    // DRAW MIXED MESH
-    vertOffset += floorCount * 6;
-    for(i32 i = 0; i < mixedQuadCount; ++i) {
-        list.textureSlot(gpuMixedQuadTex[i], 0);
-        list.drawTriangles(vertOffset + i * 6, 6);
-
-        if(i % 200 == 0) {
-            renderer_pushCommandList(list);
-        }
-    }
-
-    renderer_pushCommandList(list);
-#endif
-}
-
-void drawFloorTest()
-{
-#if 0
-    constexpr i32 MAX_SECTOR_TEXTURE_COUNT = 3000;
-    constexpr i32 MAX_TILE_COUNT_HALF = MAX_TILE_COUNT/2;
-    i32 diskSectorTexs[MAX_SECTOR_TEXTURE_COUNT] = {};
-    GLuint* gpuFloorTex[MAX_SECTOR_TEXTURE_COUNT];
-    i32 floorTexCount = 0;
-    GLuint* tileGpuTexId[MAX_TILE_COUNT];
-    i32 floorTileIds[MAX_TILE_COUNT];
-    i32 floorTexIds[MAX_TILE_COUNT];
-    u32 floorColor[MAX_TILE_COUNT];
-
-    u16* tileTexIds = resource_getTileTextureIds18();
-    FloorEntry* floors = resource_getFloors();
-    const i32 floorCount = resource_getFloorCount();
-
-    i32 fid = dbgFloorOffset;
-    for(i32 i = 0; i < MAX_TILE_COUNT_HALF; ++i) {
-        assert(fid < floorCount);
-
-        FloorEntry& fe = floors[fid];
-        i32 tileId1 = fe.pakTileIds & 0x1FFFF;
-        i32 tileId2 = fe.pakTileIds >> 17;
-        i32 texId1 = tileTexIds[tileId1/18];
-        i32 texId2 = tileTexIds[tileId2/18];
-        floorTileIds[i*2] = tileId1;
-        floorTileIds[i*2+1] = tileId2;
-        floorTexIds[i*2] = texId1;
-        floorTexIds[i*2+1] = texId2;
-        floorColor[i*2] = 0xffffffff;
-        floorColor[i*2+1] = tileId2 ? 0xffffffff : 0xff000000;
-
-        bool found1 = false;
-        bool found2 = false;
-        for(i32 j = 0; j < floorTexCount && (!found2 || !found2); ++j) {
-            if(diskSectorTexs[j] == texId1) {
-                found1 = true;
-            }
-            if(diskSectorTexs[j] == texId2) {
-                found2 = true;
-            }
-        }
-
-        if(!found1) {
-            diskSectorTexs[floorTexCount++] = texId1;
-            assert(floorTexCount <= MAX_SECTOR_TEXTURE_COUNT);
-        }
-        if(!found2) {
-            diskSectorTexs[floorTexCount++] = texId2;
-            assert(floorTexCount <= MAX_SECTOR_TEXTURE_COUNT);
-        }
-
-        if(fe.nextFloorId) {
-            fid = fe.nextFloorId;
-        }
-        else {
-            fid++;
-        }
-    }
-
-    resource_requestGpuTextures(diskSectorTexs, gpuFloorTex, floorTexCount);
-
-    // assign gpu textures to tiles
-    for(i32 i = 0; i < MAX_TILE_COUNT; ++i) {
-        i32 texId = floorTexIds[i];
-
-        for(i32 j = 0; j < floorTexCount; ++j) {
-            if(diskSectorTexs[j] == texId) {
-                tileGpuTexId[i] = gpuFloorTex[j];
-            }
-        }
-    }
-
-    CommandList list;
-    list.useProgram(&tileShader.program);
-
-    viewMutex.lock();
-    viewIso = mat4Orthographic(0, 1600 * viewZoom, 900 * viewZoom, 0, -10000.f, 10000.f);
-    viewIso = mat4Mul(viewIso, mat4Translate(vec3f(-viewX, -viewY, 0)));
-    if(viewIsIso) {
-        viewIso = mat4Mul(viewIso, mat4RotateAxisX(VIEW_X_ANGLE));
-        viewIso = mat4Mul(viewIso, mat4RotateAxisZ(RS_HALFPI/2 * viewZMul));
-    }
-    viewMutex.unlock();
-
-    list.mutexLock(&viewMutex);
-    list.uniformMat4(tileShader.uViewMatrix, &viewIso);
-    list.mutexUnlock(&viewMutex);
-
-    testTileModel = mat4Scale(vec3f(53.65625, 53.65625, 1));
-    list.uniformMat4(tileShader.uModelMatrix, &testTileModel);
-
-    static i32 slot = 0;
-    list.uniformInt(tileShader.uDiffuse, &slot);
-
-    const i32 over = dbgFloorOver;
-    tileVertexMutex.lock();
-    i32 tileMeshId = 0;
-    for(i32 i = 0; i < MAX_TILE_COUNT; ++i) {
-        //i32 fid = i*2 + over;
-        i32 fid = i;
-        i32 tileId = floorTileIds[fid];
-        i32 x = i & 63;
-        i32 y = i / 64;
-        makeTileMesh(&tileVertexData[6 * (tileMeshId++)], tileId % 18, x, y, floorColor[fid]);
-    }
-    tileVertexMutex.unlock();
-
-    list.mutexLock(&tileVertexMutex);
-    list.arrayBufferSubData(&tileShader.vertexBuffer, 0, tileVertexData, sizeof(tileVertexData));
-    list.mutexUnlock(&tileVertexMutex);
-    renderer_pushCommandList(list);
-
-    list.bindVertexArray(&tileShader.vao);
-
-    // TODO: pack same texture calls or bind more textures
-    for(i32 i = 0; i < MAX_TILE_COUNT; ++i) {
-        list.textureSlot(tileGpuTexId[i], 0);
-        list.drawTriangles(i * 6, 6);
-
-        if(i % 200 == 0) {
-            renderer_pushCommandList(list);
-        }
-    }
-
-    renderer_pushCommandList(list);
-#endif
-}
-
-void drawTestMixed()
-{
-#if 0
-    static GLuint* gpuMixedQuadTex[MAX_MIXED_QUAD];
-    static i32 mixedQuadTexId[MAX_MIXED_QUAD];
-    i32 mixedQuadCount = 0;
-
-    const PakMixedDesc* descs = resource_getMixedDescs();
-    const PakMixedData* mixed = resource_getMixedData();
-    const i32 descCount = resource_getMixedDescsCount();
-
-    assert(dbgMixedId < descCount);
-    const i32 mcount = descs[dbgMixedId].count;
-    const i32 mixedStartId = descs[dbgMixedId].mixedDataId;
-
-    if(mcount == 0) {
-        return;
-    }
-
-    mixedQuadMeshMutex.lock();
-
-    for(i32 m = 0; m < mcount; ++m) {
-        const PakMixedData& md = mixed[m + mixedStartId];
-        assert(mixedQuadCount < MAX_MIXED_QUAD);
-        i32 mid = mixedQuadCount++;
-        mixedQuadTexId[mid] = md.textureId;
-        f32 x = md.x;
-        f32 y = md.y;
-        i32 w = md.width - md.x;
-        i32 h = md.height - md.y;
-        meshAddQuad(mixedQuadMesh + mid * 6, x, y, 0.0, w, h, md.uvX1, md.uvY1,
-                    md.uvX2, md.uvY2, 0xffffffff);
-    }
-
-    mixedQuadMeshMutex.unlock();
-
-    resource_requestGpuTextures(mixedQuadTexId, gpuMixedQuadTex, mixedQuadCount);
-
-    CommandList list;
-    list.useProgram(&tileShader.program);
-
-    list.uniformMat4(tileShader.uProjMatrix, &matProjOrtho);
-    list.uniformMat4(tileShader.uViewMatrix, &matViewOrtho);
-
-    //testTileModel = mat4Scale(vec3f(53.65625, 53.65625, 1));
-    if(viewIsIso) {
-        testTileModel = mat4Mul(matIsoRotation, mat4Scale(vec3f(dbgTileWidth, dbgTileWidth, 1)));
-    }
-    else {
-        testTileModel = mat4Scale(vec3f(dbgTileWidth, dbgTileWidth, 1));
-    }
-    list.uniformMat4(tileShader.uModelMatrix, &testTileModel);
-
-    static mat4 mixedModel = mat4Scale(vec3f(1, 1, 1));
-    list.uniformMat4(tileShader.uModelMatrix, &mixedModel);
-
-    static i32 slot = 0;
-    list.uniformInt(tileShader.uDiffuse, &slot);
-
-    list.mutexLock(&mixedQuadMeshMutex);
-    list.arrayBufferSubData(&tileShader.vbo, 0, mixedQuadMesh,
-                            sizeof(mixedQuadMesh[0]) * mixedQuadCount * 6);
-    list.mutexUnlock(&mixedQuadMeshMutex);
-    renderer_pushCommandList(list);
-
-
-    list.bindVertexArray(&tileShader.vao);
-    list.setTransparencyEnabled(true);
-
-    for(i32 i = 0; i < mixedQuadCount; ++i) {
-        list.textureSlot(gpuMixedQuadTex[i], 0);
-        list.drawTriangles(i * 6, 6);
-
-        if(i % 200 == 0) {
-            renderer_pushCommandList(list);
-        }
-    }
-
-    renderer_pushCommandList(list);
-#endif
+    if(loadedSectorId != dbgSectorId) return;
+
+    const SectorDrawData& dd = currentSectorDrawData;
+    resource_requestGpuTextures(dd.baseTexId.data(), dd.gpuTexBase.data(), dd.baseTexId.count());
+    resource_requestGpuTextures(dd.floorDiffuseTexId.data(), dd.gpuTexFloorDiffuse.data(), dd.floorCount);
+    resource_requestGpuTextures(dd.floorAlphaTexId.data(), dd.gpuTexFloorAlphaMask.data(), dd.floorCount);
+    resource_requestGpuTextures(dd.mixedTexId.data(), dd.gpuTexMixed.data(), dd.mixedQuadCount);
+
+    frameData.tileVertexData.pushPOD(dd.baseVertexData.data(), dd.baseVertexData.count());
+    frameData.tileVertexData.pushPOD(dd.floorVertexData.data(), dd.floorVertexData.count());
+    frameData.tileVertexData.pushPOD(dd.mixedVertexData.data(), dd.mixedVertexData.count());
+
+    frameData.tileQuadGpuTex.pushPOD(dd.gpuTexBase.data(), dd.gpuTexBase.count());
+    frameData.tileQuadGpuTex.pushPOD(dd.gpuTexFloorDiffuse.data(), dd.gpuTexFloorDiffuse.count());
+    frameData.tileQuadGpuTex.pushPOD(dd.gpuTexFloorAlphaMask.data(), dd.gpuTexFloorAlphaMask.count());
+    frameData.tileQuadGpuTex.pushPOD(dd.gpuTexMixed.data(), dd.gpuTexMixed.count());
+
+    frameData.matCamProj = matProjOrtho;
+    frameData.matCamViewIso = matViewIso;
+    frameData.matCamViewOrtho = matViewOrtho;
+    frameData.matSectorTileModel = mat4Scale(vec3f(dbgTileWidth, dbgTileWidth, 1));
+
+    frameData.tvOff_base = 0;
+    frameData.tvOff_floor = dd.baseVertexData.count();
+    frameData.tvOff_mixed = frameData.tvOff_floor + dd.floorVertexData.count();
 }
 
 void updateCameraMatrices()
@@ -1099,8 +804,6 @@ void render()
     }
 
     drawSector();
-    //drawFloorTest();
-    //drawTestMixed();
 
 #if 1
     dbgDrawSetView(matProjOrtho, mat4Identity(), DbgCoordSpace::SCREEN);

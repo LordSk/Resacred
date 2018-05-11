@@ -19,217 +19,217 @@
 
 struct GPUResources
 {
-    u32 gpuTexDefault;
-    u32 texGpuId[MAX_GPU_TEXTURES];
-    i32 texDiskId[MAX_GPU_TEXTURES];
-    i32 texFramesNotRequested[MAX_GPU_TEXTURES];
-    AtomicCounter texLoaded[MAX_GPU_TEXTURES];
-    u8 texSlotOccupied[MAX_GPU_TEXTURES];
-    TextureDesc2D texDesc[MAX_GPU_TEXTURES];
-    RendererFrameData* frameData;
+u32 gpuTexDefault;
+u32 texGpuId[MAX_GPU_TEXTURES];
+i32 texDiskId[MAX_GPU_TEXTURES];
+i32 texFramesNotRequested[MAX_GPU_TEXTURES];
+AtomicCounter texLoaded[MAX_GPU_TEXTURES];
+u8 texSlotOccupied[MAX_GPU_TEXTURES];
+TextureDesc2D texDesc[MAX_GPU_TEXTURES];
+RendererFrameData* frameData;
 
-    bool init()
-    {
-        memset(texFramesNotRequested, 0, sizeof(texFramesNotRequested));
-        memset(texSlotOccupied, 0, sizeof(texSlotOccupied));
-        memset(texLoaded, 0, sizeof(texLoaded));
+bool init()
+{
+    memset(texFramesNotRequested, 0, sizeof(texFramesNotRequested));
+    memset(texSlotOccupied, 0, sizeof(texSlotOccupied));
+    memset(texLoaded, 0, sizeof(texLoaded));
 
-        constexpr i32 texWidth = 16;
-        static u32 textureData[texWidth*texWidth];
+    constexpr i32 texWidth = 16;
+    static u32 textureData[texWidth*texWidth];
 
-        for(i32 i = 0; i < texWidth*texWidth; ++i) {
-            i32 odd = (i/texWidth) & 1;
-            if((i+odd) & 1) {
-                textureData[i] = 0xffff0000;
+    for(i32 i = 0; i < texWidth*texWidth; ++i) {
+        i32 odd = (i/texWidth) & 1;
+        if((i+odd) & 1) {
+            textureData[i] = 0xffff0000;
+        }
+        else {
+            textureData[i] = 0xffff00ff;
+        }
+    }
+
+    TextureDesc2D desc;
+    desc.internalFormat = GL_RGBA8;
+    desc.dataFormat = GL_RGBA;
+    desc.dataPixelCompType = GL_UNSIGNED_BYTE;
+    desc.data = textureData;
+    desc.height = texWidth;
+    desc.width = texWidth;
+    desc.wrapS = GL_REPEAT;
+    desc.wrapT = GL_REPEAT;
+    desc.minFilter = GL_NEAREST;
+    desc.magFilter = GL_NEAREST;
+
+    frameData = game_getFrameData();
+    frameData->_addTextureCreate(desc, &gpuTexDefault);
+
+    return true;
+}
+
+void destroyTexture(i32 texSlot)
+{
+    if(texGpuId[texSlot] != gpuTexDefault) {
+        frameData->_addTextureToDestroyList(texGpuId[texSlot]);
+    }
+    texGpuId[texSlot] = gpuTexDefault;
+    texDiskId[texSlot] = 0;
+    texLoaded[texSlot].set(0);
+    texSlotOccupied[texSlot] = false;
+}
+
+void newFrame()
+{
+    frameData = game_getFrameData();
+
+    // find unused textures and destroy them
+    for(i32 i = 0; i < MAX_GPU_TEXTURES; ++i) {
+        if(texSlotOccupied[i]) {
+            texFramesNotRequested[i]++;
+
+            if(texFramesNotRequested[i] > 10) {
+                destroyTexture(i);
+                //LOG_DBG("ResourceGpu> evicting texture %d", i);
             }
-            else {
-                textureData[i] = 0xffff00ff;
+        }
+    }
+}
+
+i32 _occupyNextTextureSlot()
+{
+    for(i32 i = 0; i < MAX_GPU_TEXTURES; ++i) {
+        if(texSlotOccupied[i] == false) {
+            texSlotOccupied[i] = true;
+            return i;
+        }
+    }
+
+    LOG_WARN("ResourceGpu> Warning, requesting a lot of textures quickly");
+
+    i32 oldestFrameCount = 0;
+    i32 oldestId = -1;
+    for(i32 i = 0; i < MAX_GPU_TEXTURES; ++i) {
+        if(texSlotOccupied[i] && texFramesNotRequested[i] > oldestFrameCount &&
+           texLoaded[i].get() == 1) {
+            oldestId = i;
+            oldestFrameCount = texFramesNotRequested[i];
+        }
+    }
+
+    assert(oldestId >= 0);
+    assert(oldestFrameCount > 0);
+
+    destroyTexture(oldestId);
+    texSlotOccupied[oldestId] = true;
+    return oldestId;
+}
+
+void requestTextures(const i32* inPakTextureIds, u32** outGpuTexHandles, const i32 requestCount)
+{
+    memset(outGpuTexHandles, 0, sizeof(outGpuTexHandles[0]) * requestCount);
+
+    // assign already loaded/loading textures
+    for(i32 r = 0; r < requestCount; ++r) {
+        const i32 pakTexId = inPakTextureIds[r];
+
+        bool found = false;
+        for(i32 i = 0; i < MAX_GPU_TEXTURES; ++i) {
+            if(texSlotOccupied[i] && texDiskId[i] == pakTexId) {
+                outGpuTexHandles[r] = &texGpuId[i];
+                texFramesNotRequested[i] = 1;
+                found = true;
+                break;
             }
         }
 
-        TextureDesc2D desc;
-        desc.internalFormat = GL_RGBA8;
-        desc.dataFormat = GL_RGBA;
-        desc.dataPixelCompType = GL_UNSIGNED_BYTE;
-        desc.data = textureData;
-        desc.height = texWidth;
-        desc.width = texWidth;
-        desc.wrapS = GL_REPEAT;
-        desc.wrapT = GL_REPEAT;
+        if(!found) {
+            i32 newId = _occupyNextTextureSlot();
+            outGpuTexHandles[r] = &texGpuId[newId];
+            texGpuId[newId] = gpuTexDefault;
+            texDiskId[newId] = pakTexId;
+            texFramesNotRequested[newId] = 1;
+            // TODO: it increments here but decrements in ResourceManager?
+            // choose one
+            texLoaded[newId].set(0);
+        }
+    }
+}
+
+void uploadTextures(i32* pakTextureUIDs, PakTextureInfo* textureInfos, u8** textureData, const i32 count)
+{
+    // for all remaining requests create a new gpu texture and assign it
+    for(i32 r = 0; r < count; ++r) {
+        const i32 pakTexId = pakTextureUIDs[r];
+        i32 gpuId = -1;
+
+        for(i32 i = 0; i < MAX_GPU_TEXTURES; ++i) {
+            if(texSlotOccupied[i] && texDiskId[i] == pakTexId) {
+                gpuId = i;
+                break;
+            }
+        }
+
+        if(gpuId == -1 || texLoaded[gpuId].get()) {
+            continue;
+        }
+
+        //LOG_DBG("ResourcesGpu> uploading pakId=%d gpuId=%d", pakTexId, gpuId);
+
+        TextureDesc2D& desc = texDesc[gpuId];
+
+        // upload texture to gpu
+        desc.width = textureInfos[r].width;
+        desc.height = textureInfos[r].height;
+        desc.data =  textureData[r];
+
+        if(textureInfos[r].type == PakTextureType::TYPE_RGBA8) {
+            desc.internalFormat = GL_RGBA8;
+            desc.dataFormat = GL_RGBA;
+            desc.dataPixelCompType = GL_UNSIGNED_BYTE;
+        }
+        else {
+            desc.internalFormat = GL_RGBA4;
+            desc.dataFormat = GL_BGRA;
+            desc.dataPixelCompType = GL_UNSIGNED_SHORT_4_4_4_4_REV;
+        }
+
+
         desc.minFilter = GL_NEAREST;
         desc.magFilter = GL_NEAREST;
 
-        frameData = game_getFrameData();
-        frameData->addTextureCreate(desc, &gpuTexDefault);
 
-        return true;
+        texLoaded[gpuId].increment();
+        frameData->_addTextureCreate(desc, &texGpuId[gpuId]);
     }
+}
 
-    void destroyTexture(i32 texSlot)
-    {
-        if(texGpuId[texSlot] != gpuTexDefault) {
-            frameData->addTextureToDestroyList(texGpuId[texSlot]);
+void deinit()
+{
+    // TODO: implement
+    /*for(i32 i = 0; i < MAX_GPU_TEXTURES; ++i) {
+        if(texSlotOccupied[i]) {
+            cmds.destroyTexture(texGpuId[i]);
         }
-        texGpuId[texSlot] = gpuTexDefault;
-        texDiskId[texSlot] = 0;
-        texLoaded[texSlot].set(0);
-        texSlotOccupied[texSlot] = false;
-    }
-
-    void newFrame()
-    {
-        frameData = game_getFrameData();
-
-        // find unused textures and destroy them
-        for(i32 i = 0; i < MAX_GPU_TEXTURES; ++i) {
-            if(texSlotOccupied[i]) {
-                texFramesNotRequested[i]++;
-
-                if(texFramesNotRequested[i] > 10) {
-                    destroyTexture(i);
-                    //LOG_DBG("ResourceGpu> evicting texture %d", i);
-                }
-            }
-        }
-    }
-
-    i32 _occupyNextTextureSlot()
-    {
-        for(i32 i = 0; i < MAX_GPU_TEXTURES; ++i) {
-            if(texSlotOccupied[i] == false) {
-                texSlotOccupied[i] = true;
-                return i;
-            }
-        }
-
-        LOG_WARN("ResourceGpu> Warning, requesting a lot of textures quickly");
-
-        i32 oldestFrameCount = 0;
-        i32 oldestId = -1;
-        for(i32 i = 0; i < MAX_GPU_TEXTURES; ++i) {
-            if(texSlotOccupied[i] && texFramesNotRequested[i] > oldestFrameCount &&
-               texLoaded[i].get() == 1) {
-                oldestId = i;
-                oldestFrameCount = texFramesNotRequested[i];
-            }
-        }
-
-        assert(oldestId >= 0);
-        assert(oldestFrameCount > 0);
-
-        destroyTexture(oldestId);
-        texSlotOccupied[oldestId] = true;
-        return oldestId;
-    }
-
-    void requestTextures(const i32* inPakTextureIds, u32** outGpuTexHandles, const i32 requestCount)
-    {
-        memset(outGpuTexHandles, 0, sizeof(outGpuTexHandles[0]) * requestCount);
-
-        // assign already loaded/loading textures
-        for(i32 r = 0; r < requestCount; ++r) {
-            const i32 pakTexId = inPakTextureIds[r];
-
-            bool found = false;
-            for(i32 i = 0; i < MAX_GPU_TEXTURES; ++i) {
-                if(texSlotOccupied[i] && texDiskId[i] == pakTexId) {
-                    outGpuTexHandles[r] = &texGpuId[i];
-                    texFramesNotRequested[i] = 1;
-                    found = true;
-                    break;
-                }
-            }
-
-            if(!found) {
-                i32 newId = _occupyNextTextureSlot();
-                outGpuTexHandles[r] = &texGpuId[newId];
-                texGpuId[newId] = gpuTexDefault;
-                texDiskId[newId] = pakTexId;
-                texFramesNotRequested[newId] = 1;
-                // TODO: it increments here but decrements in ResourceManager?
-                // choose one
-                texLoaded[newId].set(0);
-            }
-        }
-    }
-
-    void uploadTextures(i32* pakTextureUIDs, PakTextureInfo* textureInfos, u8** textureData, const i32 count)
-    {
-        // for all remaining requests create a new gpu texture and assign it
-        for(i32 r = 0; r < count; ++r) {
-            const i32 pakTexId = pakTextureUIDs[r];
-            i32 gpuId = -1;
-
-            for(i32 i = 0; i < MAX_GPU_TEXTURES; ++i) {
-                if(texSlotOccupied[i] && texDiskId[i] == pakTexId) {
-                    gpuId = i;
-                    break;
-                }
-            }
-
-            if(gpuId == -1 || texLoaded[gpuId].get()) {
-                continue;
-            }
-
-            //LOG_DBG("ResourcesGpu> uploading pakId=%d gpuId=%d", pakTexId, gpuId);
-
-            TextureDesc2D& desc = texDesc[gpuId];
-
-            // upload texture to gpu
-            desc.width = textureInfos[r].width;
-            desc.height = textureInfos[r].height;
-            desc.data =  textureData[r];
-
-            if(textureInfos[r].type == PakTextureType::TYPE_RGBA8) {
-                desc.internalFormat = GL_RGBA8;
-                desc.dataFormat = GL_RGBA;
-                desc.dataPixelCompType = GL_UNSIGNED_BYTE;
-            }
-            else {
-                desc.internalFormat = GL_RGBA4;
-                desc.dataFormat = GL_BGRA;
-                desc.dataPixelCompType = GL_UNSIGNED_SHORT_4_4_4_4_REV;
-            }
-
-
-            desc.minFilter = GL_NEAREST;
-            desc.magFilter = GL_NEAREST;
-
-
-            texLoaded[gpuId].increment();
-            frameData->addTextureCreate(desc, &texGpuId[gpuId]);
-        }
-    }
-
-    void deinit()
-    {
-        // TODO: implement
-        /*for(i32 i = 0; i < MAX_GPU_TEXTURES; ++i) {
-            if(texSlotOccupied[i]) {
-                cmds.destroyTexture(texGpuId[i]);
-            }
-        }*/
-    }
-
-    /*void debugUi()
-    {
-        ImGui::Begin("Gpu resources");
-
-        ImGui::Text("MAX_TEXTURE_IDS: %d", MAX_GPU_TEXTURES);
-
-        ImGui::BeginChild("gpures_texture_list");
-        for(i32 i = 0; i < MAX_GPU_TEXTURES; ++i) {
-            ImColor textColor(128, 255, 128, 255);
-            if(!texSlotOccupied[i]) {
-                textColor = ImColor(128, 0, 0, 255);
-            }
-            ImGui::TextColored(textColor, "[%4d] gpuId=%4d diskId=%4d frames=%4d", i,
-                texGpuId[i], texDiskId[i], texFramesNotRequested[i]);
-        }
-        ImGui::End();
-
-        ImGui::End();
     }*/
+}
+
+/*void debugUi()
+{
+    ImGui::Begin("Gpu resources");
+
+    ImGui::Text("MAX_TEXTURE_IDS: %d", MAX_GPU_TEXTURES);
+
+    ImGui::BeginChild("gpures_texture_list");
+    for(i32 i = 0; i < MAX_GPU_TEXTURES; ++i) {
+        ImColor textColor(128, 255, 128, 255);
+        if(!texSlotOccupied[i]) {
+            textColor = ImColor(128, 0, 0, 255);
+        }
+        ImGui::TextColored(textColor, "[%4d] gpuId=%4d diskId=%4d frames=%4d", i,
+            texGpuId[i], texDiskId[i], texFramesNotRequested[i]);
+    }
+    ImGui::End();
+
+    ImGui::End();
+}*/
 };
 
 #define FILE_RING_BUFFER_SIZE Megabyte(200)

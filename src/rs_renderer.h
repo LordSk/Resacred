@@ -3,6 +3,7 @@
 #include "rs_base.h"
 #include "rs_array.h"
 #include "rs_thread.h"
+#include "rs_math.h"
 #include "imgui.h"
 
 #ifdef CONF_DEBUG
@@ -61,24 +62,47 @@ struct RendererFrameData
     i32 texDestroyCount = 0;
     i32 texToCreateCount = 0;
 
+    // imgui draw data
     Array<ImDrawList> imguiDrawList;
 
-    inline void addTextureToDestroyList(u32 texture)
+    // world draw data
+    Array<TileVertex> tileVertexData;
+    Array<u32*> tileQuadGpuTex;
+
+    mat4 matCamProj;
+    mat4 matCamViewIso;
+    mat4 matCamViewOrtho;
+    mat4 matSectorTileModel; // TODO: use a bunch of model matrices
+
+    i32 tvOff_base;
+    i32 tvOff_floor;
+    i32 tvOff_mixed;
+
+    RendererFrameData() = default;
+    void copy(const RendererFrameData& other);
+    void clear();
+
+    // functions used by GPUResources
+    inline void _addTextureToDestroyList(u32 texture)
     {
         gpuTexDestroyList[texDestroyCount++] = texture;
     }
 
-    inline void addTextureCreate(TextureDesc2D desc, u32* destId)
+    inline void _addTextureCreate(TextureDesc2D desc, u32* destId)
     {
         i32 i = texToCreateCount++;
         texDescToCreate[i] = desc;
         gpuTexIdToCreate[i] = destId;
     }
+};
 
-    void clear();
-
-    RendererFrameData() = default;
-    void copy(const RendererFrameData& other);
+struct VramInfo
+{
+    i32 dedicated;
+    i32 availMemory;
+    i32 currentAvailMem;
+    i32 evictionCount;
+    i32 evictedMem;
 };
 
 unsigned long thread_renderer(void*);
@@ -86,4 +110,5 @@ void renderer_waitForInit();
 bool renderer_setupImGuiSync(struct ImGuiGLSetup* ims, u8* pFontPixels, i32 fontTexWidth, i32 fontTexHeight);
 
 f64 renderer_getFrameTime();
+VramInfo renderer_getVramInfo();
 void renderer_pushFrame(const RendererFrameData& frameData);

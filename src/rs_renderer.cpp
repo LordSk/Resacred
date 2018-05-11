@@ -200,6 +200,24 @@ inline void bindArrayBuffer(GLuint buffer)
     glBindBuffer(GL_ARRAY_BUFFER, buffer);
 }
 
+inline void blendModeOpaque()
+{
+    glDisable(GL_BLEND);
+}
+
+inline void blendModeTransparency()
+{
+    glEnable(GL_BLEND);
+    glBlendEquation(GL_FUNC_ADD);
+    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+}
+
+inline void textureSlot(u32 texture, i32 slot)
+{
+    glActiveTexture(GL_TEXTURE0 + slot);
+    glBindTexture(GL_TEXTURE_2D, texture);
+}
+
 struct ImGuiGLSetup
 {
     GLuint shaderProgram = 0;
@@ -322,18 +340,14 @@ void RendererFrameData::clear()
     texDestroyCount = 0;
     texToCreateCount = 0;
     imguiDrawList.clear();
+    tileVertexData.clearPOD();
+    tileQuadGpuTex.clearPOD();
 }
 
 void RendererFrameData::copy(const RendererFrameData& other)
 {
-    texDestroyCount = other.texDestroyCount;
-    texToCreateCount = other.texToCreateCount;
-
-    memmove(gpuTexDestroyList, other.gpuTexDestroyList, sizeof(gpuTexDestroyList));
-    memmove(gpuTexIdToCreate, other.gpuTexIdToCreate, sizeof(gpuTexIdToCreate));
-    memmove(texDescToCreate, other.texDescToCreate, sizeof(texDescToCreate));
-
-    imguiDrawList.copy(other.imguiDrawList);
+     // there is a lot going on here (C++ copy)
+    *this = other;
 }
 
 struct Renderer
@@ -354,6 +368,9 @@ RendererFrameData frameData[2];
 MutexSpin frameDataMutex[2];
 bool frameReady[2] = {0};
 i32 backFrameId = 0;
+
+VramInfo vramInfo;
+i32 gpuTileVertexBufferCount = 4096;
 
 bool init()
 {
@@ -385,6 +402,10 @@ bool init()
 #endif
 
     shader_tile.loadAndCompile();
+    // TODO: make a bunch of buffers for each sector and update only on loading
+    glBindBuffer(GL_ARRAY_BUFFER, shader_tile.vbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(TileVertex) * gpuTileVertexBufferCount, nullptr,
+                 GL_DYNAMIC_DRAW);
 
     ImGuiIO& io = ImGui::GetIO();
     u8* pFontPixels;
@@ -532,6 +553,63 @@ void frameDoTextureManagement(const RendererFrameData& frame)
     }
 }
 
+void frameDoSectorRender(const RendererFrameData& frame)
+{
+    OGL_DBG_GROUP_BEGIN(SectorRender);
+
+    glUseProgram(shader_tile.program);
+    glUniform1i(shader_tile.uDiffuse, 0);
+    glUniform1i(shader_tile.uAlphaMask, 1);
+    glUniformMatrix4fv(shader_tile.uProjMatrix, 1, GL_FALSE, frame.matCamProj.data);
+    glUniformMatrix4fv(shader_tile.uViewMatrix, 1, GL_FALSE, frame.matCamViewIso.data);
+    glUniformMatrix4fv(shader_tile.uModelMatrix, 1, GL_FALSE, frame.matSectorTileModel.data);
+
+    glBindBuffer(GL_ARRAY_BUFFER, shader_tile.vbo);
+
+    // upload vertex data to gpu
+    const i32 tileVertexDataCount = frame.tileVertexData.count();
+    const TileVertex* tileVertexData = frame.tileVertexData.data();
+    if(tileVertexDataCount > gpuTileVertexBufferCount) {
+        gpuTileVertexBufferCount = max(gpuTileVertexBufferCount * 2, tileVertexDataCount);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(TileVertex) * gpuTileVertexBufferCount, 0, GL_DYNAMIC_DRAW);
+    }
+
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(TileVertex) * tileVertexDataCount,
+                    tileVertexData);
+
+    glBindVertexArray(shader_tile.vao);
+
+    blendModeOpaque();
+
+    const i32 baseEnd = frame.tvOff_floor;
+    for(i32 i = 0; i < baseEnd; i += 6) {
+        textureSlot(*frame.tileQuadGpuTex[i/6], 0);
+        glDrawArrays(GL_TRIANGLES, i, 6);
+    }
+
+    blendModeTransparency();
+
+    const i32 floorEnd = frame.tvOff_mixed;
+    const i32 alphaMaskTexOffset = (floorEnd - baseEnd) / 6;
+    for(i32 i = baseEnd; i < floorEnd; i += 6) {
+        textureSlot(*frame.tileQuadGpuTex[i/6], 0);
+        textureSlot(*frame.tileQuadGpuTex[i/6 + alphaMaskTexOffset], 1);
+        glDrawArrays(GL_TRIANGLES, i, 6);
+    }
+
+    mat4 ident = mat4Identity();
+    glUniformMatrix4fv(shader_tile.uViewMatrix, 1, GL_FALSE, frame.matCamViewOrtho.data);
+    glUniformMatrix4fv(shader_tile.uModelMatrix, 1, GL_FALSE, ident.data);
+
+    const i32 mixedEnd = tileVertexDataCount;
+    for(i32 i = floorEnd; i < mixedEnd; i += 6) {
+        textureSlot(*frame.tileQuadGpuTex[alphaMaskTexOffset + i/6], 0);
+        glDrawArrays(GL_TRIANGLES, i, 6);
+    }
+
+    OGL_DBG_GROUP_END(SectorRender);
+}
+
 void frameDoImGui(const RendererFrameData& frame)
 {
     ImGuiIO& io = ImGui::GetIO();
@@ -660,7 +738,14 @@ void processFrames()
 
         glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
 
+        glGetIntegerv(GL_GPU_MEMORY_INFO_DEDICATED_VIDMEM_NVX, &vramInfo.dedicated);
+        glGetIntegerv(GL_GPU_MEMORY_INFO_TOTAL_AVAILABLE_MEMORY_NVX, &vramInfo.availMemory);
+        glGetIntegerv(GL_GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX, &vramInfo.currentAvailMem);
+        glGetIntegerv(GL_GPU_MEMORY_INFO_EVICTION_COUNT_NVX, &vramInfo.evictionCount);
+        glGetIntegerv(GL_GPU_MEMORY_INFO_EVICTED_MEMORY_NVX, &vramInfo.evictedMem);
+
         frameDoTextureManagement(curFrame);
+        frameDoSectorRender(curFrame);
         frameDoImGui(curFrame);
 
         if(!get_clientWindow()) {
@@ -733,4 +818,9 @@ f64 renderer_getFrameTime()
 void renderer_pushFrame(const RendererFrameData& frameData)
 {
     return g_rendererPtr->pushFrame(frameData);
+}
+
+VramInfo renderer_getVramInfo()
+{
+    return g_rendererPtr->vramInfo;
 }
