@@ -5,32 +5,7 @@
 #include <stdlib.h>
 #include <SDL2/SDL_scancode.h>
 
-struct ImGuiGLSetup
-{
-    ImGuiContext* pContext = nullptr;
-    GLuint shaderProgram = 0;
-    GLint shaderViewUni = -1;
-    GLint shaderTextureUni = -1;
-    GLuint shaderVertexBuff = 0;
-    GLuint shaderElementsBuff = 0;
-    GLuint shaderVao = 0;
-    f32 viewMatrix[16];
-    timept lastFrameTime;
-};
-
-inline void mat4Ortho(f32* matrix, f32 left, f32 right, f32 top, f32 bottom, f32 nearPlane, f32 farPlane)
-{
-    memset(matrix, 0, sizeof(f32) * 16);
-    matrix[15] = 1.f;
-
-    matrix[0] = 2.f / (right - left);
-    matrix[5] = 2.f / (top - bottom);
-    matrix[10] = -2.f / (farPlane - nearPlane);
-    matrix[12] = -((right + left) / (right - left));
-    matrix[13] = -((top + bottom) / (top - bottom));
-    matrix[14] = -((farPlane + nearPlane) / (farPlane - nearPlane));
-}
-
+#if 0
 static void renderUI(ImDrawData* pDrawData)
 {
     ImGuiIO& io = ImGui::GetIO();
@@ -125,132 +100,16 @@ static void renderUI(ImDrawData* pDrawData)
     if (last_enable_scissor_test) glEnable(GL_SCISSOR_TEST); else glDisable(GL_SCISSOR_TEST);
     glViewport(last_viewport[0], last_viewport[1], (GLsizei)last_viewport[2], (GLsizei)last_viewport[3]);
 }
+#endif
 
-ImGuiGLSetup* imguiInit(u32 width, u32 height, const char* iniFilename)
+void imguiInit(u32 width, u32 height, const char* iniFilename)
 {
-    ImGuiGLSetup* ims = (ImGuiGLSetup*)malloc(sizeof(ImGuiGLSetup));
-
     ImGuiIO& io = ImGui::GetIO();
     io.DisplaySize.x = width;
     io.DisplaySize.y = height;
     io.IniFilename = iniFilename;
-    io.RenderDrawListsFn = renderUI;
-    io.UserData = ims;
-
-    u8* pFontPixels;
-    i32 fontTexWidth, fontTexHeight;
-    io.Fonts->GetTexDataAsRGBA32(&pFontPixels, &fontTexWidth, &fontTexHeight);
-
-    TextureDesc2D fontTexDesc;
-    fontTexDesc.minFilter = GL_NEAREST;
-    fontTexDesc.magFilter = GL_NEAREST;
-    fontTexDesc.wrapS = GL_CLAMP_TO_EDGE;
-    fontTexDesc.wrapT = GL_CLAMP_TO_EDGE;
-    fontTexDesc.internalFormat = GL_RGBA;
-    fontTexDesc.dataFormat = GL_RGBA;
-    fontTexDesc.dataPixelCompType = GL_UNSIGNED_BYTE;
-    fontTexDesc.data = pFontPixels;
-    fontTexDesc.width = fontTexWidth;
-    fontTexDesc.height = fontTexHeight;
-
-    ims->lastFrameTime = timeNow();
-
-    GLuint fontTexture;
-
-    // ui shader
-    constexpr const char* vertexShader = ""
-        "#version 330 core\n"
-        "layout(location = 0) in vec2 position;\n"
-        "layout(location = 1) in vec2 uv;\n"
-        "layout(location = 2) in vec4 color;\n"
-        "uniform mat4 uViewMatrix;\n"
-
-        "out vec2 vert_uv;\n"
-        "out vec4 vert_color;\n"
-
-        "void main() {\n"
-        "	vert_uv = uv;\n"
-        "	vert_color = color;\n"
-        "	gl_Position = uViewMatrix * vec4(position, 0.0, 1.0);\n"
-        "}";
-
-    constexpr const char* fragmentShader = "\
-        #version 330 core\n\
-        uniform sampler2D uTextureData;\n\
-        \
-        in vec2 vert_uv;\n\
-        in vec4 vert_color;\n\
-        out vec4 fragmentColor;\n\
-        \
-        void main()\n\
-        {\n\
-            fragmentColor = texture(uTextureData, vert_uv) * vert_color;\n\
-        }";
-
-    u32 vertexShaderLen = strlen(vertexShader);
-    u32 fragmentShaderLen = strlen(fragmentShader);
-
-    ims->shaderProgram = 0;
-
-    MemBlock shaderBuffers[2];
-    shaderBuffers[0].ptr = (void*)vertexShader;
-    shaderBuffers[0].size = vertexShaderLen;
-    shaderBuffers[1].ptr = (void*)fragmentShader;
-    shaderBuffers[1].size = fragmentShaderLen;
-
-    const i32 types[] = { GL_VERTEX_SHADER, GL_FRAGMENT_SHADER };
-
-    RBarrier barrierShader;
-
-    CommandList list;
-    list.createTexture2D(&fontTexDesc, &fontTexture);
-    list.createShaderAndCompile(shaderBuffers, types, 2, &ims->shaderProgram);
-
-    i32* locations[] = {&ims->shaderViewUni, &ims->shaderTextureUni};
-    const char* uniformNames[] = {"uViewMatrix", "uTextureData"};
-    list.getUniformLocations(&ims->shaderProgram, locations, uniformNames, 2);
-
-    list.genBuffers(&ims->shaderVertexBuff, 1);
-    list.genBuffers(&ims->shaderElementsBuff, 1);
-    list.genVertexArrays(&ims->shaderVao, 1);
-    list.bindVertexArray(&ims->shaderVao);
-    list.bindArrayBuffer(&ims->shaderVertexBuff);
-
-    enum Location {
-        POSITION = 0,
-        UV = 1,
-        COLOR = 2
-    };
-
-    i32 indexes[] = {POSITION, UV, COLOR};
-    list.enableVertexAttribArrays(indexes, 3);
-
-#define OFFSETOF(TYPE, ELEMENT) ((size_t)&(((TYPE *)0)->ELEMENT))
-    list.vertexAttribPointer(Location::POSITION, 2, GL_FLOAT, GL_FALSE, sizeof(ImDrawVert),
-                            (GLvoid*)OFFSETOF(ImDrawVert, pos));
-    list.vertexAttribPointer(Location::UV, 2, GL_FLOAT, GL_FALSE, sizeof(ImDrawVert),
-                            (GLvoid*)OFFSETOF(ImDrawVert, uv));
-    list.vertexAttribPointer(Location::COLOR, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(ImDrawVert),
-                            (GLvoid*)OFFSETOF(ImDrawVert, col));
-#undef OFFSETOF
-
-    list.barrier(&barrierShader, "ImGui shader");
-    list.execute();
-    renderer_pushCommandList(list);
-
-    renderer_waitForBarrier(&barrierShader);
-
-    ims->lastFrameTime = timeNow();
-    io.Fonts->SetTexID((void*)(intptr_t)fontTexture);
-
-    if(!fontTexture || !ims->shaderProgram) {
-        free(ims);
-        return 0;
-    }
-
-    LOG_SUCC("SUCCESS(imguiInit): gl done");
-
-    mat4Ortho(ims->viewMatrix, 0, io.DisplaySize.x, 0, io.DisplaySize.y, -1, 1);
+    io.RenderDrawListsFn = nullptr;
+    io.UserData = nullptr;
 
     io.KeyMap[ImGuiKey_Tab] = SDL_SCANCODE_TAB;
     io.KeyMap[ImGuiKey_LeftArrow] = SDL_SCANCODE_LEFT;
@@ -271,8 +130,6 @@ ImGuiGLSetup* imguiInit(u32 width, u32 height, const char* iniFilename)
     io.KeyMap[ImGuiKey_X] = SDL_SCANCODE_X;
     io.KeyMap[ImGuiKey_Y] = SDL_SCANCODE_Y;
     io.KeyMap[ImGuiKey_Z] = SDL_SCANCODE_Z;
-
-    return ims;
 }
 
 void imguiDeinit(ImGuiGLSetup* ims)
@@ -282,12 +139,13 @@ void imguiDeinit(ImGuiGLSetup* ims)
     ims = 0;
 }
 
-void imguiUpdate(ImGuiGLSetup* ims, f64 delta)
+void imguiUpdate(f64 delta)
 {
+    static timept t0 = timeNow();
     ImGuiIO& io = ImGui::GetIO();
     timept now = timeNow();
-    io.DeltaTime = timeDuration(now - ims->lastFrameTime);
-    ims->lastFrameTime = now;
+    io.DeltaTime = timeDuration(now - t0);
+    t0 = now;
     i32 mx, my;
     u32 mstate = SDL_GetMouseState(&mx, &my);
     io.MousePos = ImVec2((f32)mx, (f32)my);
@@ -296,7 +154,7 @@ void imguiUpdate(ImGuiGLSetup* ims, f64 delta)
     ImGui::NewFrame();
 }
 
-void imguiHandleInput(ImGuiGLSetup* ims, SDL_Event event)
+void imguiHandleInput(SDL_Event event)
 {
     ImGuiIO& io = ImGui::GetIO();
 

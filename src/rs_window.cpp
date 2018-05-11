@@ -5,6 +5,8 @@
 #include <stdio.h>
 #include <SDL2/SDL.h>
 
+Window* g_clientWindowPtr = nullptr;
+
 bool Window::create(const i32 width_, const i32 height_)
 {
     SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
@@ -33,12 +35,7 @@ void Window::handleInput()
     SDL_Event event;
     while(SDL_WaitEvent(&event)) {
 #ifdef CONF_ENABLE_UI
-        //TODO: better handle imgui input
-        imguiMutex.lock();
-        if(imguiSetup) {
-            imguiHandleInput(imguiSetup, event);
-        }
-        imguiMutex.unlock();
+        imguiHandleInput(event);
 #endif
 
         if(event.type == SDL_QUIT) {
@@ -66,13 +63,9 @@ void Window::swapBuffers()
 
 void Window::cleanup()
 {
-    imguiMutex.lock();
-    imguiDeinit(imguiSetup);
-    imguiSetup = 0;
     LOG_DBG("Window::cleanup()");
-    imguiMutex.unlock();
-
     SDL_DestroyWindow(window);
+    g_clientWindowPtr = nullptr;
 }
 
 void Window::addInputCallback(Window::Proc_InputCallback callback, void* userData)
@@ -86,49 +79,25 @@ void Window::addInputCallback(Window::Proc_InputCallback callback, void* userDat
 void Window::dbguiInit()
 {
 #ifdef CONF_ENABLE_UI
-    imguiSetup = imguiInit(width, height, "resacred_imgui.ini");
+    imguiInit(width, height, "resacred_imgui.ini");
 #endif
 }
 
-void Window::dbguiNewFrameBegin()
+void Window::dbguiNewFrame()
 {
 #ifdef CONF_ENABLE_UI
-    imguiMutex.lock();
-    if(imguiSetup) {
-        imguiUpdate(imguiSetup, 0);
-    }
+    imguiUpdate(0);
 #endif
 }
 
-void Window::dbguiNewFrameEnd()
+void Window::dbguiFrameEnd()
 {
 #ifdef CONF_ENABLE_UI
     ImGui::EndFrame();
-    imguiMutex.unlock();
+    ImGui::Render();
 #endif
 }
 
-void Window::dbguiRender()
-{
-#ifdef CONF_ENABLE_UI
-    imguiMutex.lock();
-    if(imguiSetup) {
-        ImGui::Render();
-    }
-    imguiMutex.unlock();
-#endif
-}
-
-void Window::dbguiWaitForInit()
-{
-#ifdef CONF_ENABLE_UI
-    while(!imguiSetup) {
-        _mm_pause();
-    }
-#endif
-}
-
-Window* g_clientWindowPtr = nullptr;
 
 Window* get_clientWindow()
 {

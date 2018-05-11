@@ -1,6 +1,7 @@
 #include "rs_resources.h"
 #include "rs_renderer.h"
 #include "rs_file.h"
+#include "rs_game.h"
 
 // TODO: move all file operations out of here?
 // TODO: Load a range of textures instead of just one
@@ -16,9 +17,6 @@
  *  - textures not being requested for a while will be destroyed
  */
 
-
-#define MAX_GPU_TEXTURES 1024
-
 struct GPUResources
 {
     u32 gpuTexDefault;
@@ -28,6 +26,7 @@ struct GPUResources
     AtomicCounter texLoaded[MAX_GPU_TEXTURES];
     u8 texSlotOccupied[MAX_GPU_TEXTURES];
     TextureDesc2D texDesc[MAX_GPU_TEXTURES];
+    RendererFrameData* frameData;
 
     bool init()
     {
@@ -48,7 +47,7 @@ struct GPUResources
             }
         }
 
-        static TextureDesc2D desc;
+        TextureDesc2D desc;
         desc.internalFormat = GL_RGBA8;
         desc.dataFormat = GL_RGBA;
         desc.dataPixelCompType = GL_UNSIGNED_BYTE;
@@ -60,16 +59,16 @@ struct GPUResources
         desc.minFilter = GL_NEAREST;
         desc.magFilter = GL_NEAREST;
 
-        CommandList list;
-        list.createTexture2D(&desc, &gpuTexDefault);
-        renderer_pushCommandList(list);
+        frameData = game_getFrameData();
+        frameData->addTextureCreate(desc, &gpuTexDefault);
+
         return true;
     }
 
-    void destroyTexture(CommandList* cmds, i32 texSlot)
+    void destroyTexture(i32 texSlot)
     {
         if(texGpuId[texSlot] != gpuTexDefault) {
-            cmds->destroyTexture(texGpuId[texSlot]);
+            frameData->addTextureToDestroyList(texGpuId[texSlot]);
         }
         texGpuId[texSlot] = gpuTexDefault;
         texDiskId[texSlot] = 0;
@@ -79,7 +78,7 @@ struct GPUResources
 
     void newFrame()
     {
-        CommandList cmds;
+        frameData = game_getFrameData();
 
         // find unused textures and destroy them
         for(i32 i = 0; i < MAX_GPU_TEXTURES; ++i) {
@@ -87,13 +86,11 @@ struct GPUResources
                 texFramesNotRequested[i]++;
 
                 if(texFramesNotRequested[i] > 10) {
-                    destroyTexture(&cmds, i);
+                    destroyTexture(i);
                     //LOG_DBG("ResourceGpu> evicting texture %d", i);
                 }
             }
         }
-
-        renderer_pushCommandList(cmds);
     }
 
     i32 _occupyNextTextureSlot()
@@ -120,10 +117,8 @@ struct GPUResources
         assert(oldestId >= 0);
         assert(oldestFrameCount > 0);
 
-        CommandList cmds;
-        destroyTexture(&cmds, oldestId);
+        destroyTexture(oldestId);
         texSlotOccupied[oldestId] = true;
-        renderer_pushCommandList(cmds);
         return oldestId;
     }
 
@@ -161,7 +156,6 @@ struct GPUResources
     void uploadTextures(i32* pakTextureUIDs, PakTextureInfo* textureInfos, u8** textureData, const i32 count)
     {
         // for all remaining requests create a new gpu texture and assign it
-        CommandList cmds;
         for(i32 r = 0; r < count; ++r) {
             const i32 pakTexId = pakTextureUIDs[r];
             i32 gpuId = -1;
@@ -203,22 +197,18 @@ struct GPUResources
 
 
             texLoaded[gpuId].increment();
-            cmds.createTexture2D(&desc, &texGpuId[gpuId]);
-            //cmds.counterIncrement(&texLoaded[gpuId]); // TODO: set loaded to 2
+            frameData->addTextureCreate(desc, &texGpuId[gpuId]);
         }
-        renderer_pushCommandList(cmds);
     }
 
     void deinit()
     {
-        CommandList cmds;
-        for(i32 i = 0; i < MAX_GPU_TEXTURES; ++i) {
+        // TODO: implement
+        /*for(i32 i = 0; i < MAX_GPU_TEXTURES; ++i) {
             if(texSlotOccupied[i]) {
                 cmds.destroyTexture(texGpuId[i]);
             }
-        }
-        cmds.execute();
-        renderer_pushCommandList(cmds);
+        }*/
     }
 
     /*void debugUi()

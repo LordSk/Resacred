@@ -1021,6 +1021,14 @@ public:
     typedef const value_type*   const_iterator;
 
     inline ImVector()           { Size = Capacity = 0; Data = NULL; }
+    inline ImVector(const ImVector& other) {
+        Capacity = other.Capacity;
+        Size = other.Size;
+        if(other.Size && other.Data) {
+            Data = (T*)ImGui::MemAlloc(other.Capacity * sizeof(T));
+            memmove(Data, other.Data, other.Size * sizeof(T));
+        }
+    }
     inline ~ImVector()          { if (Data) ImGui::MemFree(Data); }
 
     inline bool                 empty() const                   { return Size == 0; }
@@ -1409,6 +1417,7 @@ struct ImDrawList
     int                     _ChannelsCount;     // [Internal] number of active channels (1+)
     ImVector<ImDrawChannel> _Channels;          // [Internal] draw channels for columns API (not resized down so _ChannelsCount may be smaller than _Channels.Size)
 
+    ImDrawList() = default; // LordSk
     ImDrawList(const ImDrawListSharedData* shared_data) { _Data = shared_data; _OwnerName = NULL; Clear(); }
     ~ImDrawList() { ClearFreeMemory(); }
     IMGUI_API void  PushClipRect(ImVec2 clip_rect_min, ImVec2 clip_rect_max, bool intersect_with_current_clip_rect = false);  // Render-level scissoring. This is passed down to your render function but not used for CPU-side coarse clipping. Prefer using higher-level ImGui::PushClipRect() to affect logic (hit-testing and widget culling)

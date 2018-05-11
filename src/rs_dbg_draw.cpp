@@ -2,6 +2,7 @@
 #include "rs_renderer.h"
 #include "rs_array.h"
 
+#if 0
 struct QuadVertex
 {
     f32 x, y, z;
@@ -189,23 +190,32 @@ void render()
 };
 
 static DbgDraw g_ddraw;
+#endif
 
 void dbgDrawInit()
 {
+#if 0
     g_ddraw.init();
+#endif
 }
 
 void dbgDrawSetView(const mat4& proj, const mat4& view, DbgCoordSpace coordSpace)
 {
+#if 0
     g_ddraw.setView(proj, view, coordSpace);
+#endif
 }
 
 void dbgDrawSolidSquare(const vec3f& pos, const vec3f& size, const u32 color, DbgCoordSpace coordSpace)
 {
+#if 0
     g_ddraw.drawSolidSquare(pos, size, color, coordSpace);
+#endif
 }
 
 void dbgDrawRender()
 {
+#if 0
     g_ddraw.render();
+#endif
 }

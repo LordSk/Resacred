@@ -23,7 +23,8 @@
  * 1750
  * 1752
  * 2123
- * 2529 <<<
+ * 2529
+ * 3810 <<<
  * 4859
  * 5351
 */
@@ -64,26 +65,6 @@ void initTileUVs()
         tileUV[i+1][3] = vec2fAdd(tileUV[1][3], vec2f(offsetX, 25/256.f * line));
     }
 }
-
-struct TileVertex
-{
-    f32 x, y, z;
-    f32 u, v;
-    f32 amu, amv; // alpha mask UV
-    u32 color;
-
-    TileVertex() = default;
-    TileVertex(f32 _x, f32 _y, f32 _z, f32 _u, f32 _v, f32 _amu, f32 _amv, u32 _c) {
-        x = _x;
-        y = _y;
-        z = _z;
-        u = _u;
-        v = _v;
-        amu = _amu;
-        amv = _amv;
-        color = _c;
-    }
-};
 
 void makeTileMesh(TileVertex* mesh, i32 localTileId, f32 x, f32 y, f32 z, u32 color, i32 alphaMaskTileId = 0)
 {
@@ -154,112 +135,6 @@ void meshAddQuad(TileVertex* mesh, f32 x, f32 y, f32 z, f32 width, f32 height, f
     mesh[5] = TileVertex(x        , y + height, z, uvX1, uvY2, -1, -1, color);
 }
 
-struct TileShader
-{
-    GLuint program;
-    i32 uProjMatrix;
-    i32 uViewMatrix;
-    i32 uModelMatrix;
-    i32 uDiffuse;
-    i32 uAlphaMask;
-    GLuint vao;
-    GLuint vbo;
-
-    void loadAndCompile()
-    {
-        // ui shader
-        constexpr const char* vertexShader = R"FOO(
-            #version 330 core
-            layout(location = 0) in vec3 position;
-            layout(location = 1) in vec2 uv;
-            layout(location = 2) in vec2 am_uv;
-            layout(location = 3) in vec4 color;
-            uniform mat4 uProjMatrix;
-            uniform mat4 uViewMatrix;
-            uniform mat4 uModelMatrix;
-
-            out vec2 vert_uv;
-            out vec2 vert_am_uv;
-            flat out int vert_isAlphaMasked;
-            out vec4 vert_color;
-
-            void main()
-            {
-                vert_uv = uv;
-                vert_am_uv = am_uv;
-                vert_isAlphaMasked = int(am_uv.x != -1);
-                vert_color = color;
-                gl_Position = uProjMatrix * uViewMatrix * uModelMatrix * vec4(position, 1.0);
-            }
-            )FOO";
-
-        constexpr const char* fragmentShader = R"FOO(
-            #version 330 core
-            uniform sampler2D uDiffuse;
-            uniform sampler2D uAlphaMask;
-
-            in vec2 vert_uv;
-            in vec2 vert_am_uv;
-            flat in int vert_isAlphaMasked;
-            in vec4 vert_color;
-            out vec4 fragmentColor;
-
-            void main()
-            {
-                vec4 diff = texture(uDiffuse, vert_uv);
-                vec4 mask = texture(uAlphaMask, vert_am_uv);
-                fragmentColor = diff * vert_color;
-                fragmentColor.a = (1.0-vert_isAlphaMasked) * diff.a + (vert_isAlphaMasked * mask.a);
-            }
-            )FOO";
-
-        u32 vertexShaderLen = strlen(vertexShader);
-        u32 fragmentShaderLen = strlen(fragmentShader);
-
-        static MemBlock shaderBuffers[2];
-        shaderBuffers[0].ptr = (void*)vertexShader;
-        shaderBuffers[0].size = vertexShaderLen;
-        shaderBuffers[1].ptr = (void*)fragmentShader;
-        shaderBuffers[1].size = fragmentShaderLen;
-
-        constexpr i32 types[] = { GL_VERTEX_SHADER, GL_FRAGMENT_SHADER };
-
-        CommandList list;
-        list.createShaderAndCompile(shaderBuffers, types, 2, &program);
-
-        static i32* locations[] = {&uProjMatrix, &uViewMatrix, &uModelMatrix, &uDiffuse, &uAlphaMask};
-        static const char* uniformNames[] = {"uProjMatrix", "uViewMatrix", "uModelMatrix",
-                                             "uDiffuse", "uAlphaMask"};
-        list.getUniformLocations(&program, locations, uniformNames, sizeof(locations)/sizeof(locations[0]));
-
-        list.genVertexArrays(&vao, 1);
-        list.bindVertexArray(&vao);
-        list.genBuffers(&vbo, 1);
-        list.bindArrayBuffer(&vbo);
-
-        enum Location {
-            POSITION = 0,
-            UV,
-            AM_UV,
-            COLOR,
-        };
-
-        static i32 indexes[] = {POSITION, UV, AM_UV, COLOR};
-        list.enableVertexAttribArrays(indexes, sizeof(indexes)/sizeof(Location));
-
-        list.vertexAttribPointer(Location::POSITION, 3, GL_FLOAT, GL_FALSE, sizeof(TileVertex),
-                                (GLvoid*)OFFSETOF(TileVertex, x));
-        list.vertexAttribPointer(Location::UV, 2, GL_FLOAT, GL_FALSE, sizeof(TileVertex),
-                                (GLvoid*)OFFSETOF(TileVertex, u));
-        list.vertexAttribPointer(Location::AM_UV, 2, GL_FLOAT, GL_FALSE, sizeof(TileVertex),
-                                (GLvoid*)OFFSETOF(TileVertex, amu));
-        list.vertexAttribPointer(Location::COLOR, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(TileVertex),
-                                (GLvoid*)OFFSETOF(TileVertex, color));
-        renderer_pushCommandList(list);
-    }
-};
-
-
 #define MAX_TILE_COUNT 4096
 #define MAX_MIXED_QUAD 7168
 
@@ -269,6 +144,7 @@ static TileVertex mixedQuadMesh[6 * MAX_MIXED_QUAD];
 
 struct Game
 {
+RendererFrameData frameData;
 i32 winWidth;
 i32 winHeight;
 f64 frameTime = 0;
@@ -280,7 +156,6 @@ MutexSpin tileVertexMutex;
 MutexSpin tileFloorVertexMutex;
 MutexSpin mixedQuadMeshMutex;
 
-TileShader tileShader;
 GLuint vboBaseTileMesh;
 GLuint vboFloorTileMesh;
 
@@ -372,14 +247,14 @@ inline vec3f sacred_screenToWorld(vec3f v)
 
 void init()
 {
-    tileShader.loadAndCompile();
-
+#if 0
     CommandList list;
     list.arrayBufferData(&tileShader.vbo, 0, sizeof(tileVertexData) +
                          sizeof(tileFloorVertexData) +
                          sizeof(mixedQuadMesh),
                          GL_STATIC_DRAW);
     renderer_pushCommandList(list);
+#endif
 
     Window& client = *get_clientWindow();
     winWidth = client.width;
@@ -695,6 +570,7 @@ void ui_tileInspector()
 
 void drawSector()
 {
+#if 0
     static GLuint* gpuBaseTex[MAX_TILE_COUNT];
     static i32 baseTileIds[MAX_TILE_COUNT];
     static i32 baseTileTexIds[MAX_TILE_COUNT];
@@ -975,6 +851,7 @@ void drawSector()
     }
 
     renderer_pushCommandList(list);
+#endif
 }
 
 void drawFloorTest()
@@ -1109,6 +986,7 @@ void drawFloorTest()
 
 void drawTestMixed()
 {
+#if 0
     static GLuint* gpuMixedQuadTex[MAX_MIXED_QUAD];
     static i32 mixedQuadTexId[MAX_MIXED_QUAD];
     i32 mixedQuadCount = 0;
@@ -1185,6 +1063,7 @@ void drawTestMixed()
     }
 
     renderer_pushCommandList(list);
+#endif
 }
 
 void updateCameraMatrices()
@@ -1327,6 +1206,27 @@ static void receiveGameInput(const SDL_Event& event, void* userData)
     game.receiveInput(event);
 }
 
+static void ImGuiCopyFrameData(RendererFrameData* frame)
+{
+    ImDrawData* drawData = ImGui::GetDrawData();
+    ImDrawList** list = drawData->CmdLists;
+    const i32 cmdListsCount = drawData->CmdListsCount;
+    frame->imguiDrawList.reserve(cmdListsCount);
+
+    for(i32 i = 0; i < cmdListsCount; ++i) {
+        frame->imguiDrawList.push(*list[i]);
+        assert(list[i]->VtxBuffer.size() > 0);
+    }
+
+    for(i32 i = 0; i < cmdListsCount; i++) {
+        assert(frame->imguiDrawList[i].VtxBuffer.size() ==
+               list[i]->VtxBuffer.size());
+        assert(frame->imguiDrawList[i].VtxBuffer.Data !=
+               list[i]->VtxBuffer.Data);
+        assert(frame->imguiDrawList[i].VtxBuffer.size() > 0);
+    }
+}
+
 unsigned long thread_game(void*)
 {
     LOG("thread_game started [%x]", threadGetId());
@@ -1336,15 +1236,14 @@ unsigned long thread_game(void*)
     initTileUVs();
 
     renderer_waitForInit();
-    client.dbguiWaitForInit();
+
+    Game game;
+    pGame = &game;
 
     if(!resource_init()) {
         client.clientRunning = false;
         return 1;
     }
-
-    Game game;
-    pGame = &game;
 
     client.addInputCallback(receiveGameInput, &game);
     game.init();
@@ -1358,31 +1257,24 @@ unsigned long thread_game(void*)
 
     while(client.clientRunning) {
         auto t0 = timeNow();
+        game.frameData.clear();
         game.processInput();
         resource_newFrame();
 
         game.requestTexBrowserTextures();
 
-        // NOTE: dont push render command inside UI code
 #ifdef CONF_ENABLE_UI
-        client.dbguiNewFrameBegin();
-        if(client.imguiSetup) {
-            game.ui_all();
-        }
-        client.dbguiNewFrameEnd();
+        client.dbguiNewFrame();
+        game.ui_all();
+        client.dbguiFrameEnd();
+
+        ImGuiCopyFrameData(&game.frameData);
 #endif
 
         game.loadSectorIfNeeded();
-
-        CommandList list;
-        list.clear();
-        renderer_pushCommandList(list);
-
         game.render();
 
-        list.queryVramInfo(&dedicated, &availMemory, &currentAvailMem, &evictionCount, &evictedMem);
-        list.endFrame();
-        renderer_pushCommandList(list);
+        renderer_pushFrame(game.frameData);
         game.frameTime = timeDurSince(t0);
     }
 
@@ -1391,4 +1283,9 @@ unsigned long thread_game(void*)
     game.deinit();
 
     return 0;
+}
+
+RendererFrameData* game_getFrameData()
+{
+    return &pGame->frameData;
 }

@@ -20,9 +20,6 @@ struct Window
     };
     Array<InputListenner,16> inputListeners;
 
-    struct ImGuiGLSetup* imguiSetup;
-    MutexSpin imguiMutex;
-
     bool create(const i32 width_, const i32 height_);
     void handleInput();
     void swapBuffers();
@@ -31,10 +28,8 @@ struct Window
     void addInputCallback(Proc_InputCallback callback, void* userData);
 
     void dbguiInit();
-    void dbguiNewFrameBegin();
-    void dbguiNewFrameEnd();
-    void dbguiRender();
-    void dbguiWaitForInit();
+    void dbguiNewFrame();
+    void dbguiFrameEnd();
 };
 
 Window* get_clientWindow();

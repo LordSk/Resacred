@@ -48,13 +48,18 @@ struct Array
         copy(from);
     }
 
+    Array(const Array& from) {
+        copy(from);
+    }
+
     // deep copy
     template<u32 from_staticCount>
     void copy(const Array<T, from_staticCount>& from) {
-        _count = from._count;
-        if(_count >= _capacity) {
+        clear();
+        if(from._count >= _capacity) {
             reserve(from._capacity);
         }
+        _count = from._count;
         for(i32 i = 0; i < _count; ++i) {
             new(_data + i) T(from._data[i]); // copy data over
         }

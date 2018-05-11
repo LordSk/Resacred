@@ -28,6 +28,7 @@ i32 main()
 
     Window& client = *init_clientWindow();
     client.create(1600, 900);
+    client.dbguiInit();
 
     auto threadRenderer = threadCreate(thread_renderer, nullptr);
     auto threadGame = threadCreate(thread_game, nullptr);
@@ -37,21 +38,15 @@ i32 main()
     threadSetProcessorAffinity(threadGame, procCount-2);
     threadSetProcessorAffinity(threadFileIO, procCount-3);
 
-    renderer_waitForInit();
-    client.dbguiInit();
-
     while(client.clientRunning) {
         client.handleInput();
     }
 
     client.cleanup();
+    resource_deinit();
 
     threadWaitForClose(&threadGame);
     threadWaitForClose(&threadFileIO);
-
-    resource_deinit();
-
-    client.rdrRunning = false;
     threadWaitForClose(&threadRenderer);
 
     SDL_Quit();
