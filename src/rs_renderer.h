@@ -59,6 +59,8 @@ struct RendererFrameData
     u32 gpuTexDestroyList[MAX_GPU_TEXTURES];
     u32* gpuTexIdToCreate[MAX_GPU_TEXTURES];
     TextureDesc2D texDescToCreate[MAX_GPU_TEXTURES];
+    i32 texDescDataOfset[MAX_GPU_TEXTURES];
+    Array<u8> textureData;
     i32 texDestroyCount = 0;
     i32 texToCreateCount = 0;
 
@@ -68,6 +70,12 @@ struct RendererFrameData
     // world draw data
     Array<TileVertex> tileVertexData;
     Array<u32*> tileQuadGpuTex;
+    bool doUploadTileVertexData = false;
+    // FIXME: we can overwrite frames if the renderer
+    // is much slower than the game loop, thus never uploading the data
+    // (we want this true for only one frame)
+    // check if frame is mandatory?
+    // -> see pushFrame(frame)
 
     mat4 matCamProj;
     mat4 matCamViewIso;
@@ -88,11 +96,13 @@ struct RendererFrameData
         gpuTexDestroyList[texDestroyCount++] = texture;
     }
 
-    inline void _addTextureCreate(TextureDesc2D desc, u32* destId)
+    inline void _addTextureCreate(TextureDesc2D desc, u32* destId, void* textureData_, u32 textureDataSize)
     {
         i32 i = texToCreateCount++;
         texDescToCreate[i] = desc;
         gpuTexIdToCreate[i] = destId;
+        texDescDataOfset[i] = textureData.count();
+        textureData.pushPOD((u8*)textureData_, textureDataSize);
     }
 };
 

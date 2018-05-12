@@ -339,9 +339,11 @@ void RendererFrameData::clear()
 {
     texDestroyCount = 0;
     texToCreateCount = 0;
+    doUploadTileVertexData = false;
     imguiDrawList.clear();
     tileVertexData.clearPOD();
     tileQuadGpuTex.clearPOD();
+    textureData.clearPOD();
 }
 
 void RendererFrameData::copy(const RendererFrameData& other)
@@ -543,13 +545,20 @@ bool init()
     return true;
 }
 
-void frameDoTextureManagement(const RendererFrameData& frame)
+void frameDoTextureManagement(RendererFrameData& frame)
 {
     glDeleteTextures(frame.texDestroyCount, frame.gpuTexDestroyList);
 
     const i32 createCount = frame.texToCreateCount;
+    TextureDesc2D* descs = frame.texDescToCreate;
+    u8* texData = frame.textureData.data();
+    i32* texDataOffset = frame.texDescDataOfset;
+    u32** gpuTexIdToCreate = frame.gpuTexIdToCreate;
+
     for(i32 i = 0; i < createCount; ++i) {
-        *frame.gpuTexIdToCreate[i] = createTexture2D(frame.texDescToCreate[i]);
+        TextureDesc2D& d = descs[i];
+        d.data = texData + texDataOffset[i];
+        *(gpuTexIdToCreate[i]) = createTexture2D(d);
     }
 }
 
@@ -569,13 +578,16 @@ void frameDoSectorRender(const RendererFrameData& frame)
     // upload vertex data to gpu
     const i32 tileVertexDataCount = frame.tileVertexData.count();
     const TileVertex* tileVertexData = frame.tileVertexData.data();
-    if(tileVertexDataCount > gpuTileVertexBufferCount) {
-        gpuTileVertexBufferCount = max(gpuTileVertexBufferCount * 2, tileVertexDataCount);
-        glBufferData(GL_ARRAY_BUFFER, sizeof(TileVertex) * gpuTileVertexBufferCount, 0, GL_DYNAMIC_DRAW);
-    }
 
-    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(TileVertex) * tileVertexDataCount,
-                    tileVertexData);
+    if(frame.doUploadTileVertexData) {
+        if(tileVertexDataCount > gpuTileVertexBufferCount) {
+            gpuTileVertexBufferCount = max(gpuTileVertexBufferCount * 2, tileVertexDataCount);
+            glBufferData(GL_ARRAY_BUFFER, sizeof(TileVertex) * gpuTileVertexBufferCount, 0, GL_DYNAMIC_DRAW);
+        }
+
+        glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(TileVertex) * tileVertexDataCount,
+                        tileVertexData);
+    }
 
     glBindVertexArray(shader_tile.vao);
 
@@ -766,6 +778,11 @@ void cleanUp()
 
 void pushFrame(const RendererFrameData& frameData_)
 {
+    // prevent important frames from being squashed
+    while(frameData[backFrameId].doUploadTileVertexData || frameData[backFrameId].texToCreateCount > 0) {
+        _mm_pause();
+    }
+
     frameDataMutex[backFrameId].lock();
     frameData[backFrameId].copy(frameData_);
 

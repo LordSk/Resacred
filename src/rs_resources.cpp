@@ -60,7 +60,7 @@ bool init()
     desc.magFilter = GL_NEAREST;
 
     frameData = game_getFrameData();
-    frameData->_addTextureCreate(desc, &gpuTexDefault);
+    frameData->_addTextureCreate(desc, &gpuTexDefault, textureData, sizeof(textureData));
 
     return true;
 }
@@ -178,17 +178,20 @@ void uploadTextures(i32* pakTextureUIDs, PakTextureInfo* textureInfos, u8** text
         // upload texture to gpu
         desc.width = textureInfos[r].width;
         desc.height = textureInfos[r].height;
-        desc.data =  textureData[r];
+        desc.data =  nullptr; // filled later
 
+        u32 textureDataSize = 0;
         if(textureInfos[r].type == PakTextureType::TYPE_RGBA8) {
             desc.internalFormat = GL_RGBA8;
             desc.dataFormat = GL_RGBA;
             desc.dataPixelCompType = GL_UNSIGNED_BYTE;
+            textureDataSize = textureInfos[r].width * textureInfos[r].height * 4;
         }
         else {
-            desc.internalFormat = GL_RGBA4;
+            desc.internalFormat = GL_RGBA8;
             desc.dataFormat = GL_BGRA;
             desc.dataPixelCompType = GL_UNSIGNED_SHORT_4_4_4_4_REV;
+            textureDataSize = textureInfos[r].width * textureInfos[r].height * 2;
         }
 
 
@@ -197,7 +200,7 @@ void uploadTextures(i32* pakTextureUIDs, PakTextureInfo* textureInfos, u8** text
 
 
         texLoaded[gpuId].increment();
-        frameData->_addTextureCreate(desc, &texGpuId[gpuId]);
+        frameData->_addTextureCreate(desc, &texGpuId[gpuId], textureData[r], textureDataSize);
     }
 }
 
@@ -414,24 +417,12 @@ bool loadTileTextureIds()
     tileTextureId = (u16*)tileTextureIdBlock.ptr;
 
     PakSubFileDesc* fileDesc = (PakSubFileDesc*)(top + sizeof(PakHeader));
-    /*i32 lastTexId = -1;
-    i32 streak = 17;*/
 
     for(i32 i = 0; i < entryCount; ++i) {
         i32 offset = fileDesc[i].offset;
         PakTile* tile = (PakTile*)(top + offset);
         assert(i/18 < tileCount);
         tileTextureId[i/18] = tile->textureId;
-        /*if(lastTexId == tile->textureId) {
-            streak++;
-            assert(streak < 18);
-        }
-        else {
-            assert(streak == 17);
-            lastTexId = tile->textureId;
-            streak = 0;
-            LOG_DBG("tile %d newtexId=%d", i, tile->textureId);
-        }*/
     }
 
     LOG_SUCC("Resource> tiles.pak loaded");

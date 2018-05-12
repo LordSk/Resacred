@@ -213,7 +213,7 @@ struct SectorDrawData
 SectorDrawData currentSectorDrawData;
 
 bool showUi = true;
-i32 dbgSectorId = 2529;
+i32 dbgSectorId = 3810;
 
 i32 dbgFloorOffset = 0;
 bool dbgFloorOver = 0;
@@ -279,15 +279,6 @@ inline vec3f sacred_screenToWorld(vec3f v)
 
 void init()
 {
-#if 0
-    CommandList list;
-    list.arrayBufferData(&tileShader.vbo, 0, sizeof(tileVertexData) +
-                         sizeof(tileFloorVertexData) +
-                         sizeof(mixedQuadMesh),
-                         GL_STATIC_DRAW);
-    renderer_pushCommandList(list);
-#endif
-
     Window& client = *get_clientWindow();
     winWidth = client.width;
     winHeight = client.height;
@@ -298,10 +289,12 @@ void init()
 
 void loadSectorIfNeeded()
 {
+    frameData.doUploadTileVertexData = true;
     if(loadedSectorId == dbgSectorId) return;
     sectorData = resource_loadSector(dbgSectorId);
     sectorInfo = resource_getSectorInfo(dbgSectorId);
     loadedSectorId = dbgSectorId;
+    frameData.doUploadTileVertexData = true;
 
     SectorDrawData& dd = currentSectorDrawData;
     dd.clear();
@@ -751,10 +744,6 @@ void drawSector()
     if(loadedSectorId != dbgSectorId) return;
 
     const SectorDrawData& dd = currentSectorDrawData;
-    resource_requestGpuTextures(dd.baseTexId.data(), dd.gpuTexBase.data(), dd.baseTexId.count());
-    resource_requestGpuTextures(dd.floorDiffuseTexId.data(), dd.gpuTexFloorDiffuse.data(), dd.floorCount);
-    resource_requestGpuTextures(dd.floorAlphaTexId.data(), dd.gpuTexFloorAlphaMask.data(), dd.floorCount);
-    resource_requestGpuTextures(dd.mixedTexId.data(), dd.gpuTexMixed.data(), dd.mixedQuadCount);
 
     frameData.tileVertexData.pushPOD(dd.baseVertexData.data(), dd.baseVertexData.count());
     frameData.tileVertexData.pushPOD(dd.floorVertexData.data(), dd.floorVertexData.count());
@@ -764,6 +753,16 @@ void drawSector()
     frameData.tileQuadGpuTex.pushPOD(dd.gpuTexFloorDiffuse.data(), dd.gpuTexFloorDiffuse.count());
     frameData.tileQuadGpuTex.pushPOD(dd.gpuTexFloorAlphaMask.data(), dd.gpuTexFloorAlphaMask.count());
     frameData.tileQuadGpuTex.pushPOD(dd.gpuTexMixed.data(), dd.gpuTexMixed.count());
+
+    static Array<i32> pakTextureIds;
+    pakTextureIds.clearPOD();
+    pakTextureIds.pushPOD(dd.baseTexId.data(), dd.baseTexId.count());
+    pakTextureIds.pushPOD(dd.floorDiffuseTexId.data(), dd.floorDiffuseTexId.count());
+    pakTextureIds.pushPOD(dd.floorAlphaTexId.data(), dd.floorAlphaTexId.count());
+    pakTextureIds.pushPOD(dd.mixedTexId.data(), dd.mixedTexId.count());
+
+    resource_requestGpuTextures(pakTextureIds.data(), frameData.tileQuadGpuTex.data(),
+                                pakTextureIds.count());
 
     frameData.matCamProj = matProjOrtho;
     frameData.matCamViewIso = matViewIso;
