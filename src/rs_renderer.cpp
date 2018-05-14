@@ -335,15 +335,115 @@ struct TileShader
     }
 };
 
+
+struct DbgColorShader
+{
+    GLuint program;
+    i32 uProjMatrix;
+    i32 uViewMatrix;
+    i32 uModelMatrix;
+    GLuint vao;
+    GLuint vbo_vertexData;
+    GLuint vbo_modelMatData;
+
+    void loadAndCompile()
+    {
+        OGL_DBG_GROUP_BEGIN(DbgColorShader_setup);
+
+        // ui shader
+        constexpr const char* vertexShader = R"FOO(
+            #version 330 core
+            layout(location = 0) in vec3 position;
+            layout(location = 1) in vec4 color;
+            layout(location = 2) in mat4 model;
+            uniform mat4 uProjMatrix;
+            uniform mat4 uViewMatrix;
+
+            out vec4 vert_color;
+
+            void main()
+            {
+                vert_color = color;
+                gl_Position = uProjMatrix * uViewMatrix * model * vec4(position, 1.0);
+            }
+            )FOO";
+
+        constexpr const char* fragmentShader = R"FOO(
+            #version 330 core
+
+            in vec4 vert_color;
+            out vec4 fragmentColor;
+
+            void main()
+            {
+                fragmentColor = vert_color;
+            }
+            )FOO";
+
+        i32 vertexShaderLen = strlen(vertexShader);
+        i32 fragmentShaderLen = strlen(fragmentShader);
+
+        GLShaderFile shaderFiles[2] = {
+            {vertexShader, vertexShaderLen, GL_VERTEX_SHADER},
+            {fragmentShader, fragmentShaderLen, GL_FRAGMENT_SHADER}
+        };
+
+        program = glMakeShader(shaderFiles, 2);
+
+        static i32* locations[] = {&uProjMatrix, &uViewMatrix};
+        static const char* uniformNames[] = {"uProjMatrix", "uViewMatrix"};
+        glUseProgram(program);
+        getUniformLocations(program, uniformNames, locations, IM_ARRAYSIZE(locations));
+
+        glGenVertexArrays(1, &vao);
+        glBindVertexArray(vao);
+        glGenBuffers(1, &vbo_vertexData);
+        glGenBuffers(1, &vbo_modelMatData);
+        bindArrayBuffer(vbo_vertexData);
+
+        enum Location {
+            POSITION = 0,
+            COLOR = 1,
+            MODEL = 2, // size 4 (matrix4x4)
+        };
+
+        static i32 indexes[] = {POSITION, COLOR,
+                                MODEL, MODEL+1, MODEL+2, MODEL+3};
+        enableVertexAttribArrays(indexes, IM_ARRAYSIZE(indexes));
+
+        vertexAttribPointer(Location::POSITION, 3, GL_FLOAT, GL_FALSE, sizeof(QuadVertex),
+                            (GLvoid*)OFFSETOF(QuadVertex, x));
+        vertexAttribPointer(Location::COLOR, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(QuadVertex),
+                            (GLvoid*)OFFSETOF(QuadVertex, color));
+
+        bindArrayBuffer(vbo_vertexData);
+
+        vertexAttribPointer(Location::MODEL, 4, GL_FLOAT, GL_FALSE, sizeof(f32) * 16,
+                            (GLvoid*)(0));
+        vertexAttribPointer(Location::MODEL+1, 4, GL_FLOAT, GL_FALSE, sizeof(f32) * 16,
+                            (GLvoid*)(sizeof(f32) * 4));
+        vertexAttribPointer(Location::MODEL+2, 4, GL_FLOAT, GL_FALSE, sizeof(f32) * 16,
+                            (GLvoid*)(sizeof(f32) * 8));
+        vertexAttribPointer(Location::MODEL+3, 4, GL_FLOAT, GL_FALSE, sizeof(f32) * 16,
+                            (GLvoid*)(sizeof(f32) * 12));
+
+        OGL_DBG_GROUP_END(DbgColorShader_setup);
+    }
+};
+
 void RendererFrameData::clear()
 {
-    texDestroyCount = 0;
+    texToDestroyCount = 0;
     texToCreateCount = 0;
     doUploadTileVertexData = false;
     imguiDrawList.clear();
     tileVertexData.clearPOD();
     tileQuadGpuTex.clearPOD();
     textureData.clearPOD();
+
+    dbgQuadVertData.clearPOD();
+    dbgQuadMeshDef.clearPOD();
+    dbgQuadModelMat.clearPOD();
 }
 
 void RendererFrameData::copy(const RendererFrameData& other)
@@ -365,6 +465,7 @@ bool initialized = false;
 Mutex queueMutex;
 
 TileShader shader_tile;
+DbgColorShader shader_dbgColor;
 
 RendererFrameData frameData[2];
 MutexSpin frameDataMutex[2];
@@ -408,6 +509,8 @@ bool init()
     glBindBuffer(GL_ARRAY_BUFFER, shader_tile.vbo);
     glBufferData(GL_ARRAY_BUFFER, sizeof(TileVertex) * gpuTileVertexBufferCount, nullptr,
                  GL_DYNAMIC_DRAW);
+
+    shader_dbgColor.loadAndCompile();
 
     ImGuiIO& io = ImGui::GetIO();
     u8* pFontPixels;
@@ -547,7 +650,7 @@ bool init()
 
 void frameDoTextureManagement(RendererFrameData& frame)
 {
-    glDeleteTextures(frame.texDestroyCount, frame.gpuTexDestroyList);
+    glDeleteTextures(frame.texToDestroyCount, frame.gpuTexDestroyList);
 
     const i32 createCount = frame.texToCreateCount;
     TextureDesc2D* descs = frame.texDescToCreate;
@@ -779,7 +882,9 @@ void cleanUp()
 void pushFrame(const RendererFrameData& frameData_)
 {
     // prevent important frames from being squashed
-    while(frameData[backFrameId].doUploadTileVertexData || frameData[backFrameId].texToCreateCount > 0) {
+	// FIXME: can get stuck
+    while(frameData[backFrameId].doUploadTileVertexData || frameData[backFrameId].texToCreateCount > 0
+          || frameData[backFrameId].texToDestroyCount > 0) {
         _mm_pause();
     }
 

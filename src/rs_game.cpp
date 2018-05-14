@@ -24,6 +24,7 @@
  * 1752
  * 2123
  * 2529
+ * 3732
  * 3810 <<<
  * 4859
  * 5351
@@ -289,8 +290,11 @@ void init()
 
 void loadSectorIfNeeded()
 {
-    frameData.doUploadTileVertexData = true;
-    if(loadedSectorId == dbgSectorId) return;
+    frameData.doUploadTileVertexData = false;
+    if(loadedSectorId == dbgSectorId) {
+        return;
+    }
+
     sectorData = resource_loadSector(dbgSectorId);
     sectorInfo = resource_getSectorInfo(dbgSectorId);
     loadedSectorId = dbgSectorId;
@@ -813,7 +817,7 @@ void render()
     dbgDrawSolidSquare(vec3f(0,0,0), vec3f(10, 200, 1), 0xff00ff00, DbgCoordSpace::WORLD);
     dbgDrawSolidSquare(vec3f(0,0,0), vec3f(10, 10, 1), 0xff0000ff, DbgCoordSpace::WORLD);
 
-    dbgDrawRender();
+    dbgDrawSetFrameData(&frameData);
 #endif
 }
 

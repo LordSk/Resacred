@@ -51,6 +51,26 @@ struct TileVertex
     }
 };
 
+struct QuadVertex
+{
+    f32 x, y, z;
+    u32 color;
+
+    QuadVertex() = default;
+    QuadVertex(f32 _x, f32 _y, f32 _z, u32 _c) {
+        x = _x;
+        y = _y;
+        z = _z;
+        color = _c;
+    }
+};
+
+struct MeshDef
+{
+    u32 vertOffset;
+    u32 vertCount;
+};
+
 #define MAX_GPU_TEXTURES 1024
 
 struct RendererFrameData
@@ -61,7 +81,7 @@ struct RendererFrameData
     TextureDesc2D texDescToCreate[MAX_GPU_TEXTURES];
     i32 texDescDataOfset[MAX_GPU_TEXTURES];
     Array<u8> textureData;
-    i32 texDestroyCount = 0;
+    i32 texToDestroyCount = 0;
     i32 texToCreateCount = 0;
 
     // imgui draw data
@@ -86,6 +106,10 @@ struct RendererFrameData
     i32 tvOff_floor;
     i32 tvOff_mixed;
 
+    Array<QuadVertex> dbgQuadVertData;
+    Array<MeshDef> dbgQuadMeshDef;
+    Array<mat4> dbgQuadModelMat;
+
     RendererFrameData() = default;
     void copy(const RendererFrameData& other);
     void clear();
@@ -93,7 +117,7 @@ struct RendererFrameData
     // functions used by GPUResources
     inline void _addTextureToDestroyList(u32 texture)
     {
-        gpuTexDestroyList[texDestroyCount++] = texture;
+        gpuTexDestroyList[texToDestroyCount++] = texture;
     }
 
     inline void _addTextureCreate(TextureDesc2D desc, u32* destId, void* textureData_, u32 textureDataSize)
