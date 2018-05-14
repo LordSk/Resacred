@@ -344,7 +344,6 @@ struct DbgColorShader
     i32 uModelMatrix;
     GLuint vao;
     GLuint vbo_vertexData;
-    GLuint vbo_modelMatData;
 
     void loadAndCompile()
     {
@@ -355,16 +354,16 @@ struct DbgColorShader
             #version 330 core
             layout(location = 0) in vec3 position;
             layout(location = 1) in vec4 color;
-            layout(location = 2) in mat4 model;
             uniform mat4 uProjMatrix;
             uniform mat4 uViewMatrix;
+            uniform mat4 uModelMatrix;
 
             out vec4 vert_color;
 
             void main()
             {
                 vert_color = color;
-                gl_Position = uProjMatrix * uViewMatrix * model * vec4(position, 1.0);
+                gl_Position = uProjMatrix * uViewMatrix * uModelMatrix * vec4(position, 1.0);
             }
             )FOO";
 
@@ -390,15 +389,14 @@ struct DbgColorShader
 
         program = glMakeShader(shaderFiles, 2);
 
-        static i32* locations[] = {&uProjMatrix, &uViewMatrix};
-        static const char* uniformNames[] = {"uProjMatrix", "uViewMatrix"};
+        static i32* locations[] = {&uProjMatrix, &uViewMatrix, &uModelMatrix};
+        static const char* uniformNames[] = {"uProjMatrix", "uViewMatrix", "uModelMatrix"};
         glUseProgram(program);
         getUniformLocations(program, uniformNames, locations, IM_ARRAYSIZE(locations));
 
         glGenVertexArrays(1, &vao);
         glBindVertexArray(vao);
         glGenBuffers(1, &vbo_vertexData);
-        glGenBuffers(1, &vbo_modelMatData);
         bindArrayBuffer(vbo_vertexData);
 
         enum Location {
@@ -407,25 +405,13 @@ struct DbgColorShader
             MODEL = 2, // size 4 (matrix4x4)
         };
 
-        static i32 indexes[] = {POSITION, COLOR,
-                                MODEL, MODEL+1, MODEL+2, MODEL+3};
+        const i32 indexes[] = {POSITION, COLOR, MODEL, MODEL+1, MODEL+2, MODEL+3};
         enableVertexAttribArrays(indexes, IM_ARRAYSIZE(indexes));
 
         vertexAttribPointer(Location::POSITION, 3, GL_FLOAT, GL_FALSE, sizeof(QuadVertex),
                             (GLvoid*)OFFSETOF(QuadVertex, x));
         vertexAttribPointer(Location::COLOR, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(QuadVertex),
                             (GLvoid*)OFFSETOF(QuadVertex, color));
-
-        bindArrayBuffer(vbo_vertexData);
-
-        vertexAttribPointer(Location::MODEL, 4, GL_FLOAT, GL_FALSE, sizeof(f32) * 16,
-                            (GLvoid*)(0));
-        vertexAttribPointer(Location::MODEL+1, 4, GL_FLOAT, GL_FALSE, sizeof(f32) * 16,
-                            (GLvoid*)(sizeof(f32) * 4));
-        vertexAttribPointer(Location::MODEL+2, 4, GL_FLOAT, GL_FALSE, sizeof(f32) * 16,
-                            (GLvoid*)(sizeof(f32) * 8));
-        vertexAttribPointer(Location::MODEL+3, 4, GL_FLOAT, GL_FALSE, sizeof(f32) * 16,
-                            (GLvoid*)(sizeof(f32) * 12));
 
         OGL_DBG_GROUP_END(DbgColorShader_setup);
     }
@@ -473,7 +459,8 @@ bool frameReady[2] = {0};
 i32 backFrameId = 0;
 
 VramInfo vramInfo;
-i32 gpuTileVertexBufferCount = 4096;
+i32 gpuTileVertexCount = 4096;
+i32 gpuDbgQuadVertexCount = 4096;
 
 bool init()
 {
@@ -507,10 +494,13 @@ bool init()
     shader_tile.loadAndCompile();
     // TODO: make a bunch of buffers for each sector and update only on loading
     glBindBuffer(GL_ARRAY_BUFFER, shader_tile.vbo);
-    glBufferData(GL_ARRAY_BUFFER, sizeof(TileVertex) * gpuTileVertexBufferCount, nullptr,
-                 GL_DYNAMIC_DRAW);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(TileVertex) * gpuTileVertexCount, nullptr,
+                 GL_STATIC_DRAW);
 
     shader_dbgColor.loadAndCompile();
+    bindArrayBuffer(shader_dbgColor.vbo_vertexData);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(QuadVertex) * gpuDbgQuadVertexCount, nullptr,
+                 GL_DYNAMIC_DRAW);
 
     ImGuiIO& io = ImGui::GetIO();
     u8* pFontPixels;
@@ -676,16 +666,16 @@ void frameDoSectorRender(const RendererFrameData& frame)
     glUniformMatrix4fv(shader_tile.uViewMatrix, 1, GL_FALSE, frame.matCamViewIso.data);
     glUniformMatrix4fv(shader_tile.uModelMatrix, 1, GL_FALSE, frame.matSectorTileModel.data);
 
-    glBindBuffer(GL_ARRAY_BUFFER, shader_tile.vbo);
+    bindArrayBuffer(shader_tile.vbo);
 
     // upload vertex data to gpu
     const i32 tileVertexDataCount = frame.tileVertexData.count();
     const TileVertex* tileVertexData = frame.tileVertexData.data();
 
     if(frame.doUploadTileVertexData) {
-        if(tileVertexDataCount > gpuTileVertexBufferCount) {
-            gpuTileVertexBufferCount = max(gpuTileVertexBufferCount * 2, tileVertexDataCount);
-            glBufferData(GL_ARRAY_BUFFER, sizeof(TileVertex) * gpuTileVertexBufferCount, 0, GL_DYNAMIC_DRAW);
+        if(tileVertexDataCount > gpuTileVertexCount) {
+            gpuTileVertexCount = max(gpuTileVertexCount * 2, tileVertexDataCount);
+            glBufferData(GL_ARRAY_BUFFER, sizeof(TileVertex) * gpuTileVertexCount, 0, GL_DYNAMIC_DRAW);
         }
 
         glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(TileVertex) * tileVertexDataCount,
@@ -723,6 +713,42 @@ void frameDoSectorRender(const RendererFrameData& frame)
     }
 
     OGL_DBG_GROUP_END(SectorRender);
+}
+
+void frameDoDbgObjects(const RendererFrameData& frame)
+{
+    OGL_DBG_GROUP_BEGIN(DbgObjects);
+
+    glUseProgram(shader_dbgColor.program);
+
+    glUniformMatrix4fv(shader_dbgColor.uProjMatrix, 1, GL_FALSE, frame.matCamProj.data);
+    glUniformMatrix4fv(shader_dbgColor.uViewMatrix, 1, GL_FALSE, frame.matCamViewIso.data);
+
+    bindArrayBuffer(shader_dbgColor.vbo_vertexData);
+    const i32 dbgQuadVertCount = frame.dbgQuadVertData.count();
+    if(dbgQuadVertCount > gpuDbgQuadVertexCount) {
+        gpuDbgQuadVertexCount = max(gpuDbgQuadVertexCount * 2, dbgQuadVertCount);
+        glBufferData(GL_ARRAY_BUFFER, sizeof(QuadVertex) * gpuDbgQuadVertexCount, 0, GL_DYNAMIC_DRAW);
+    }
+
+    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(QuadVertex) * dbgQuadVertCount,
+                    frame.dbgQuadVertData.data());
+
+    glBindVertexArray(shader_dbgColor.vao);
+
+    blendModeOpaque();
+
+    const mat4* matModels = frame.dbgQuadModelMat.data();
+    const i32 meshCount = frame.dbgQuadMeshDef.count();
+    const MeshDef* meshDef = frame.dbgQuadMeshDef.data();
+
+    for(i32 i = 0; i < meshCount; ++i) {
+        glUniformMatrix4fv(shader_dbgColor.uModelMatrix, 1, GL_FALSE, matModels[i].data);
+        glDrawArrays(GL_TRIANGLES, meshDef[i].vertOffset, meshDef[i].vertCount);
+    }
+
+
+    OGL_DBG_GROUP_END(DbgObjects);
 }
 
 void frameDoImGui(const RendererFrameData& frame)
@@ -860,7 +886,9 @@ void processFrames()
         glGetIntegerv(GL_GPU_MEMORY_INFO_EVICTED_MEMORY_NVX, &vramInfo.evictedMem);
 
         frameDoTextureManagement(curFrame);
+
         frameDoSectorRender(curFrame);
+        frameDoDbgObjects(curFrame);
         frameDoImGui(curFrame);
 
         if(!get_clientWindow()) {

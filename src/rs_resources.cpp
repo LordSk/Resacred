@@ -173,7 +173,12 @@ void uploadTextures(i32* pakTextureUIDs, PakTextureInfo* textureInfos, u8** text
         const i32 pakTexId = pakTextureUIDs[r];
         i32 gpuId = -1;
 
-        for(i32 i = 0; i < MAX_GPU_TEXTURES; ++i) {
+        const i32 fastId = pakTexId % MAX_GPU_TEXTURES;
+        if(texSlotOccupied[fastId] && texDiskId[fastId] == pakTexId) {
+            gpuId = fastId;
+        }
+
+        for(i32 i = 0; i < MAX_GPU_TEXTURES && gpuId == -1; ++i) {
             if(texSlotOccupied[i] && texDiskId[i] == pakTexId) {
                 gpuId = i;
                 break;
@@ -191,7 +196,7 @@ void uploadTextures(i32* pakTextureUIDs, PakTextureInfo* textureInfos, u8** text
         // upload texture to gpu
         desc.width = textureInfos[r].width;
         desc.height = textureInfos[r].height;
-        desc.data =  nullptr; // filled later
+        desc.data =  nullptr; // filled later in Renderer
 
         u32 textureDataSize = 0;
         if(textureInfos[r].type == PakTextureType::TYPE_RGBA8) {
@@ -207,10 +212,8 @@ void uploadTextures(i32* pakTextureUIDs, PakTextureInfo* textureInfos, u8** text
             textureDataSize = textureInfos[r].width * textureInfos[r].height * 2;
         }
 
-
         desc.minFilter = GL_NEAREST;
         desc.magFilter = GL_NEAREST;
-
 
         texLoaded[gpuId].increment();
         frameData->_addTextureCreate(desc, &texGpuId[gpuId], textureData[r], textureDataSize);

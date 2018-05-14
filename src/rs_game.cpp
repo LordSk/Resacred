@@ -402,55 +402,6 @@ void loadSectorIfNeeded()
             const i32 id = y * 64 + x;
             makeTileMesh(quad, dd.baseTileId[id] % 18, x, y, 0.0, 0xffffffff);
             dd.baseVertexData.pushPOD(quad, 6);
-
-#if 0
-            const WldxEntry& we = sectorEntries[id];
-            u32 color = 0xff000000;
-            if(id == dbgSelectedTileId) {
-                color = 0xffff0000;
-            }
-            else if(id == dbgHoveredTileId) {
-                color = 0xffff8f8f;
-            }
-            else {
-                switch(dbgViewMode) {
-                    case MODE_NORMAL:
-                        color = 0xffffffff;
-                        break;
-
-                    case MODE_STATIC:
-                        color = 0xffffffff;
-                        if(we.staticId) {
-                            color = 0xff0000ff;
-                        }
-                        break;
-
-                    case MODE_ENTITY:
-                        color = 0xffffffff;
-                        if(we.entityId) {
-                            color = 0xffff0000;
-                        }
-                        break;
-
-                    case MODE_SMTH_TYPE:
-                        color = 0xffffffff;
-                        if(we.someTypeId) {
-                            color = 0xff000000 | (0x00000001 * (we.someTypeId*(255/15)));
-                        }
-                        break;
-
-                    case MODE_SMTH_POS:
-                        color = 0xff000000 | (we.smthZ << 16) | (we.smthY << 8) | (we.smthX);
-                        break;
-                }
-            }
-
-            if(color != 0xffffffff) {
-                dbgDrawSolidSquare(vec3f(x*dbgTileWidth, y*dbgTileWidth, 0),
-                                   vec3f(dbgTileWidth, dbgTileWidth, 0), color,
-                                   DbgCoordSpace::WORLD);
-            }
-#endif
         }
     }
 
@@ -776,6 +727,60 @@ void drawSector()
     frameData.tvOff_base = 0;
     frameData.tvOff_floor = dd.baseVertexData.count();
     frameData.tvOff_mixed = frameData.tvOff_floor + dd.floorVertexData.count();
+
+    const WldxEntry* sectorEntries = sectorData->data;
+
+    for(i32 y = 0; y < 64; ++y) {
+        for(i32 x = 0; x < 64; ++x) {
+            const i32 id = y * 64 + x;
+            const WldxEntry& we = sectorEntries[id];
+            u32 color = 0xff000000;
+            if(id == dbgSelectedTileId) {
+                color = 0xffff0000;
+            }
+            else if(id == dbgHoveredTileId) {
+                color = 0xffff8f8f;
+            }
+            else {
+                switch(dbgViewMode) {
+                    case MODE_NORMAL:
+                        color = 0xffffffff;
+                        break;
+
+                    case MODE_STATIC:
+                        color = 0xffffffff;
+                        if(we.staticId) {
+                            color = 0xff0000ff;
+                        }
+                        break;
+
+                    case MODE_ENTITY:
+                        color = 0xffffffff;
+                        if(we.entityId) {
+                            color = 0xffff0000;
+                        }
+                        break;
+
+                    case MODE_SMTH_TYPE:
+                        color = 0xffffffff;
+                        if(we.someTypeId) {
+                            color = 0xff000000 | (0x00000001 * (we.someTypeId*(255/15)));
+                        }
+                        break;
+
+                    case MODE_SMTH_POS:
+                        color = 0xff000000 | (we.smthZ << 16) | (we.smthY << 8) | (we.smthX);
+                        break;
+                }
+            }
+
+            if(color != 0xffffffff) {
+                dbgDrawSolidSquare(vec3f(x*dbgTileWidth, y*dbgTileWidth, 0),
+                                   vec3f(dbgTileWidth, dbgTileWidth, 0), color,
+                                   DbgCoordSpace::WORLD);
+            }
+        }
+    }
 }
 
 void updateCameraMatrices()
