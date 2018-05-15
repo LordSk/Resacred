@@ -106,6 +106,8 @@ inline T abs(T value) {
     #define max(a, b) ((a) > (b) ? (a) : (b))
 #endif
 
+#define arr_count(arr) (sizeof(arr)/sizeof(arr[0]))
+
 template<typename T>
 inline T clamp(T value, T min, T max) {
     if(value < min) {

@@ -26,6 +26,7 @@
  * 2529
  * 3732
  * 3810 <<<
+ * 3858
  * 4859
  * 5351
 */
@@ -214,6 +215,7 @@ struct SectorDrawData
 SectorDrawData currentSectorDrawData;
 
 bool showUi = true;
+bool dbgShowFrameGraph = false;
 i32 dbgSectorId = 3810;
 
 i32 dbgFloorOffset = 0;
@@ -433,9 +435,52 @@ void ui_videoInfo()
 
     ImGui::Text("Current/Total %dmb/%dmb", (vi.availMemory-vi.currentAvailMem)/1024, vi.availMemory/1024);
     ImGui::ProgressBar(1.0 - (vi.currentAvailMem / (f64)vi.availMemory));
+
     ImGui::Separator();
-    ImGui::Text("Renderer frametime: %.5fms", renderer_getFrameTime() * 1000.0);
-    ImGui::Text("Game     frametime: %.5fms", frameTime * 1000.0);
+
+    ImGui::Text("Renderer frametime: %.3fms", renderer_getFrameTime() * 1000.0);
+    ImGui::Text("Game     frametime: %.3fms", frameTime * 1000.0);
+    ImGui::Checkbox("Show frame graph", &dbgShowFrameGraph);
+
+    ImGui::End();
+}
+
+void ui_frameGraph()
+{
+    if(!dbgShowFrameGraph) return;
+
+    static f32 rdrFtStack[1000] = {0};
+    static f32 gameFtStack[1000] = {0};
+
+    ImGui::Begin("Frame graph");
+
+    memmove(rdrFtStack + 1, rdrFtStack, sizeof(rdrFtStack) - sizeof(rdrFtStack[0]));
+    memmove(gameFtStack + 1, gameFtStack, sizeof(gameFtStack) - sizeof(gameFtStack[0]));
+    rdrFtStack[0] = renderer_getFrameTime() * 1000.0;
+    gameFtStack[0] = frameTime * 1000.0;
+
+    const i32 count = arr_count(rdrFtStack);
+    const f32 width = ImGui::GetWindowContentRegionWidth();
+
+    f32 rdrMin = 1000.0, rdrMax = 0.0;
+    f32 gameMin = 1000.0, gameMax = 0.0;
+
+    for(i32 i = 0; i < count; ++i) {
+        rdrMin = min(rdrFtStack[i], rdrMin);
+        rdrMax = max(rdrFtStack[i], rdrMax);
+        gameMin = min(gameFtStack[i], gameMin);
+        gameMax = max(gameFtStack[i], gameMax);
+    }
+
+    ImGui::Text("Renderer frametime .. [%.3f, %.3f] (ms)", rdrMin, rdrMax);
+    ImGui::PushStyleColor(ImGuiCol_PlotHistogram, 0xffff6100);
+    ImGui::PlotHistogram("##render_ft_hist", rdrFtStack, count, 0, 0, rdrMin, rdrMax, ImVec2(width,80));
+    ImGui::PopStyleColor(1);
+
+    ImGui::Text("Game frametime     .. [%.3f, %.3f] (ms)", gameMin, gameMax);
+    ImGui::PushStyleColor(ImGuiCol_PlotHistogram, 0xff0061ff);
+    ImGui::PlotHistogram("##game_ft_hist", gameFtStack, count, 0, 0, gameMin, gameMax, ImVec2(width,80));
+    ImGui::PopStyleColor(1);
 
     ImGui::End();
 }
@@ -448,6 +493,7 @@ void ui_all()
     ui_tileTest();
     ui_mixedViewer();
     ui_videoInfo();
+    ui_frameGraph();
 
     ui_tileInspector();
 
