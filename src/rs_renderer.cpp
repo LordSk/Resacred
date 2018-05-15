@@ -345,7 +345,7 @@ struct DbgColorShader
     GLuint vao;
     GLuint vbo_vertexData;
 
-    void loadAndCompile()
+    bool loadAndCompile()
     {
         OGL_DBG_GROUP_BEGIN(DbgColorShader_setup);
 
@@ -388,9 +388,13 @@ struct DbgColorShader
         };
 
         program = glMakeShader(shaderFiles, 2);
+        if(!program) {
+            return false;
+        }
 
         static i32* locations[] = {&uProjMatrix, &uViewMatrix, &uModelMatrix};
         static const char* uniformNames[] = {"uProjMatrix", "uViewMatrix", "uModelMatrix"};
+
         glUseProgram(program);
         getUniformLocations(program, uniformNames, locations, IM_ARRAYSIZE(locations));
 
@@ -402,10 +406,9 @@ struct DbgColorShader
         enum Location {
             POSITION = 0,
             COLOR = 1,
-            MODEL = 2, // size 4 (matrix4x4)
         };
 
-        const i32 indexes[] = {POSITION, COLOR, MODEL, MODEL+1, MODEL+2, MODEL+3};
+        const i32 indexes[] = {POSITION, COLOR};
         enableVertexAttribArrays(indexes, IM_ARRAYSIZE(indexes));
 
         vertexAttribPointer(Location::POSITION, 3, GL_FLOAT, GL_FALSE, sizeof(QuadVertex),
@@ -414,6 +417,7 @@ struct DbgColorShader
                             (GLvoid*)OFFSETOF(QuadVertex, color));
 
         OGL_DBG_GROUP_END(DbgColorShader_setup);
+        return true;
     }
 };
 
@@ -497,7 +501,10 @@ bool init()
     glBufferData(GL_ARRAY_BUFFER, sizeof(TileVertex) * gpuTileVertexCount, nullptr,
                  GL_STATIC_DRAW);
 
-    shader_dbgColor.loadAndCompile();
+    if(!shader_dbgColor.loadAndCompile()) {
+        return false;
+    }
+
     bindArrayBuffer(shader_dbgColor.vbo_vertexData);
     glBufferData(GL_ARRAY_BUFFER, sizeof(QuadVertex) * gpuDbgQuadVertexCount, nullptr,
                  GL_DYNAMIC_DRAW);
@@ -739,8 +746,10 @@ void frameDoDbgObjects(const RendererFrameData& frame)
     blendModeOpaque();
 
     const mat4* matModels = frame.dbgQuadModelMat.data();
-    const i32 meshCount = frame.dbgQuadMeshDef.count();
     const MeshDef* meshDef = frame.dbgQuadMeshDef.data();
+    const i32 meshCount = frame.dbgQuadMeshDef.count();
+
+    assert(meshCount == frame.dbgQuadModelMat.count());
 
     for(i32 i = 0; i < meshCount; ++i) {
         glUniformMatrix4fv(shader_dbgColor.uModelMatrix, 1, GL_FALSE, matModels[i].data);
@@ -909,28 +918,36 @@ void cleanUp()
 
 void pushFrame(const RendererFrameData& frameData_)
 {
+#ifdef CONF_DEBUG
+    timept t0 = timeNow();
+#endif
+
     // prevent important frames from being squashed
-	// FIXME: can get stuck
-    while(frameData[backFrameId].doUploadTileVertexData || frameData[backFrameId].texToCreateCount > 0
-          || frameData[backFrameId].texToDestroyCount > 0) {
+    i32 bid = backFrameId;
+    while(frameData[bid].doUploadTileVertexData || frameData[bid].texToCreateCount > 0
+          || frameData[bid].texToDestroyCount > 0) {
         _mm_pause();
+        assert(timeDurSince(t0) < 1.0);
+        bid = backFrameId;
     }
 
-    frameDataMutex[backFrameId].lock();
-    frameData[backFrameId].copy(frameData_);
+    MutexSpin& frameMutex = frameDataMutex[bid];
+    frameMutex.lock();
+    frameData[bid].copy(frameData_);
 
+    /*
     assert(frameData_.imguiDrawList.data() != frameData[backFrameId].imguiDrawList.data());
 
     for(i32 i = 0; i < frameData_.imguiDrawList.count(); i++) {
-        assert(frameData[backFrameId].imguiDrawList[i].VtxBuffer.size() ==
+        assert(frameData[bid].imguiDrawList[i].VtxBuffer.size() ==
                frameData_.imguiDrawList[i].VtxBuffer.size());
-        assert(frameData[backFrameId].imguiDrawList[i].VtxBuffer.Data !=
+        assert(frameData[bid].imguiDrawList[i].VtxBuffer.Data !=
                frameData_.imguiDrawList[i].VtxBuffer.Data);
-        assert(frameData[backFrameId].imguiDrawList[i].VtxBuffer.size() > 0);
-    }
+        assert(frameData[bid].imguiDrawList[i].VtxBuffer.size() > 0);
+    }*/
 
-    frameReady[backFrameId] = true;
-    frameDataMutex[backFrameId].unlock();
+    frameReady[bid] = true;
+    frameMutex.unlock();
 }
 
 };

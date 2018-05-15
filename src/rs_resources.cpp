@@ -96,15 +96,11 @@ void newFrame()
 i32 _occupyNextTextureSlot(i32 pakTexId)
 {
     const i32 fastId = pakTexId % MAX_GPU_TEXTURES;
-    if(texSlotOccupied[fastId] == false) {
-        texSlotOccupied[fastId] = true;
-        return fastId;
-    }
-
     for(i32 i = 0; i < MAX_GPU_TEXTURES; ++i) {
-        if(texSlotOccupied[i] == false) {
-            texSlotOccupied[i] = true;
-            return i;
+        const i32 id = (fastId + i) % MAX_GPU_TEXTURES;
+        if(texSlotOccupied[id] == false) {
+            texSlotOccupied[id] = true;
+            return id;
         }
     }
 
@@ -137,17 +133,13 @@ void requestTextures(const i32* inPakTextureIds, u32** outGpuTexHandles, const i
         const i32 pakTexId = inPakTextureIds[r];
 
         bool found = false;
-        const i32 fastId = pakTexId % MAX_GPU_TEXTURES;
-        if(texSlotOccupied[fastId] && texDiskId[fastId] == pakTexId) {
-            outGpuTexHandles[r] = &texGpuId[fastId];
-            texFramesNotRequested[fastId] = 1;
-            found = true;
-        }
 
-        for(i32 i = 0; i < MAX_GPU_TEXTURES && !found; ++i) {
-            if(texSlotOccupied[i] && texDiskId[i] == pakTexId) {
-                outGpuTexHandles[r] = &texGpuId[i];
-                texFramesNotRequested[i] = 1;
+        const i32 fastId = pakTexId % MAX_GPU_TEXTURES;
+        for(i32 i = 0; i < MAX_GPU_TEXTURES; ++i) {
+            const i32 id = (fastId + i) % MAX_GPU_TEXTURES;
+            if(texSlotOccupied[id] && texDiskId[id] == pakTexId) {
+                outGpuTexHandles[r] = &texGpuId[id];
+                texFramesNotRequested[id] = 1;
                 found = true;
                 break;
             }
@@ -174,13 +166,10 @@ void uploadTextures(i32* pakTextureUIDs, PakTextureInfo* textureInfos, u8** text
         i32 gpuId = -1;
 
         const i32 fastId = pakTexId % MAX_GPU_TEXTURES;
-        if(texSlotOccupied[fastId] && texDiskId[fastId] == pakTexId) {
-            gpuId = fastId;
-        }
-
-        for(i32 i = 0; i < MAX_GPU_TEXTURES && gpuId == -1; ++i) {
-            if(texSlotOccupied[i] && texDiskId[i] == pakTexId) {
-                gpuId = i;
+        for(i32 i = 0; i < MAX_GPU_TEXTURES; ++i) {
+            const i32 id = (fastId + i) % MAX_GPU_TEXTURES;
+            if(texSlotOccupied[id] && texDiskId[id] == pakTexId) {
+                gpuId = id;
                 break;
             }
         }

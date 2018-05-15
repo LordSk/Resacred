@@ -728,8 +728,8 @@ void drawSector()
     frameData.tvOff_floor = dd.baseVertexData.count();
     frameData.tvOff_mixed = frameData.tvOff_floor + dd.floorVertexData.count();
 
+    // debug tiles
     const WldxEntry* sectorEntries = sectorData->data;
-
     for(i32 y = 0; y < 64; ++y) {
         for(i32 x = 0; x < 64; ++x) {
             const i32 id = y * 64 + x;
@@ -988,9 +988,9 @@ unsigned long thread_game(void*)
         game.loadSectorIfNeeded();
         game.render();
 
+        game.frameTime = timeDurSince(t0);
         renderer_pushFrame(game.frameData);
         game.frameData.clear();
-        game.frameTime = timeDurSince(t0);
     }
 
     // TODO: wait for deinit

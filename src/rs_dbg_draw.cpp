@@ -13,7 +13,7 @@ struct SolidSquare
 };
 
 Array<SolidSquare,32> solidSquares[DbgCoordSpace::COUNT];
-mat4 matProj[DbgCoordSpace::COUNT];
+mat4 matProj[DbgCoordSpace::COUNT]; // TODO: port this to new renderer
 mat4 matView[DbgCoordSpace::COUNT];
 
 void init()
