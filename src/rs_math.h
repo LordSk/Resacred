@@ -55,7 +55,7 @@ inline f32 rs_lerpAngle(f32 a1, f32 a2, f32 alpha)
 //
 // Vector 2 type
 //
-union alignas(16) vec2f
+union alignas(16) vec2
 {
 	struct { f32 x, y, unused[2]; };
 	f32 data[4];
@@ -63,88 +63,88 @@ union alignas(16) vec2f
 	__m128 wide;
 #endif
 
-    vec2f() = default;
+    vec2() = default;
 
-    constexpr vec2f(f32 x_, f32 y_)
+    constexpr vec2(f32 x_, f32 y_)
 	: data{x_, y_, 0, 0} {
 	}
 
-    constexpr explicit vec2f(f32 one)
+    constexpr explicit vec2(f32 one)
 	: data{one, one, 0, 0} {
 	}
 };
 
-inline vec2f vec2fMinus(const vec2f& v)
+inline vec2 vec2fMinus(const vec2& v)
 {
 #ifdef RS_MATH_SIMD_IMPL
     vec2f r;
 	r.wide = _mm_sub_ps(_mm_set1_ps(0.f), v.wide);
 	return r;
 #else
-    return vec2f{
+    return vec2{
 		-v.x,
 		-v.y
 	};
 #endif
 }
 
-inline vec2f vec2fAdd(const vec2f& v1, const vec2f& v2)
+inline vec2 vec2fAdd(const vec2& v1, const vec2& v2)
 {
 #ifdef RS_MATH_SIMD_IMPL
     vec2f r;
 	r.wide = _mm_add_ps(v1.wide, v2.wide);
 	return r;
 #else
-    return vec2f{
+    return vec2{
 		v1.x + v2.x,
 		v1.y + v2.y
 	};
 #endif
 }
 
-inline vec2f* vec2fAdd(vec2f* v, const vec2f& other)
+inline vec2* vec2fAdd(vec2* v, const vec2& other)
 {
 	v->x += other.x;
 	v->y += other.y;
 	return v;
 }
 
-inline vec2f vec2fSub(const vec2f& v1, const vec2f& v2)
+inline vec2 vec2fSub(const vec2& v1, const vec2& v2)
 {
 #ifdef RS_MATH_SIMD_IMPL
     vec2f r;
 	r.wide = _mm_sub_ps(v1.wide, v2.wide);
 	return r;
 #else
-    return vec2f{
+    return vec2{
 		v1.x - v2.x,
 		v1.y - v2.y
 	};
 #endif
 }
 
-inline vec2f* vec2fSub(vec2f* v, const vec2f& other)
+inline vec2* vec2fSub(vec2* v, const vec2& other)
 {
 	v->x -= other.x;
 	v->y -= other.y;
 	return v;
 }
 
-inline vec2f vec2fMul(const vec2f& v1, const vec2f& v2)
+inline vec2 vec2fMul(const vec2& v1, const vec2& v2)
 {
 #ifdef RS_MATH_SIMD_IMPL
     vec2f r;
 	r.wide = _mm_mul_ps(v1.wide, v2.wide);
 	return r;
 #else
-    return vec2f{
+    return vec2{
 		v1.x * v2.x,
 		v1.y * v2.y
 	};
 #endif
 }
 
-inline vec2f* vec2fMul(vec2f* v, const vec2f& other)
+inline vec2* vec2fMul(vec2* v, const vec2& other)
 {
 #ifdef RS_MATH_SIMD_IMPL
 	v->wide = _mm_mul_ps(v->wide, other.wide);
@@ -155,21 +155,21 @@ inline vec2f* vec2fMul(vec2f* v, const vec2f& other)
 	return v;
 }
 
-inline vec2f vec2fDiv(const vec2f& v1, const vec2f& v2)
+inline vec2 vec2fDiv(const vec2& v1, const vec2& v2)
 {
 #ifdef RS_MATH_SIMD_IMPL
     vec2f r;
 	r.wide = _mm_div_ps(v1.wide, v2.wide);
 	return r;
 #else
-    return vec2f{
+    return vec2{
 		v1.x / v2.x,
 		v1.y / v2.y
 	};
 #endif
 }
 
-inline vec2f* vec2fDiv(vec2f* v, const vec2f& other)
+inline vec2* vec2fDiv(vec2* v, const vec2& other)
 {
 #ifdef RS_MATH_SIMD_IMPL
 	v->wide = _mm_div_ps(v->wide, other.wide);
@@ -181,21 +181,21 @@ inline vec2f* vec2fDiv(vec2f* v, const vec2f& other)
 }
 
 // scalar
-inline vec2f vec2fAdd(const vec2f& v, f32 scalar)
+inline vec2 vec2fAdd(const vec2& v, f32 scalar)
 {
 #ifdef RS_MATH_SIMD_IMPL
     vec2f r;
 	r.wide = _mm_add_ps(v.wide, _mm_set1_ps(scalar));
 	return r;
 #else
-    return vec2f{
+    return vec2{
 		v.x + scalar,
 		v.y + scalar
 	};
 #endif
 }
 
-inline vec2f* vec2fAdd(vec2f* v, f32 scalar)
+inline vec2* vec2fAdd(vec2* v, f32 scalar)
 {
 #ifdef RS_MATH_SIMD_IMPL
 	v->wide = _mm_add_ps(v->wide, _mm_set1_ps(scalar));
@@ -207,42 +207,42 @@ inline vec2f* vec2fAdd(vec2f* v, f32 scalar)
 }
 
 
-inline vec2f vec2fSub(const vec2f& v1, f32 scalar)
+inline vec2 vec2fSub(const vec2& v1, f32 scalar)
 {
 #ifdef RS_MATH_SIMD_IMPL
     vec2f r;
 	r.wide = _mm_sub_ps(v1.wide, _mm_set1_ps(scalar));
 	return r;
 #else
-    return vec2f{
+    return vec2{
 		v1.x - scalar,
 		v1.y - scalar
 	};
 #endif
 }
 
-inline vec2f* vec2fSub(vec2f* v, f32 scalar)
+inline vec2* vec2fSub(vec2* v, f32 scalar)
 {
 	v->x -= scalar;
 	v->y -= scalar;
 	return v;
 }
 
-inline vec2f vec2fMul(const vec2f& v1, f32 scalar)
+inline vec2 vec2fMul(const vec2& v1, f32 scalar)
 {
 #ifdef RS_MATH_SIMD_IMPL
     vec2f r;
 	r.wide = _mm_mul_ps(v1.wide, _mm_set1_ps(scalar));
 	return r;
 #else
-    return vec2f{
+    return vec2{
 		v1.x * scalar,
 		v1.y * scalar
 	};
 #endif
 }
 
-inline vec2f* vec2fMul(vec2f* v, f32 scalar)
+inline vec2* vec2fMul(vec2* v, f32 scalar)
 {
 #ifdef RS_MATH_SIMD_IMPL
 	v->wide = _mm_mul_ps(v->wide, _mm_set1_ps(scalar));
@@ -253,21 +253,21 @@ inline vec2f* vec2fMul(vec2f* v, f32 scalar)
 	return v;
 }
 
-inline vec2f vec2fDiv(const vec2f& v1, f32 scalar)
+inline vec2 vec2fDiv(const vec2& v1, f32 scalar)
 {
 #ifdef RS_MATH_SIMD_IMPL
     vec2f r;
 	r.wide = _mm_div_ps(v1.wide, _mm_set1_ps(scalar));
 	return r;
 #else
-    return vec2f{
+    return vec2{
 		v1.x / scalar,
 		v1.y / scalar
 	};
 #endif
 }
 
-inline vec2f* vec2fDiv(vec2f* v, f32 scalar)
+inline vec2* vec2fDiv(vec2* v, f32 scalar)
 {
 #ifdef RS_MATH_SIMD_IMPL
 	v->wide = _mm_div_ps(v->wide, _mm_set1_ps(scalar));
@@ -278,7 +278,7 @@ inline vec2f* vec2fDiv(vec2f* v, f32 scalar)
 	return v;
 }
 
-inline f32 rs_dot(const vec2f& v1, const vec2f& v2)
+inline f32 rs_dot(const vec2& v1, const vec2& v2)
 {
 #ifdef RS_MATH_SIMD_IMPL
 	__m128 r = _mm_mul_ps(v1.wide, v2.wide);
@@ -290,12 +290,12 @@ inline f32 rs_dot(const vec2f& v1, const vec2f& v2)
 #endif
 }
 
-inline f32 rs_lengthSq(const vec2f& v)
+inline f32 rs_lengthSq(const vec2& v)
 {
 	return rs_dot(v , v);
 }
 
-inline f32 rs_length(const vec2f& v)
+inline f32 rs_length(const vec2& v)
 {
 #ifdef RS_MATH_SIMD_IMPL
 	__m128 r = _mm_mul_ps(v.wide, v.wide);
@@ -308,12 +308,12 @@ inline f32 rs_length(const vec2f& v)
 #endif
 }
 
-inline f32 rs_distance(const vec2f& v1, const vec2f& v2)
+inline f32 rs_distance(const vec2& v1, const vec2& v2)
 {
     return rs_length(vec2fSub(v1, v2));
 }
 
-inline vec2f rs_normalize(vec2f v)
+inline vec2 rs_normalize(vec2 v)
 {
 #ifdef RS_MATH_SIMD_IMPL
 	__m128 len = _mm_mul_ps(v.wide, v.wide);
@@ -329,72 +329,72 @@ inline vec2f rs_normalize(vec2f v)
 }
 
 #ifdef RS_MATH_OPERATORS
-inline vec2f operator-(const vec2f& v) {
+inline vec2 operator-(const vec2& v) {
     return vec2fMinus(v);
 }
 
-inline vec2f operator+(const vec2f& v1, const vec2f& v2) {
+inline vec2 operator+(const vec2& v1, const vec2& v2) {
     return vec2fAdd(v1, v2);
 }
 
-inline vec2f& operator+=(vec2f& v, const vec2f& other) {
+inline vec2& operator+=(vec2& v, const vec2& other) {
     return *vec2fAdd(&v, other);
 }
 
-inline vec2f operator-(const vec2f& v1, const vec2f& v2) {
+inline vec2 operator-(const vec2& v1, const vec2& v2) {
     return vec2fSub(v1, v2);
 }
 
-inline vec2f& operator-=(vec2f& v, const vec2f& other) {
+inline vec2& operator-=(vec2& v, const vec2& other) {
     return *vec2fSub(&v, other);
 }
 
-inline vec2f operator*(const vec2f& v1, const vec2f& v2) {
+inline vec2 operator*(const vec2& v1, const vec2& v2) {
     return vec2fMul(v1, v2);
 }
 
-inline vec2f& operator*=(vec2f& v, const vec2f& other) {
+inline vec2& operator*=(vec2& v, const vec2& other) {
     return *vec2fMul(&v, other);
 }
 
-inline vec2f operator/(const vec2f& v1, const vec2f& v2) {
+inline vec2 operator/(const vec2& v1, const vec2& v2) {
     return vec2fDiv(v1, v2);
 }
 
-inline vec2f& operator/=(vec2f& v, const vec2f& other) {
+inline vec2& operator/=(vec2& v, const vec2& other) {
     return *vec2fDiv(&v, other);
 }
 
 // scalar
-inline vec2f operator+(const vec2f& v, f32 scalar) {
+inline vec2 operator+(const vec2& v, f32 scalar) {
     return vec2fAdd(v, scalar);
 }
 
-inline vec2f& operator+=(vec2f& v, f32 scalar) {
+inline vec2& operator+=(vec2& v, f32 scalar) {
     return *vec2fAdd(&v, scalar);
 }
 
-inline vec2f operator-(const vec2f& v1, f32 scalar) {
+inline vec2 operator-(const vec2& v1, f32 scalar) {
     return vec2fSub(v1, scalar);
 }
 
-inline vec2f& operator-=(vec2f& v, f32 scalar) {
+inline vec2& operator-=(vec2& v, f32 scalar) {
     return *vec2fSub(&v, scalar);
 }
 
-inline vec2f operator*(const vec2f& v1, f32 scalar) {
+inline vec2 operator*(const vec2& v1, f32 scalar) {
     return vec2fMul(v1, scalar);
 }
 
-inline vec2f& operator*=(vec2f& v, f32 scalar) {
+inline vec2& operator*=(vec2& v, f32 scalar) {
     return *vec2fMul(&v, scalar);
 }
 
-inline vec2f operator/(const vec2f& v1, f32 scalar) {
+inline vec2 operator/(const vec2& v1, f32 scalar) {
     return vec2fDiv(v1, scalar);
 }
 
-inline vec2f& operator/=(vec2f& v, f32 scalar) {
+inline vec2& operator/=(vec2& v, f32 scalar) {
     return *vec2fDiv(&v, scalar);
 }
 #endif
@@ -403,7 +403,7 @@ inline vec2f& operator/=(vec2f& v, f32 scalar) {
 //
 // Vector 3
 //
-union alignas(16) vec3f
+union alignas(16) vec3
 {
 	struct { f32 x, y, z, unused; };
 	f32 data[4];
@@ -411,29 +411,29 @@ union alignas(16) vec3f
 	__m128 wide;
 #endif
 
-    vec3f() = default;
+    vec3() = default;
 
-    constexpr vec3f(f32 x_, f32 y_, f32 z_)
+    constexpr vec3(f32 x_, f32 y_, f32 z_)
 	: data{x_, y_, z_, 0} {
 	}
 
-    constexpr explicit vec3f(f32 one)
+    constexpr explicit vec3(f32 one)
 	: data{one, one, one, 0} {
 	}
 
-    constexpr vec3f(const vec2f& v2, f32 z_)
+    constexpr vec3(const vec2& v2, f32 z_)
 	: data{v2.x, v2.y, z_, 0} {
 	}
 };
 
-inline vec3f vec3fMinus(const vec3f& v)
+inline vec3 vec3fMinus(const vec3& v)
 {
 #ifdef RS_MATH_SIMD_IMPL
     vec3f r;
 	r.wide = _mm_sub_ps(_mm_set1_ps(0.f), v.wide);
 	return r;
 #else
-    return vec3f{
+    return vec3{
 		-v.x,
 		-v.y,
 		-v.z
@@ -441,14 +441,14 @@ inline vec3f vec3fMinus(const vec3f& v)
 #endif
 }
 
-inline vec3f vec3fAdd(const vec3f& v1, const vec3f& v2)
+inline vec3 vec3fAdd(const vec3& v1, const vec3& v2)
 {
 #ifdef RS_MATH_SIMD_IMPL
     vec3f r;
 	r.wide = _mm_add_ps(v1.wide, v2.wide);
 	return r;
 #else
-    return vec3f{
+    return vec3{
 		v1.x + v2.x,
 		v1.y + v2.y,
 		v1.z + v2.z
@@ -456,7 +456,7 @@ inline vec3f vec3fAdd(const vec3f& v1, const vec3f& v2)
 #endif
 }
 
-inline vec3f* vec3fAdd(vec3f* v, const vec3f& other)
+inline vec3* vec3fAdd(vec3* v, const vec3& other)
 {
 	v->x += other.x;
 	v->y += other.y;
@@ -464,14 +464,14 @@ inline vec3f* vec3fAdd(vec3f* v, const vec3f& other)
 	return v;
 }
 
-inline vec3f vec3fSub(const vec3f& v1, const vec3f& v2)
+inline vec3 vec3fSub(const vec3& v1, const vec3& v2)
 {
 #ifdef RS_MATH_SIMD_IMPL
     vec3f r;
 	r.wide = _mm_sub_ps(v1.wide, v2.wide);
 	return r;
 #else
-    return vec3f{
+    return vec3{
 		v1.x - v2.x,
 		v1.y - v2.y,
 		v1.z - v2.z
@@ -479,7 +479,7 @@ inline vec3f vec3fSub(const vec3f& v1, const vec3f& v2)
 #endif
 }
 
-inline vec3f* vec3fSub(vec3f* v, const vec3f& other)
+inline vec3* vec3fSub(vec3* v, const vec3& other)
 {
 	v->x -= other.x;
 	v->y -= other.y;
@@ -487,14 +487,14 @@ inline vec3f* vec3fSub(vec3f* v, const vec3f& other)
 	return v;
 }
 
-inline vec3f vec3fMul(const vec3f& v1, const vec3f& v2)
+inline vec3 vec3fMul(const vec3& v1, const vec3& v2)
 {
 #ifdef RS_MATH_SIMD_IMPL
     vec3f r;
 	r.wide = _mm_mul_ps(v1.wide, v2.wide);
 	return r;
 #else
-    return vec3f{
+    return vec3{
 		v1.x * v2.x,
 		v1.y * v2.y,
 		v1.z * v2.z
@@ -502,7 +502,7 @@ inline vec3f vec3fMul(const vec3f& v1, const vec3f& v2)
 #endif
 }
 
-inline vec3f* vec3fMul(vec3f* v, const vec3f& other)
+inline vec3* vec3fMul(vec3* v, const vec3& other)
 {
 #ifdef RS_MATH_SIMD_IMPL
 	v->wide = _mm_mul_ps(v->wide, other.wide);
@@ -514,14 +514,14 @@ inline vec3f* vec3fMul(vec3f* v, const vec3f& other)
 	return v;
 }
 
-inline vec3f vec3fDiv(const vec3f& v1, const vec3f& v2)
+inline vec3 vec3fDiv(const vec3& v1, const vec3& v2)
 {
 #ifdef RS_MATH_SIMD_IMPL
     vec3f r;
 	r.wide = _mm_div_ps(v1.wide, v2.wide);
 	return r;
 #else
-    return vec3f{
+    return vec3{
 		v1.x / v2.x,
 		v1.y / v2.y,
 		v1.z / v2.z
@@ -529,7 +529,7 @@ inline vec3f vec3fDiv(const vec3f& v1, const vec3f& v2)
 #endif
 }
 
-inline vec3f* vec3fDiv(vec3f* v, const vec3f& other)
+inline vec3* vec3fDiv(vec3* v, const vec3& other)
 {
 #ifdef RS_MATH_SIMD_IMPL
 	v->wide = _mm_div_ps(v->wide, other.wide);
@@ -542,14 +542,14 @@ inline vec3f* vec3fDiv(vec3f* v, const vec3f& other)
 }
 
 // scalar
-inline vec3f vec3fAdd(const vec3f& v, f32 scalar)
+inline vec3 vec3fAdd(const vec3& v, f32 scalar)
 {
 #ifdef RS_MATH_SIMD_IMPL
     vec3f r;
 	r.wide = _mm_add_ps(v.wide, _mm_set1_ps(scalar));
 	return r;
 #else
-    return vec3f{
+    return vec3{
 		v.x + scalar,
 		v.y + scalar,
 		v.z + scalar
@@ -557,7 +557,7 @@ inline vec3f vec3fAdd(const vec3f& v, f32 scalar)
 #endif
 }
 
-inline vec3f* vec3fAdd(vec3f* v, f32 scalar)
+inline vec3* vec3fAdd(vec3* v, f32 scalar)
 {
 #ifdef RS_MATH_SIMD_IMPL
 	v->wide = _mm_add_ps(v->wide, _mm_set1_ps(scalar));
@@ -570,14 +570,14 @@ inline vec3f* vec3fAdd(vec3f* v, f32 scalar)
 }
 
 
-inline vec3f vec3fSub(const vec3f& v1, f32 scalar)
+inline vec3 vec3fSub(const vec3& v1, f32 scalar)
 {
 #ifdef RS_MATH_SIMD_IMPL
     vec3f r;
 	r.wide = _mm_sub_ps(v1.wide, _mm_set1_ps(scalar));
 	return r;
 #else
-    return vec3f{
+    return vec3{
 		v1.x - scalar,
 		v1.y - scalar,
 		v1.z - scalar
@@ -585,7 +585,7 @@ inline vec3f vec3fSub(const vec3f& v1, f32 scalar)
 #endif
 }
 
-inline vec3f* vec3fSub(vec3f* v, f32 scalar)
+inline vec3* vec3fSub(vec3* v, f32 scalar)
 {
 	v->x -= scalar;
 	v->y -= scalar;
@@ -593,14 +593,14 @@ inline vec3f* vec3fSub(vec3f* v, f32 scalar)
 	return v;
 }
 
-inline vec3f vec3fMul(const vec3f& v1, f32 scalar)
+inline vec3 vec3fMul(const vec3& v1, f32 scalar)
 {
 #ifdef RS_MATH_SIMD_IMPL
     vec3f r;
 	r.wide = _mm_mul_ps(v1.wide, _mm_set1_ps(scalar));
 	return r;
 #else
-    return vec3f{
+    return vec3{
 		v1.x * scalar,
 		v1.y * scalar,
 		v1.z * scalar
@@ -608,7 +608,7 @@ inline vec3f vec3fMul(const vec3f& v1, f32 scalar)
 #endif
 }
 
-inline vec3f* vec3fMul(vec3f* v, f32 scalar)
+inline vec3* vec3fMul(vec3* v, f32 scalar)
 {
 #ifdef RS_MATH_SIMD_IMPL
 	v->wide = _mm_mul_ps(v->wide, _mm_set1_ps(scalar));
@@ -620,14 +620,14 @@ inline vec3f* vec3fMul(vec3f* v, f32 scalar)
 	return v;
 }
 
-inline vec3f vec3fDiv(const vec3f& v1, f32 scalar)
+inline vec3 vec3fDiv(const vec3& v1, f32 scalar)
 {
 #ifdef RS_MATH_SIMD_IMPL
     vec3f r;
 	r.wide = _mm_div_ps(v1.wide, _mm_set1_ps(scalar));
 	return r;
 #else
-    return vec3f{
+    return vec3{
 		v1.x / scalar,
 		v1.y / scalar,
 		v1.z / scalar
@@ -635,7 +635,7 @@ inline vec3f vec3fDiv(const vec3f& v1, f32 scalar)
 #endif
 }
 
-inline vec3f* vec3fDiv(vec3f* v, f32 scalar)
+inline vec3* vec3fDiv(vec3* v, f32 scalar)
 {
 #ifdef RS_MATH_SIMD_IMPL
 	v->wide = _mm_div_ps(v->wide, _mm_set1_ps(scalar));
@@ -647,7 +647,7 @@ inline vec3f* vec3fDiv(vec3f* v, f32 scalar)
 	return v;
 }
 
-inline vec3f rs_cross(const vec3f& v1, const vec3f& v2)
+inline vec3 rs_cross(const vec3& v1, const vec3& v2)
 {
 #ifdef RS_MATH_SIMD_IMPL
 	__m128 v1s0 = _mm_shuffle_ps(v1.wide, v1.wide, _MM_SHUFFLE(0, 0, 2, 1));
@@ -658,7 +658,7 @@ inline vec3f rs_cross(const vec3f& v1, const vec3f& v2)
 	r.wide = _mm_sub_ps(_mm_mul_ps(v1s0, v2s0), _mm_mul_ps(v1s1, v2s1));
 	return r;
 #else
-    return vec3f{
+    return vec3{
 		(v1.y * v2.z) - (v1.z * v2.y),
 		(v1.z * v2.x) - (v1.x * v2.z),
 		(v1.x * v2.y) - (v1.y * v2.x)
@@ -666,7 +666,7 @@ inline vec3f rs_cross(const vec3f& v1, const vec3f& v2)
 #endif
 }
 
-inline f32 rs_dot(const vec3f& v1, const vec3f& v2)
+inline f32 rs_dot(const vec3& v1, const vec3& v2)
 {
 #ifdef RS_MATH_SIMD_IMPL
 	__m128 r = _mm_mul_ps(v1.wide, v2.wide);
@@ -678,12 +678,12 @@ inline f32 rs_dot(const vec3f& v1, const vec3f& v2)
 #endif
 }
 
-inline f32 rs_lengthSq(const vec3f& v)
+inline f32 rs_lengthSq(const vec3& v)
 {
 	return rs_dot(v , v);
 }
 
-inline f32 rs_length(const vec3f& v)
+inline f32 rs_length(const vec3& v)
 {
 #ifdef RS_MATH_SIMD_IMPL
 	__m128 r = _mm_mul_ps(v.wide, v.wide);
@@ -696,12 +696,12 @@ inline f32 rs_length(const vec3f& v)
 #endif
 }
 
-inline f32 rs_distance(const vec3f& v1, const vec3f& v2)
+inline f32 rs_distance(const vec3& v1, const vec3& v2)
 {
     return rs_length(vec3fSub(v1, v2));
 }
 
-inline vec3f rs_normalize(vec3f v)
+inline vec3 rs_normalize(vec3 v)
 {
 #ifdef RS_MATH_SIMD_IMPL
 	__m128 len = _mm_mul_ps(v.wide, v.wide);
@@ -716,14 +716,14 @@ inline vec3f rs_normalize(vec3f v)
 #endif
 }
 
-inline vec3f vec3fMin(const vec3f& v1, const vec3f& v2)
+inline vec3 vec3fMin(const vec3& v1, const vec3& v2)
 {
 #ifdef RS_MATH_SIMD_IMPL
     vec3f vmin;
 	vmin.wide = _mm_min_ps(v1.wide, v2.wide);
 	return vmin;
 #else
-    vec3f vmin;
+    vec3 vmin;
 	vmin.x = rs_min(v1.x, v2.x);
 	vmin.y = rs_min(v1.y, v2.y);
 	vmin.z = rs_min(v1.z, v2.z);
@@ -731,14 +731,14 @@ inline vec3f vec3fMin(const vec3f& v1, const vec3f& v2)
 #endif
 }
 
-inline vec3f vec3fMax(const vec3f& v1, const vec3f& v2)
+inline vec3 vec3fMax(const vec3& v1, const vec3& v2)
 {
 #ifdef RS_MATH_SIMD_IMPL
     vec3f vmax;
 	vmax.wide = _mm_max_ps(v1.wide, v2.wide);
 	return vmax;
 #else
-    vec3f vmax;
+    vec3 vmax;
     vmax.x = rs_max(v1.x, v2.x);
     vmax.y = rs_max(v1.y, v2.y);
     vmax.z = rs_max(v1.z, v2.z);
@@ -747,72 +747,72 @@ inline vec3f vec3fMax(const vec3f& v1, const vec3f& v2)
 }
 
 #ifdef RS_MATH_OPERATORS
-inline vec3f operator-(const vec3f& v) {
+inline vec3 operator-(const vec3& v) {
     return vec3fMinus(v);
 }
 
-inline vec3f operator+(const vec3f& v1, const vec3f& v2) {
+inline vec3 operator+(const vec3& v1, const vec3& v2) {
     return vec3fAdd(v1, v2);
 }
 
-inline vec3f& operator+=(vec3f& v, const vec3f& other) {
+inline vec3& operator+=(vec3& v, const vec3& other) {
     return *vec3fAdd(&v, other);
 }
 
-inline vec3f operator-(const vec3f& v1, const vec3f& v2) {
+inline vec3 operator-(const vec3& v1, const vec3& v2) {
     return vec3fSub(v1, v2);
 }
 
-inline vec3f& operator-=(vec3f& v, const vec3f& other) {
+inline vec3& operator-=(vec3& v, const vec3& other) {
     return *vec3fSub(&v, other);
 }
 
-inline vec3f operator*(const vec3f& v1, const vec3f& v2) {
+inline vec3 operator*(const vec3& v1, const vec3& v2) {
     return vec3fMul(v1, v2);
 }
 
-inline vec3f& operator*=(vec3f& v, const vec3f& other) {
+inline vec3& operator*=(vec3& v, const vec3& other) {
     return *vec3fMul(&v, other);
 }
 
-inline vec3f operator/(const vec3f& v1, const vec3f& v2) {
+inline vec3 operator/(const vec3& v1, const vec3& v2) {
     return vec3fDiv(v1, v2);
 }
 
-inline vec3f& operator/=(vec3f& v, const vec3f& other) {
+inline vec3& operator/=(vec3& v, const vec3& other) {
     return *vec3fDiv(&v, other);
 }
 
 // scalar
-inline vec3f operator+(const vec3f& v, f32 scalar) {
+inline vec3 operator+(const vec3& v, f32 scalar) {
     return vec3fAdd(v, scalar);
 }
 
-inline vec3f& operator+=(vec3f& v, f32 scalar) {
+inline vec3& operator+=(vec3& v, f32 scalar) {
     return *vec3fAdd(&v, scalar);
 }
 
-inline vec3f operator-(const vec3f& v1, f32 scalar) {
+inline vec3 operator-(const vec3& v1, f32 scalar) {
     return vec3fSub(v1, scalar);
 }
 
-inline vec3f& operator-=(vec3f& v, f32 scalar) {
+inline vec3& operator-=(vec3& v, f32 scalar) {
     return *vec3fSub(&v, scalar);
 }
 
-inline vec3f operator*(const vec3f& v1, f32 scalar) {
+inline vec3 operator*(const vec3& v1, f32 scalar) {
     return vec3fMul(v1, scalar);
 }
 
-inline vec3f& operator*=(vec3f& v, f32 scalar) {
+inline vec3& operator*=(vec3& v, f32 scalar) {
     return *vec3fMul(&v, scalar);
 }
 
-inline vec3f operator/(const vec3f& v1, f32 scalar) {
+inline vec3 operator/(const vec3& v1, f32 scalar) {
     return vec3fDiv(v1, scalar);
 }
 
-inline vec3f& operator/=(vec3f& v, f32 scalar) {
+inline vec3& operator/=(vec3& v, f32 scalar) {
     return *vec3fDiv(&v, scalar);
 }
 #endif
@@ -822,7 +822,7 @@ inline vec3f& operator/=(vec3f& v, f32 scalar) {
 //
 // Vector 4
 //
-union alignas(16) vec4f
+union alignas(16) vec4
 {
 	struct { f32 x, y, z, w; };
 	struct { f32 r, g, b, a; };
@@ -831,29 +831,29 @@ union alignas(16) vec4f
 	__m128 wide;
 #endif
 
-    vec4f() = default;
+    vec4() = default;
 
-    constexpr vec4f(f32 x_, f32 y_, f32 z_, f32 w_)
+    constexpr vec4(f32 x_, f32 y_, f32 z_, f32 w_)
 	: data{x_, y_, z_, w_} {
 	}
 
-    constexpr explicit vec4f(f32 one)
+    constexpr explicit vec4(f32 one)
 	: data{one, one, one, one} {
 	}
 
-    constexpr explicit vec4f(const vec3f& v3, f32 w_)
+    constexpr explicit vec4(const vec3& v3, f32 w_)
 	: data{v3.x, v3.y, v3.z, w_} {
 	}
 };
 
-inline vec4f vec4fMinus(const vec4f& v)
+inline vec4 vec4fMinus(const vec4& v)
 {
 #ifdef RS_MATH_SIMD_IMPL
     vec4f r;
 	r.wide = _mm_sub_ps(_mm_set1_ps(0.f), v.wide);
 	return r;
 #else
-    return vec4f{
+    return vec4{
 		-v.x,
 		-v.y,
 		-v.z,
@@ -862,14 +862,14 @@ inline vec4f vec4fMinus(const vec4f& v)
 #endif
 }
 
-inline vec4f vec4fAdd(const vec4f& v1, const vec4f& v2)
+inline vec4 vec4fAdd(const vec4& v1, const vec4& v2)
 {
 #ifdef RS_MATH_SIMD_IMPL
     vec4f r;
 	r.wide = _mm_add_ps(v1.wide, v2.wide);
 	return r;
 #else
-    return vec4f{
+    return vec4{
 		v1.x + v2.x,
 		v1.y + v2.y,
 		v1.z + v2.z,
@@ -878,7 +878,7 @@ inline vec4f vec4fAdd(const vec4f& v1, const vec4f& v2)
 #endif
 }
 
-inline vec4f* vec4fAdd(vec4f* v, const vec4f& other)
+inline vec4* vec4fAdd(vec4* v, const vec4& other)
 {
 	v->x += other.x;
 	v->y += other.y;
@@ -887,14 +887,14 @@ inline vec4f* vec4fAdd(vec4f* v, const vec4f& other)
 	return v;
 }
 
-inline vec4f vec4fSub(const vec4f& v1, const vec4f& v2)
+inline vec4 vec4fSub(const vec4& v1, const vec4& v2)
 {
 #ifdef RS_MATH_SIMD_IMPL
     vec4f r;
 	r.wide = _mm_sub_ps(v1.wide, v2.wide);
 	return r;
 #else
-    return vec4f{
+    return vec4{
 		v1.x - v2.x,
 		v1.y - v2.y,
 		v1.z - v2.z,
@@ -903,7 +903,7 @@ inline vec4f vec4fSub(const vec4f& v1, const vec4f& v2)
 #endif
 }
 
-inline vec4f* vec4fSub(vec4f* v, const vec4f& other)
+inline vec4* vec4fSub(vec4* v, const vec4& other)
 {
 	v->x -= other.x;
 	v->y -= other.y;
@@ -912,14 +912,14 @@ inline vec4f* vec4fSub(vec4f* v, const vec4f& other)
 	return v;
 }
 
-inline vec4f vec4fMul(const vec4f& v1, const vec4f& v2)
+inline vec4 vec4fMul(const vec4& v1, const vec4& v2)
 {
 #ifdef RS_MATH_SIMD_IMPL
     vec4f r;
 	r.wide = _mm_mul_ps(v1.wide, v2.wide);
 	return r;
 #else
-    return vec4f{
+    return vec4{
 		v1.x * v2.x,
 		v1.y * v2.y,
 		v1.z * v2.z,
@@ -928,7 +928,7 @@ inline vec4f vec4fMul(const vec4f& v1, const vec4f& v2)
 #endif
 }
 
-inline vec4f* vec4fMul(vec4f* v, const vec4f& other)
+inline vec4* vec4fMul(vec4* v, const vec4& other)
 {
 #ifdef RS_MATH_SIMD_IMPL
 	v->wide = _mm_mul_ps(v->wide, other.wide);
@@ -941,14 +941,14 @@ inline vec4f* vec4fMul(vec4f* v, const vec4f& other)
 	return v;
 }
 
-inline vec4f vec4fDiv(const vec4f& v1, const vec4f& v2)
+inline vec4 vec4fDiv(const vec4& v1, const vec4& v2)
 {
 #ifdef RS_MATH_SIMD_IMPL
     vec4f r;
 	r.wide = _mm_div_ps(v1.wide, v2.wide);
 	return r;
 #else
-    return vec4f{
+    return vec4{
 		v1.x / v2.x,
 		v1.y / v2.y,
 		v1.z / v2.z,
@@ -957,7 +957,7 @@ inline vec4f vec4fDiv(const vec4f& v1, const vec4f& v2)
 #endif
 }
 
-inline vec4f* vec4fDiv(vec4f* v, const vec4f& other)
+inline vec4* vec4fDiv(vec4* v, const vec4& other)
 {
 #ifdef RS_MATH_SIMD_IMPL
 	v->wide = _mm_div_ps(v->wide, other.wide);
@@ -971,14 +971,14 @@ inline vec4f* vec4fDiv(vec4f* v, const vec4f& other)
 }
 
 // scalar
-inline vec4f vec4fAdd(const vec4f& v, f32 scalar)
+inline vec4 vec4fAdd(const vec4& v, f32 scalar)
 {
 #ifdef RS_MATH_SIMD_IMPL
     vec4f r;
 	r.wide = _mm_add_ps(v.wide, _mm_set1_ps(scalar));
 	return r;
 #else
-    return vec4f{
+    return vec4{
 		v.x + scalar,
 		v.y + scalar,
 		v.z + scalar,
@@ -987,7 +987,7 @@ inline vec4f vec4fAdd(const vec4f& v, f32 scalar)
 #endif
 }
 
-inline vec4f* vec4fAdd(vec4f* v, f32 scalar)
+inline vec4* vec4fAdd(vec4* v, f32 scalar)
 {
 #ifdef RS_MATH_SIMD_IMPL
 	v->wide = _mm_add_ps(v->wide, _mm_set1_ps(scalar));
@@ -1001,14 +1001,14 @@ inline vec4f* vec4fAdd(vec4f* v, f32 scalar)
 }
 
 
-inline vec4f vec4fSub(const vec4f& v1, f32 scalar)
+inline vec4 vec4fSub(const vec4& v1, f32 scalar)
 {
 #ifdef RS_MATH_SIMD_IMPL
     vec4f r;
 	r.wide = _mm_sub_ps(v1.wide, _mm_set1_ps(scalar));
 	return r;
 #else
-    return vec4f{
+    return vec4{
 		v1.x - scalar,
 		v1.y - scalar,
 		v1.z - scalar,
@@ -1017,7 +1017,7 @@ inline vec4f vec4fSub(const vec4f& v1, f32 scalar)
 #endif
 }
 
-inline vec4f* vec4fSub(vec4f* v, f32 scalar)
+inline vec4* vec4fSub(vec4* v, f32 scalar)
 {
 	v->x -= scalar;
 	v->y -= scalar;
@@ -1026,14 +1026,14 @@ inline vec4f* vec4fSub(vec4f* v, f32 scalar)
 	return v;
 }
 
-inline vec4f vec4fMul(const vec4f& v1, f32 scalar)
+inline vec4 vec4fMul(const vec4& v1, f32 scalar)
 {
 #ifdef RS_MATH_SIMD_IMPL
     vec4f r;
 	r.wide = _mm_mul_ps(v1.wide, _mm_set1_ps(scalar));
 	return r;
 #else
-    return vec4f{
+    return vec4{
 		v1.x * scalar,
 		v1.y * scalar,
 		v1.z * scalar,
@@ -1042,7 +1042,7 @@ inline vec4f vec4fMul(const vec4f& v1, f32 scalar)
 #endif
 }
 
-inline vec4f* vec4fMul(vec4f* v, f32 scalar)
+inline vec4* vec4fMul(vec4* v, f32 scalar)
 {
 #ifdef RS_MATH_SIMD_IMPL
 	v->wide = _mm_mul_ps(v->wide, _mm_set1_ps(scalar));
@@ -1055,14 +1055,14 @@ inline vec4f* vec4fMul(vec4f* v, f32 scalar)
 	return v;
 }
 
-inline vec4f vec4fDiv(const vec4f& v1, f32 scalar)
+inline vec4 vec4fDiv(const vec4& v1, f32 scalar)
 {
 #ifdef RS_MATH_SIMD_IMPL
     vec4f r;
 	r.wide = _mm_div_ps(v1.wide, _mm_set1_ps(scalar));
 	return r;
 #else
-    return vec4f{
+    return vec4{
 		v1.x / scalar,
 		v1.y / scalar,
 		v1.z / scalar,
@@ -1071,7 +1071,7 @@ inline vec4f vec4fDiv(const vec4f& v1, f32 scalar)
 #endif
 }
 
-inline vec4f* vec4fDiv(vec4f* v, f32 scalar)
+inline vec4* vec4fDiv(vec4* v, f32 scalar)
 {
 #ifdef RS_MATH_SIMD_IMPL
 	v->wide = _mm_div_ps(v->wide, _mm_set1_ps(scalar));
@@ -1084,7 +1084,7 @@ inline vec4f* vec4fDiv(vec4f* v, f32 scalar)
 	return v;
 }
 
-inline f32 rs_dot(const vec4f& v1, const vec4f& v2)
+inline f32 rs_dot(const vec4& v1, const vec4& v2)
 {
 #ifdef RS_MATH_SIMD_IMPL
 	__m128 r = _mm_mul_ps(v1.wide, v2.wide);
@@ -1096,12 +1096,12 @@ inline f32 rs_dot(const vec4f& v1, const vec4f& v2)
 #endif
 }
 
-inline f32 rs_lengthSq(const vec4f& v)
+inline f32 rs_lengthSq(const vec4& v)
 {
 	return rs_dot(v , v);
 }
 
-inline f32 rs_length(const vec4f& v)
+inline f32 rs_length(const vec4& v)
 {
 #ifdef RS_MATH_SIMD_IMPL
 	__m128 r = _mm_mul_ps(v.wide, v.wide);
@@ -1114,7 +1114,7 @@ inline f32 rs_length(const vec4f& v)
 #endif
 }
 
-inline vec4f rs_normalize(vec4f v)
+inline vec4 rs_normalize(vec4 v)
 {
 #ifdef RS_MATH_SIMD_IMPL
 	__m128 len = _mm_mul_ps(v.wide, v.wide);
@@ -1130,72 +1130,72 @@ inline vec4f rs_normalize(vec4f v)
 }
 
 #ifdef RS_MATH_OPERATORS
-inline vec4f operator-(const vec4f& v) {
+inline vec4 operator-(const vec4& v) {
     return vec4fMinus(v);
 }
 
-inline vec4f operator+(const vec4f& v1, const vec4f& v2) {
+inline vec4 operator+(const vec4& v1, const vec4& v2) {
     return vec4fAdd(v1, v2);
 }
 
-inline vec4f& operator+=(vec4f& v, const vec4f& other) {
+inline vec4& operator+=(vec4& v, const vec4& other) {
     return *vec4fAdd(&v, other);
 }
 
-inline vec4f operator-(const vec4f& v1, const vec4f& v2) {
+inline vec4 operator-(const vec4& v1, const vec4& v2) {
     return vec4fSub(v1, v2);
 }
 
-inline vec4f& operator-=(vec4f& v, const vec4f& other) {
+inline vec4& operator-=(vec4& v, const vec4& other) {
     return *vec4fSub(&v, other);
 }
 
-inline vec4f operator*(const vec4f& v1, const vec4f& v2) {
+inline vec4 operator*(const vec4& v1, const vec4& v2) {
     return vec4fMul(v1, v2);
 }
 
-inline vec4f& operator*=(vec4f& v, const vec4f& other) {
+inline vec4& operator*=(vec4& v, const vec4& other) {
     return *vec4fMul(&v, other);
 }
 
-inline vec4f operator/(const vec4f& v1, const vec4f& v2) {
+inline vec4 operator/(const vec4& v1, const vec4& v2) {
     return vec4fDiv(v1, v2);
 }
 
-inline vec4f& operator/=(vec4f& v, const vec4f& other) {
+inline vec4& operator/=(vec4& v, const vec4& other) {
     return *vec4fDiv(&v, other);
 }
 
 // scalar
-inline vec4f operator+(const vec4f& v, f32 scalar) {
+inline vec4 operator+(const vec4& v, f32 scalar) {
     return vec4fAdd(v, scalar);
 }
 
-inline vec4f& operator+=(vec4f& v, f32 scalar) {
+inline vec4& operator+=(vec4& v, f32 scalar) {
     return *vec4fAdd(&v, scalar);
 }
 
-inline vec4f operator-(const vec4f& v1, f32 scalar) {
+inline vec4 operator-(const vec4& v1, f32 scalar) {
     return vec4fSub(v1, scalar);
 }
 
-inline vec4f& operator-=(vec4f& v, f32 scalar) {
+inline vec4& operator-=(vec4& v, f32 scalar) {
     return *vec4fSub(&v, scalar);
 }
 
-inline vec4f operator*(const vec4f& v1, f32 scalar) {
+inline vec4 operator*(const vec4& v1, f32 scalar) {
     return vec4fMul(v1, scalar);
 }
 
-inline vec4f& operator*=(vec4f& v, f32 scalar) {
+inline vec4& operator*=(vec4& v, f32 scalar) {
     return *vec4fMul(&v, scalar);
 }
 
-inline vec4f operator/(const vec4f& v1, f32 scalar) {
+inline vec4 operator/(const vec4& v1, f32 scalar) {
     return vec4fDiv(v1, scalar);
 }
 
-inline vec4f& operator/=(vec4f& v, f32 scalar) {
+inline vec4& operator/=(vec4& v, f32 scalar) {
     return *vec4fDiv(&v, scalar);
 }
 #endif
@@ -1417,8 +1417,8 @@ inline mat4 mat4Inv(mat4 mat) {
 	return out;
 }
 
-inline vec3f vec3fMulMat4(vec3f vec, mat4 mat) {
-    vec3f o;
+inline vec3 vec3fMulMat4(vec3 vec, mat4 mat) {
+    vec3 o;
     f32*__restrict md = mat.data;
     o.x = vec.x * md[0] + vec.y * md[4] + vec.z * md[8] + md[12];
 	o.y = vec.x * md[1] + vec.y * md[5] + vec.z * md[9] + md[13];
@@ -1429,8 +1429,8 @@ inline vec3f vec3fMulMat4(vec3f vec, mat4 mat) {
 	return o;
 }
 
-inline vec4f vec4fMulMat4(vec4f vec, mat4 mat) {
-    vec4f o;
+inline vec4 vec4fMulMat4(vec4 vec, mat4 mat) {
+    vec4 o;
 	f32* md = mat.data;
 	o.x = vec.x * md[0] + vec.y * md[4] + vec.z * md[8] + vec.w * md[12];
 	o.y = vec.x * md[1] + vec.y * md[5] + vec.z * md[9] + vec.w * md[13];
@@ -1439,7 +1439,7 @@ inline vec4f vec4fMulMat4(vec4f vec, mat4 mat) {
 	return o;
 }
 
-inline mat4 mat4Translate(const vec3f& t)
+inline mat4 mat4Translate(const vec3& t)
 {
     return mat4{
 		1.f, 0.f, 0.f, 0.f,
@@ -1449,7 +1449,7 @@ inline mat4 mat4Translate(const vec3f& t)
 	};
 }
 
-inline mat4 mat4Scale(const vec3f& s)
+inline mat4 mat4Scale(const vec3& s)
 {
     return mat4{
 		s.x, 0.f, 0.f, 0.f,
@@ -1525,11 +1525,11 @@ inline mat4 mat4Orthographic(f32 left, f32 right, f32 bottom, f32 top,
 	return m;
 }
 
-inline mat4 mat4LookAt(const vec3f& eye, const vec3f& center, const vec3f& up)
+inline mat4 mat4LookAt(const vec3& eye, const vec3& center, const vec3& up)
 {
-    vec3f dir = rs_normalize(vec3fSub(center, eye));
-    vec3f c0 = rs_normalize(rs_cross(dir, up));
-    vec3f c1 = rs_normalize(rs_cross(c0, dir));
+    vec3 dir = rs_normalize(vec3fSub(center, eye));
+    vec3 c0 = rs_normalize(rs_cross(dir, up));
+    vec3 c1 = rs_normalize(rs_cross(c0, dir));
 
     return mat4{
 		c0.x,
@@ -1559,7 +1559,7 @@ inline mat4 operator*(const mat4& m1, const mat4& m2) {
     return mat4Mul(m1, m2);
 }
 
-inline vec3f operator*(const vec3f& v, const mat4& m) {
+inline vec3 operator*(const vec3& v, const mat4& m) {
     return vec3fMulMat4(v, m);
 }
 #endif
@@ -1596,7 +1596,7 @@ inline quat quatConjugate(quat q) {
 	return {-q.x, -q.y, -q.z, q.w};
 }
 
-inline quat quatAxisRotation(vec3f axis, f32 angle) {
+inline quat quatAxisRotation(vec3 axis, f32 angle) {
     quat quat;
 	f32 sa = sinf(angle * 0.5f);
 	quat.x = axis.x * sa;
@@ -1607,9 +1607,9 @@ inline quat quatAxisRotation(vec3f axis, f32 angle) {
 	return quat;
 }
 
-inline quat quatGetRotVec3(vec3f v1, vec3f v2) {
+inline quat quatGetRotVec3(vec3 v1, vec3 v2) {
     quat quat;
-    vec3f c = rs_cross(v1, v2);
+    vec3 c = rs_cross(v1, v2);
 	quat.x = c.x;
 	quat.y = c.y;
 	quat.z = c.z;
@@ -1671,16 +1671,16 @@ inline quat quatMul(quat qa, quat qb) {
 }
 
 #ifdef RS_MATH_OPERATORS
-inline rs_Quat operator*(const rs_Quat& q1, const rs_Quat& q2) {
-	return rs_QuatMul(q1, q2);
+inline quat operator*(const quat& q1, const quat& q2) {
+    return quatMul(q1, q2);
 }
 
-inline rs_Quat& operator*=(rs_Quat& q, const rs_Quat& other) {
-	return q = rs_QuatMul(q, other);
+inline quat& operator*=(quat& q, const quat& other) {
+    return q = quatMul(q, other);
 }
 #endif
 
-inline vec3f quatRotateVec3(vec3f vec, quat q) {
+inline vec3 quatRotateVec3(vec3 vec, quat q) {
     quat qvec = {vec.x, vec.y, vec.z, 0};
     qvec = quatMul(quatMul(q, qvec), quatConjugate(q));
 	return {qvec.x, qvec.y, qvec.z};
@@ -1689,7 +1689,7 @@ inline vec3f quatRotateVec3(vec3f vec, quat q) {
 
 struct rs_AABB2
 {
-    vec2f min = {0,0}, max = {0,0};
+    vec2 min = {0,0}, max = {0,0};
 };
 
 inline bool rs_AABB2_intersect(const rs_AABB2& A, const rs_AABB2& B) {
@@ -1715,11 +1715,11 @@ inline bool rs_AABB2_intersect(const rs_AABB2& A, const rs_AABB2& B) {
 
 struct rs_AABB3
 {
-    vec3f min, max;
+    vec3 min, max;
 };
 
 struct rs_Sphere
 {
-    vec3f center = {0, 0, 0};
+    vec3 center = {0, 0, 0};
 	f32 radius = 0;
 };

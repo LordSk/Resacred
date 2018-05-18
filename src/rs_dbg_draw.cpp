@@ -7,8 +7,8 @@ struct DbgDraw
 
 struct SolidSquare
 {
-    vec3f pos;
-    vec3f size;
+    vec3 pos;
+    vec3 size;
     u32 color;
 };
 
@@ -26,7 +26,7 @@ void setView(const mat4& proj, const mat4& view, DbgCoordSpace coordSpace)
     matView[(i32)coordSpace] = view;
 }
 
-void drawSolidSquare(const vec3f& pos, vec3f size, const u32 color, DbgCoordSpace coordSpace)
+void drawSolidSquare(const vec3& pos, vec3 size, const u32 color, DbgCoordSpace coordSpace)
 {
     size.z = 1;
     SolidSquare ssq = {pos, size, color};
@@ -80,7 +80,7 @@ void dbgDrawSetView(const mat4& proj, const mat4& view, DbgCoordSpace coordSpace
     g_ddraw.setView(proj, view, coordSpace);
 }
 
-void dbgDrawSolidSquare(const vec3f& pos, const vec3f& size, const u32 color, DbgCoordSpace coordSpace)
+void dbgDrawSolidSquare(const vec3& pos, const vec3& size, const u32 color, DbgCoordSpace coordSpace)
 {
     g_ddraw.drawSolidSquare(pos, size, color, coordSpace);
 }

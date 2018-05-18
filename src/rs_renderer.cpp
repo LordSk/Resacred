@@ -434,6 +434,8 @@ void RendererFrameData::clear()
     dbgQuadVertData.clearPOD();
     dbgQuadMeshDef.clearPOD();
     dbgQuadModelMat.clearPOD();
+
+    tvOff_base = -1;
 }
 
 void RendererFrameData::copy(const RendererFrameData& other)
@@ -649,6 +651,7 @@ void frameDoTextureManagement(RendererFrameData& frame)
 {
     glDeleteTextures(frame.texToDestroyCount, frame.gpuTexDestroyList);
 
+    // FIXME: breaks when limiting texture count per frame
     const i32 createCount = frame.texToCreateCount;
     TextureDesc2D* descs = frame.texDescToCreate;
     u8* texData = frame.textureData.data();
@@ -664,13 +667,16 @@ void frameDoTextureManagement(RendererFrameData& frame)
 
 void frameDoSectorRender(const RendererFrameData& frame)
 {
+    if(frame.tvOff_base < 0) return; // TODO: remove this
+
     OGL_DBG_GROUP_BEGIN(SectorRender);
 
     glUseProgram(shader_tile.program);
     glUniform1i(shader_tile.uDiffuse, 0);
     glUniform1i(shader_tile.uAlphaMask, 1);
     glUniformMatrix4fv(shader_tile.uProjMatrix, 1, GL_FALSE, frame.matCamProj.data);
-    glUniformMatrix4fv(shader_tile.uViewMatrix, 1, GL_FALSE, frame.matCamViewIso.data);
+    glUniformMatrix4fv(shader_tile.uViewMatrix, 1, GL_FALSE, frame.viewIsIso ? frame.matCamViewIso.data:
+                                                                               frame.matCamViewOrtho.data);
     glUniformMatrix4fv(shader_tile.uModelMatrix, 1, GL_FALSE, frame.matSectorTileModel.data);
 
     bindArrayBuffer(shader_tile.vbo);
@@ -709,9 +715,8 @@ void frameDoSectorRender(const RendererFrameData& frame)
         glDrawArrays(GL_TRIANGLES, i, 6);
     }
 
-    mat4 ident = mat4Identity();
     glUniformMatrix4fv(shader_tile.uViewMatrix, 1, GL_FALSE, frame.matCamViewOrtho.data);
-    glUniformMatrix4fv(shader_tile.uModelMatrix, 1, GL_FALSE, ident.data);
+    glUniformMatrix4fv(shader_tile.uModelMatrix, 1, GL_FALSE, frame.matSectorMixedModel.data);
 
     const i32 mixedEnd = tileVertexDataCount;
     for(i32 i = floorEnd; i < mixedEnd; i += 6) {
@@ -730,6 +735,8 @@ void frameDoDbgObjects(const RendererFrameData& frame)
 
     glUniformMatrix4fv(shader_dbgColor.uProjMatrix, 1, GL_FALSE, frame.matCamProj.data);
     glUniformMatrix4fv(shader_dbgColor.uViewMatrix, 1, GL_FALSE, frame.matCamViewIso.data);
+    glUniformMatrix4fv(shader_dbgColor.uViewMatrix, 1, GL_FALSE, frame.viewIsIso ? frame.matCamViewIso.data :
+                                                                             frame.matCamViewOrtho.data);
 
     bindArrayBuffer(shader_dbgColor.vbo_vertexData);
     const i32 dbgQuadVertCount = frame.dbgQuadVertData.count();
@@ -743,7 +750,7 @@ void frameDoDbgObjects(const RendererFrameData& frame)
 
     glBindVertexArray(shader_dbgColor.vao);
 
-    blendModeOpaque();
+    blendModeTransparency();
 
     const mat4* matModels = frame.dbgQuadModelMat.data();
     const MeshDef* meshDef = frame.dbgQuadMeshDef.data();
@@ -927,7 +934,7 @@ void pushFrame(const RendererFrameData& frameData_)
     while(frameData[bid].doUploadTileVertexData || frameData[bid].texToCreateCount > 0
           || frameData[bid].texToDestroyCount > 0) {
         _mm_pause();
-        assert(timeDurSince(t0) < 1.0);
+        //assert(timeDurSince(t0) < 1.0);
         bid = backFrameId;
     }
 

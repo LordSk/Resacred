@@ -36,34 +36,35 @@
 #define PAGE_TEXTURES_COUNT 160
 #define VIEW_X_ANGLE (1.04719755119659774615) // 60 degrees
 #define TILE_WIDTH 67.9
+#define SECTOR_MAP_INVALID_ID (0x0)
 
-static vec2f tileUV[18][4];
+static vec2 tileUV[18][4];
 
 void initTileUVs()
 {
-    tileUV[0][0] = vec2f(0, 24.5/256.f);
-    tileUV[0][1] = vec2f(50.5/256.f, 0/256.f);
-    tileUV[0][2] = vec2f(99.5/256.f, 24.5/256.f);
-    tileUV[0][3] = vec2f(50.5/256.f, 49/256.f);
+    tileUV[0][0] = vec2(0, 24.5/256.f);
+    tileUV[0][1] = vec2(50.5/256.f, 0/256.f);
+    tileUV[0][2] = vec2(99.5/256.f, 24.5/256.f);
+    tileUV[0][3] = vec2(50.5/256.f, 49/256.f);
 
-    tileUV[1][0] = vec2f(104.5/256.f, 24.5/256.f);
-    tileUV[1][1] = vec2f(153.5/256.f, 0/256.f);
-    tileUV[1][2] = vec2f(204/256.f, 24.5/256.f);
-    tileUV[1][3] = vec2f(153.5/256.f, 49/256.f);
+    tileUV[1][0] = vec2(104.5/256.f, 24.5/256.f);
+    tileUV[1][1] = vec2(153.5/256.f, 0/256.f);
+    tileUV[1][2] = vec2(204/256.f, 24.5/256.f);
+    tileUV[1][3] = vec2(153.5/256.f, 49/256.f);
 
     for(i32 i = 2; i < 18; i += 2) {
         i32 line = i / 2;
         f32 offsetX = (line & 1) * 52/256.f;
 
-        tileUV[i][0] = vec2fAdd(tileUV[0][0], vec2f(offsetX, 25/256.f * line));
-        tileUV[i][1] = vec2fAdd(tileUV[0][1], vec2f(offsetX, 25/256.f * line));
-        tileUV[i][2] = vec2fAdd(tileUV[0][2], vec2f(offsetX, 25/256.f * line));
-        tileUV[i][3] = vec2fAdd(tileUV[0][3], vec2f(offsetX, 25/256.f * line));
+        tileUV[i][0] = vec2fAdd(tileUV[0][0], vec2(offsetX, 25/256.f * line));
+        tileUV[i][1] = vec2fAdd(tileUV[0][1], vec2(offsetX, 25/256.f * line));
+        tileUV[i][2] = vec2fAdd(tileUV[0][2], vec2(offsetX, 25/256.f * line));
+        tileUV[i][3] = vec2fAdd(tileUV[0][3], vec2(offsetX, 25/256.f * line));
 
-        tileUV[i+1][0] = vec2fAdd(tileUV[1][0], vec2f(offsetX, 25/256.f * line));
-        tileUV[i+1][1] = vec2fAdd(tileUV[1][1], vec2f(offsetX, 25/256.f * line));
-        tileUV[i+1][2] = vec2fAdd(tileUV[1][2], vec2f(offsetX, 25/256.f * line));
-        tileUV[i+1][3] = vec2fAdd(tileUV[1][3], vec2f(offsetX, 25/256.f * line));
+        tileUV[i+1][0] = vec2fAdd(tileUV[1][0], vec2(offsetX, 25/256.f * line));
+        tileUV[i+1][1] = vec2fAdd(tileUV[1][1], vec2(offsetX, 25/256.f * line));
+        tileUV[i+1][2] = vec2fAdd(tileUV[1][2], vec2(offsetX, 25/256.f * line));
+        tileUV[i+1][3] = vec2fAdd(tileUV[1][3], vec2(offsetX, 25/256.f * line));
     }
 }
 
@@ -136,6 +137,12 @@ void meshAddQuad(TileVertex* mesh, f32 x, f32 y, f32 z, f32 width, f32 height, f
     mesh[5] = TileVertex(x        , y + height, z, uvX1, uvY2, -1, -1, color);
 }
 
+struct Rect
+{
+    vec2 rmin;
+    vec2 rmax;
+};
+
 struct Game
 {
 RendererFrameData frameData;
@@ -158,12 +165,17 @@ mat4 matViewIso;
 mat4 testTileModel;
 f32 viewX = 0;
 f32 viewY = 0;
+f32 viewZ = 0;
 f32 viewZoom = 1.0f;
 i32 viewZMul = -1;
 
 i32 loadedSectorId = -1;
 SectorxData* sectorData = nullptr;
 SectorInfo sectorInfo;
+
+u16 sectorIdMap[10000];
+Rect camWorldRect;
+vec2 camWorldGridPos;
 
 // sector draw data
 struct SectorDrawData
@@ -224,8 +236,6 @@ i32 dbgOverlayFloor = 1;
 
 i32 dbgMixedId = 0;
 bool dbgShowMixed = true;
-f32 dbgMixedOffX = 0.0;
-f32 dbgMixedOffY = 0.0;
 i32 dbgMixedObjMax = 4096;
 f32 dbgTileWidth = 67.9f;
 
@@ -261,22 +271,22 @@ struct {
     i32 mouseWheelRelY = 0;
 } input;
 
-inline vec3f posOrthoToIso(vec3f v)
+inline vec3 posOrthoToIso(vec3 v)
 {
     return vec3fMulMat4(v, matIsoRotation);
 }
 
-inline vec3f sacred_worldToScreen(vec3f v)
+inline vec3 sacred_worldToScreen(vec3 v)
 {
-    return vec3f(v.x * 0.89442718 + v.y * -0.89442718,
+    return vec3(v.x * 0.89442718 + v.y * -0.89442718,
                  v.x * 0.44721359 + v.y * 0.44721359,
                  v.z);
 }
 
-inline vec3f sacred_screenToWorld(vec3f v)
+inline vec3 sacred_screenToWorld(vec3 v)
 {
-    return vec3f((v.x * 0.44721359 - v.y * -0.89442718) * 1.25,
-                 (v.y * 0.89442718 - v.x * 0.44721359) * 1.25,
+    return vec3((v.x * 0.44721359 - v.y * -0.89442718)/* * 1.25*/,
+                 (v.y * 0.89442718 - v.x * 0.44721359)/* * 1.25*/,
                  v.z);
 }
 
@@ -285,13 +295,37 @@ void init()
     Window& client = *get_clientWindow();
     winWidth = client.width;
     winHeight = client.height;
-    matProjOrtho = mat4Orthographic(0, winWidth, winHeight, 0, -10000.f, 10000.f);
+
+    matProjOrtho = mat4Orthographic(0, winWidth, winHeight, 0, -1.0f, 10000.f);
     matIsoRotation = mat4RotateAxisX(VIEW_X_ANGLE);
     matIsoRotation = mat4Mul(matIsoRotation, mat4RotateAxisZ(-RS_HALFPI/2));
+
+    // setup sectorIdMap (100x100)
+    memset(sectorIdMap, 0x00, sizeof(sectorIdMap)); // fill with invalid ids
+    const i32 sectorCount = resource_getSectorCount();
+    const SectorInfo*__restrict sectorInfoList = resource_getSectorInfoList();
+    for(i32 i = 0; i < sectorCount; ++i) {
+        const SectorInfo& si = sectorInfoList[i];
+        assert(si.sectorId >= 0 && si.sectorId < 6051);
+        const i32 gridX = (((si.posX1 + 25) / 53.66563) / 64);
+        const i32 gridY = (((si.posY1 + 25) / 53.66563) / 64);
+        assert(gridX >= 0 && gridX < 100);
+        assert(gridY >= 0 && gridY < 100);
+        assert(sectorIdMap[gridY * 100 + gridX] == SECTOR_MAP_INVALID_ID);
+        sectorIdMap[gridY * 100 + gridX] = si.sectorId;
+    }
 }
 
 void loadSectorIfNeeded()
 {
+    const i32 gridX = camWorldGridPos.x;
+    const i32 gridY = camWorldGridPos.y;
+    const u16 sectorId = sectorIdMap[gridY * 100 + gridX];
+    dbgSectorId = sectorId;
+    if(sectorId == SECTOR_MAP_INVALID_ID) {
+        return;
+    }
+
     frameData.doUploadTileVertexData = false;
     if(loadedSectorId == dbgSectorId) {
         return;
@@ -322,7 +356,7 @@ void loadSectorIfNeeded()
 
     const i32 sectorX = sectorInfo.posX1;
     const i32 sectorY = sectorInfo.posY1;
-    const vec3f sectorSceen = sacred_worldToScreen(vec3f(sectorX, sectorY, 0));
+    const vec3 sectorSceen = sacred_worldToScreen(vec3(sectorX, sectorY, 0));
 
     TileVertex quad[6];
 
@@ -370,7 +404,7 @@ void loadSectorIfNeeded()
                     f32 orgnX = sta.worldX - sectorSceen.x;
                     f32 orgnY = sta.worldY - sectorSceen.y;
                     mat4 inv = mat4Inv(matIsoRotation);
-                    vec3f orgnPosIso = vec3fMulMat4(vec3f(orgnX, orgnY, 0), inv);
+                    vec3 orgnPosIso = vec3fMulMat4(vec3(orgnX, orgnY, 0), inv);
 
                     if(viewIsIso) {
                         orgnPosIso = posOrthoToIso(orgnPosIso);
@@ -557,12 +591,13 @@ void ui_tileTest()
     ImGui::SliderInt("Sector ID", &dbgSectorId, 1, 6049);
     ImGui::InputInt("##sector_id_input", &dbgSectorId);
 
+    //ImGui::SliderInt("viewZ", &dbgViewZ, -100000, 100000);
+    ImGui::Text("Cam world grid pos: {%d, %d}", (i32)camWorldGridPos.x, (i32)camWorldGridPos.y);
     ImGui::SliderFloat("TILE_WIDTH", &dbgTileWidth, 1, 200, "%.1f");
-    ImGui::SliderFloat("mixOffX", &dbgMixedOffX, -200, 200, "%.1f");
-    ImGui::SliderFloat("mixOffY", &dbgMixedOffY, -200, 200, "%.1f");
     ImGui::SliderInt("Mixed max objects drawn", &dbgMixedObjMax, 0, 4096);
 
-    dbgSectorId = clamp(dbgSectorId, 1, 6049);
+
+    dbgSectorId = clamp(dbgSectorId, 0, 6049);
 
     ImGui::SliderInt("Overlay floors", &dbgOverlayFloor, 0, 2);
     ImGui::Checkbox("Show mixed", &dbgShowMixed);
@@ -572,7 +607,11 @@ void ui_tileTest()
         ImGui::Text("posX1: %d posX2: %d", sectorInfo.posX1, sectorInfo.posX2);
         ImGui::Text("posY1: %d posY2: %d", sectorInfo.posY1, sectorInfo.posY2);
 
-        vec3f sectorPos(sectorInfo.posX1, sectorInfo.posY1, 0);
+        const i32 gridX = ((sectorInfo.posX1 + 25) / 53.66563) / 64;
+        const i32 gridY = ((sectorInfo.posY1 + 25) / 53.66563) / 64;
+        ImGui::Text("grid: {%d, %d}", gridX, gridY);
+
+        vec3 sectorPos(sectorInfo.posX1, sectorInfo.posY1, 0);
 
         sectorPos.x = sectorInfo.posX1 * 0.89442718 + sectorInfo.posY1 * -0.89442718;
         sectorPos.y = sectorInfo.posX1 * 0.44721359 + sectorInfo.posY1 * 0.44721359;
@@ -702,7 +741,7 @@ void ui_tileInspector()
         ImGui::TextColored(staticCol, "worldX         : %d", s.worldX);
         ImGui::TextColored(staticCol, "worldY         : %d", s.worldY);
 
-        vec3f posIso = sacred_screenToWorld(vec3f(s.worldX, s.worldY, 0));
+        vec3 posIso = sacred_screenToWorld(vec3(s.worldX, s.worldY, 0));
         ImGui::TextColored(staticCol, "isoX           : %g", posIso.x);
         ImGui::TextColored(staticCol, "isoY           : %g", posIso.y);
 
@@ -742,110 +781,204 @@ void ui_tileInspector()
 
 void drawSector()
 {
-    if(loadedSectorId != dbgSectorId) return;
-
-    const SectorDrawData& dd = currentSectorDrawData;
-
-    frameData.tileVertexData.pushPOD(dd.baseVertexData.data(), dd.baseVertexData.count());
-    frameData.tileVertexData.pushPOD(dd.floorVertexData.data(), dd.floorVertexData.count());
-    frameData.tileVertexData.pushPOD(dd.mixedVertexData.data(), dd.mixedVertexData.count());
-
-    frameData.tileQuadGpuTex.pushPOD(dd.gpuTexBase.data(), dd.gpuTexBase.count());
-    frameData.tileQuadGpuTex.pushPOD(dd.gpuTexFloorDiffuse.data(), dd.gpuTexFloorDiffuse.count());
-    frameData.tileQuadGpuTex.pushPOD(dd.gpuTexFloorAlphaMask.data(), dd.gpuTexFloorAlphaMask.count());
-    frameData.tileQuadGpuTex.pushPOD(dd.gpuTexMixed.data(), dd.gpuTexMixed.count());
-
-    static Array<i32> pakTextureIds;
-    pakTextureIds.clearPOD();
-    pakTextureIds.pushPOD(dd.baseTexId.data(), dd.baseTexId.count());
-    pakTextureIds.pushPOD(dd.floorDiffuseTexId.data(), dd.floorDiffuseTexId.count());
-    pakTextureIds.pushPOD(dd.floorAlphaTexId.data(), dd.floorAlphaTexId.count());
-    pakTextureIds.pushPOD(dd.mixedTexId.data(), dd.mixedTexId.count());
-
-    resource_requestGpuTextures(pakTextureIds.data(), frameData.tileQuadGpuTex.data(),
-                                pakTextureIds.count());
-
+    frameData.viewIsIso = viewIsIso;
     frameData.matCamProj = matProjOrtho;
     frameData.matCamViewIso = matViewIso;
     frameData.matCamViewOrtho = matViewOrtho;
-    frameData.matSectorTileModel = mat4Scale(vec3f(dbgTileWidth, dbgTileWidth, 1));
 
-    frameData.tvOff_base = 0;
-    frameData.tvOff_floor = dd.baseVertexData.count();
-    frameData.tvOff_mixed = frameData.tvOff_floor + dd.floorVertexData.count();
+    // sector grid
+    for(i32 y = 0; y < 100; ++y) {
+        for(i32 x = 0; x < 100; ++x) {
+            const i32 id = y * 100 + x;
+            if(sectorIdMap[id] != SECTOR_MAP_INVALID_ID && sectorIdMap[id] != dbgSectorId) {
+                dbgDrawSolidSquare(vec3(x * dbgTileWidth * 64, y * 64 * dbgTileWidth, 0),
+                                   vec3(dbgTileWidth * 64, dbgTileWidth * 64, 1),
+                                   0x8f8f1f1f);
+            }
+        }
+    }
 
+    for(i32 x = 0; x < 101; ++x) {
+        dbgDrawSolidSquare(vec3(x * 64 * dbgTileWidth, 0, 0), vec3(2*viewZoom, dbgTileWidth * 64 * 100, 1),
+                           0xff8f8f8f);
+    }
+    for(i32 y = 0; y < 101; ++y) {
+        dbgDrawSolidSquare(vec3(0, y * 64 * dbgTileWidth, 0), vec3(dbgTileWidth * 64 * 100, 2*viewZoom, 1),
+                           0xff8f8f8f);
+    }
+
+    if(loadedSectorId == dbgSectorId) {
+        const SectorDrawData& dd = currentSectorDrawData;
+
+        frameData.tileVertexData.pushPOD(dd.baseVertexData.data(), dd.baseVertexData.count());
+        frameData.tileVertexData.pushPOD(dd.floorVertexData.data(), dd.floorVertexData.count());
+        frameData.tileVertexData.pushPOD(dd.mixedVertexData.data(), dd.mixedVertexData.count());
+
+        frameData.tileQuadGpuTex.pushPOD(dd.gpuTexBase.data(), dd.gpuTexBase.count());
+        frameData.tileQuadGpuTex.pushPOD(dd.gpuTexFloorDiffuse.data(), dd.gpuTexFloorDiffuse.count());
+        frameData.tileQuadGpuTex.pushPOD(dd.gpuTexFloorAlphaMask.data(), dd.gpuTexFloorAlphaMask.count());
+        frameData.tileQuadGpuTex.pushPOD(dd.gpuTexMixed.data(), dd.gpuTexMixed.count());
+
+        static Array<i32> pakTextureIds;
+        pakTextureIds.clearPOD();
+        pakTextureIds.pushPOD(dd.baseTexId.data(), dd.baseTexId.count());
+        pakTextureIds.pushPOD(dd.floorDiffuseTexId.data(), dd.floorDiffuseTexId.count());
+        pakTextureIds.pushPOD(dd.floorAlphaTexId.data(), dd.floorAlphaTexId.count());
+        pakTextureIds.pushPOD(dd.mixedTexId.data(), dd.mixedTexId.count());
+
+        resource_requestGpuTextures(pakTextureIds.data(), frameData.tileQuadGpuTex.data(),
+                                    pakTextureIds.count());
+
+        const vec2 sectorWorldPos = camWorldGridPos * 64 * dbgTileWidth;
+        frameData.matSectorTileModel = mat4Translate(vec3(sectorWorldPos.x, sectorWorldPos.y, 0)) *
+                                       mat4Scale(vec3(dbgTileWidth, dbgTileWidth, 1));
+
+        if(viewIsIso) {
+            frameData.matSectorMixedModel = mat4Translate(vec3(sectorWorldPos.x, sectorWorldPos.y, 0) *
+                                                          matIsoRotation);
+        }
+        else {
+            frameData.matSectorMixedModel = mat4Translate(vec3(sectorWorldPos.x, sectorWorldPos.y, 0));
+        }
+
+        frameData.tvOff_base = 0;
+        frameData.tvOff_floor = dd.baseVertexData.count();
+        frameData.tvOff_mixed = frameData.tvOff_floor + dd.floorVertexData.count();
+    }
+
+    // TODO: restore
+#if 0
     // debug tiles
     const WldxEntry* sectorEntries = sectorData->data;
     for(i32 y = 0; y < 64; ++y) {
         for(i32 x = 0; x < 64; ++x) {
             const i32 id = y * 64 + x;
             const WldxEntry& we = sectorEntries[id];
-            u32 color = 0xff000000;
-            if(id == dbgSelectedTileId) {
-                color = 0xffff0000;
-            }
-            else if(id == dbgHoveredTileId) {
-                color = 0xffff8f8f;
-            }
-            else {
-                switch(dbgViewMode) {
-                    case MODE_NORMAL:
-                        color = 0xffffffff;
-                        break;
+            u32 color = 0xffffffff;
 
-                    case MODE_STATIC:
-                        color = 0xffffffff;
-                        if(we.staticId) {
-                            color = 0xff0000ff;
-                        }
-                        break;
+            switch(dbgViewMode) {
+                case MODE_NORMAL:
+                    color = 0xffffffff;
+                    break;
 
-                    case MODE_ENTITY:
-                        color = 0xffffffff;
-                        if(we.entityId) {
-                            color = 0xffff0000;
-                        }
-                        break;
+                case MODE_STATIC:
+                    color = 0xffffffff;
+                    if(we.staticId) {
+                        color = 0xff0000ff;
+                    }
+                    break;
 
-                    case MODE_SMTH_TYPE:
-                        color = 0xffffffff;
-                        if(we.someTypeId) {
-                            color = 0xff000000 | (0x00000001 * (we.someTypeId*(255/15)));
-                        }
-                        break;
+                case MODE_ENTITY:
+                    color = 0xffffffff;
+                    if(we.entityId) {
+                        color = 0xffff0000;
+                    }
+                    break;
 
-                    case MODE_SMTH_POS:
-                        color = 0xff000000 | (we.smthZ << 16) | (we.smthY << 8) | (we.smthX);
-                        break;
-                }
+                case MODE_SMTH_TYPE:
+                    color = 0xffffffff;
+                    if(we.someTypeId) {
+                        color = 0xff000000 | (0x00000001 * (we.someTypeId*(255/15)));
+                    }
+                    break;
+
+                case MODE_SMTH_POS:
+                    color = 0xff000000 | (we.smthZ << 16) | (we.smthY << 8) | (we.smthX);
+                    break;
             }
 
             if(color != 0xffffffff) {
-                dbgDrawSolidSquare(vec3f(x*dbgTileWidth, y*dbgTileWidth, 0),
-                                   vec3f(dbgTileWidth, dbgTileWidth, 0), color,
+                dbgDrawSolidSquare(vec3(x*dbgTileWidth, y*dbgTileWidth, 0),
+                                   vec3(dbgTileWidth, dbgTileWidth, 0), color,
                                    DbgCoordSpace::WORLD);
             }
         }
     }
+
+    if(dbgHoveredTileId != -1) {
+        const f32 selX = (dbgHoveredTileId % 64) * dbgTileWidth + sectorWorldPos.x;
+        const f32 selY = (dbgHoveredTileId / 64) * dbgTileWidth + sectorWorldPos.y;
+        dbgDrawSolidSquare(vec3(selX, selY, 0),
+                           vec3(dbgTileWidth, dbgTileWidth, 0), 0xffff8f8f,
+                           DbgCoordSpace::WORLD);
+    }
+
+    if(dbgSelectedTileId != -1) {
+        const f32 selX = (dbgSelectedTileId % 64) * dbgTileWidth + sectorWorldPos.x;
+        const f32 selY = (dbgSelectedTileId / 64) * dbgTileWidth + sectorWorldPos.y;
+        dbgDrawSolidSquare(vec3(selX, selY, 0),
+                           vec3(dbgTileWidth, dbgTileWidth, 0), 0xffff0000,
+                           DbgCoordSpace::WORLD);
+    }
+#endif
 }
 
-void updateCameraMatrices()
+void updateCamera()
 {
-    matProjOrtho = mat4Orthographic(0, winWidth, winHeight, 0, -10000.f, 10000.f);
+    matProjOrtho = mat4Orthographic(0, winWidth, winHeight, 0, -100000.f, 100000.f);
     matViewOrtho = mat4Mul(
-                       mat4Scale(vec3f(1.0f/viewZoom, 1.0f/viewZoom, 1)),
-                       mat4Translate(vec3f(-viewX, -viewY, 1))
+                       mat4Scale(vec3(1.0f/viewZoom, 1.0f/viewZoom, 1)),
+                       mat4Translate(vec3(-viewX, -viewY, -viewZ))
                        );
     matViewIso = mat4Mul(matViewOrtho, matIsoRotation);
+
+    // frustrum
+    mat4 mvp;
+    if(viewIsIso) {
+        mvp = mat4Mul(matProjOrtho, matViewIso);
+    }
+    else {
+        mvp = mat4Mul(matProjOrtho, matViewOrtho);
+    }
+
+    const mat4 inv = mat4Inv(mvp);
+
+
+    const vec2 corners[2] = {
+        vec2(-1, -1),
+        vec2(1, 1),
+    };
+    vec2 worldCorners[2];
+
+    for(i32 i = 0; i < 2; ++i) {
+        const vec4 v = vec4fMulMat4(vec4(corners[i].x, corners[i].y, 0.0, 1.0), inv);
+        vec3 camWorldPos = vec3fDiv(vec3(v.x, v.y, v.z), v.w);
+
+        if(viewIsIso) {
+            // inverse rotation
+            quat camRot = quatMul(quatAxisRotation(vec3(0, 0, 1), -RS_HALFPI/2),
+                                  quatAxisRotation(vec3(1, 0, 0), VIEW_X_ANGLE));
+            camRot = rs_normalize(camRot);
+            vec3 camDir = rs_normalize(quatRotateVec3(vec3(0, 0, -1), camRot));
+            f32 d = rs_dot(vec3fMinus(camWorldPos), vec3(0,0,1)) / rs_dot(camDir, vec3(0,0,1));
+            camWorldPos = vec3fAdd(camWorldPos, vec3fMul(camDir, d));
+        }
+
+        worldCorners[i] = vec2(camWorldPos.x, camWorldPos.y);
+    }
+
+    camWorldRect.rmin = worldCorners[0];
+    camWorldRect.rmax = worldCorners[1];
+    camWorldGridPos = (camWorldRect.rmin + camWorldRect.rmax) * 0.5 / dbgTileWidth / 64;
+    camWorldGridPos.x = (i32)camWorldGridPos.x;
+    camWorldGridPos.y = (i32)camWorldGridPos.y;
+
+    if(viewIsIso) {
+        vec2 pos((camWorldRect.rmin.x + camWorldRect.rmax.x) * 0.5, camWorldRect.rmax.y);
+        viewZ = (vec3(pos.x, pos.y, 0) * matIsoRotation).z;
+    }
+    else {
+        viewZ = 0;
+    }
 }
 
 void render()
 {
-    updateCameraMatrices();
+    updateCamera();
 
     // select tile to inspect
-    const vec2f mpos(input.mouseX, input.mouseY);
-    const vec3f mWorldPos = screenToWorldPos(mpos); // actual world position
+    const vec2 mpos(input.mouseX, input.mouseY);
+    const vec3 mWorldPos = screenToWorldPos(mpos); // actual world position
 
     const i32 tx = mWorldPos.x / dbgTileWidth;
     const i32 ty = mWorldPos.y / dbgTileWidth;
@@ -864,9 +997,9 @@ void render()
     dbgDrawSetView(matProjOrtho, viewIsIso ? matViewIso : matViewOrtho, DbgCoordSpace::WORLD);
 
     // origin
-    dbgDrawSolidSquare(vec3f(0,0,0), vec3f(200, 10, 1), 0xffff0000, DbgCoordSpace::WORLD);
-    dbgDrawSolidSquare(vec3f(0,0,0), vec3f(10, 200, 1), 0xff00ff00, DbgCoordSpace::WORLD);
-    dbgDrawSolidSquare(vec3f(0,0,0), vec3f(10, 10, 1), 0xff0000ff, DbgCoordSpace::WORLD);
+    dbgDrawSolidSquare(vec3(0,0,0), vec3(200, 10, 1), 0xffff0000, DbgCoordSpace::WORLD);
+    dbgDrawSolidSquare(vec3(0,0,0), vec3(10, 200, 1), 0xff00ff00, DbgCoordSpace::WORLD);
+    dbgDrawSolidSquare(vec3(0,0,0), vec3(10, 10, 1), 0xff0000ff, DbgCoordSpace::WORLD);
 
     dbgDrawSetFrameData(&frameData);
 #endif
@@ -924,7 +1057,7 @@ void processInput()
 }
 
 // project to z=0 plane
-vec3f screenToWorldPos(const vec2f screenPos)
+vec3 screenToWorldPos(const vec2 screenPos)
 {
     mat4 mvp;
     if(viewIsIso) {
@@ -935,22 +1068,22 @@ vec3f screenToWorldPos(const vec2f screenPos)
     }
 
     const mat4 inv = mat4Inv(mvp);
-    const vec4f v = vec4fMulMat4(vec4f((screenPos.x / winWidth * 2.0f) - 1.0f,
+    const vec4 v = vec4fMulMat4(vec4((screenPos.x / winWidth * 2.0f) - 1.0f,
                                        -((screenPos.y / winHeight * 2.0f) - 1.0f), 0.0, 1.0), inv);
-    const vec3f camWorldPos = vec3fDiv(vec3f(v.x, v.y, v.z), v.w);
+    const vec3 camWorldPos = vec3fDiv(vec3(v.x, v.y, v.z), v.w);
 
 
     if(viewIsIso) {
         // inverse rotation
-        quat camRot = quatMul(quatAxisRotation(vec3f(0, 0, 1), -RS_HALFPI/2),
-                              quatAxisRotation(vec3f(1, 0, 0), VIEW_X_ANGLE));
+        quat camRot = quatMul(quatAxisRotation(vec3(0, 0, 1), -RS_HALFPI/2),
+                              quatAxisRotation(vec3(1, 0, 0), VIEW_X_ANGLE));
         camRot = rs_normalize(camRot);
-        vec3f camDir = rs_normalize(quatRotateVec3(vec3f(0, 0, -1), camRot));
-        f32 d = rs_dot(vec3fMinus(camWorldPos), vec3f(0,0,1)) / rs_dot(camDir, vec3f(0,0,1));
+        vec3 camDir = rs_normalize(quatRotateVec3(vec3(0, 0, -1), camRot));
+        f32 d = rs_dot(vec3fMinus(camWorldPos), vec3(0,0,1)) / rs_dot(camDir, vec3(0,0,1));
         return vec3fAdd(camWorldPos, vec3fMul(camDir, d));
     }
 
-    return vec3f(camWorldPos.x, camWorldPos.y, 0);
+    return vec3(camWorldPos.x, camWorldPos.y, 0);
 }
 
 void deinit()

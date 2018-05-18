@@ -107,6 +107,7 @@ inline T abs(T value) {
 #endif
 
 #define arr_count(arr) (sizeof(arr)/sizeof(arr[0]))
+#define mem_zero(arr) memset(arr, 0, sizeof(arr))
 
 template<typename T>
 inline T clamp(T value, T min, T max) {

@@ -446,22 +446,34 @@ bool loadSectorKeyx()
 
     PakHeader* header = (PakHeader*)top;
     const i32 entryCount = header->entryCount;
-    sectorCount = entryCount;
+
+    // first pass to determine sector count
+    i32 keyxDataOffset = sizeof(PakHeader);
+    sectorCount = 0;
+    for(i32 i = 0; i < entryCount; ++i) {
+        KeyxSector& ks = *(KeyxSector*)(top + keyxDataOffset);
+        keyxDataOffset += sizeof(KeyxSector);
+        sectorCount = max(sectorCount, ks.sectorId+1);
+    }
+
+    assert(sectorCount == 6051);
 
     LOG("loadSectorKeyx()> header.worldX=%d header.worldY=%d",
         header->worldX, header->worldY);
 
-    sectorInfoBlock = MEM_ALLOC(entryCount * sizeof(*sectorInfo));
+    sectorInfoBlock = MEM_ALLOC(sectorCount * sizeof(SectorInfo));
     assert(sectorInfoBlock.ptr);
     sectorInfo = (SectorInfo*)sectorInfoBlock.ptr;
 
-    i32 keyxDataOffset = sizeof(PakHeader);
+    keyxDataOffset = sizeof(PakHeader);
+    u64 sectorAllDataSize = 0;
     for(i32 i = 0; i < entryCount; ++i) {
         KeyxSector& ks = *(KeyxSector*)(top + keyxDataOffset);
         keyxDataOffset += sizeof(KeyxSector);
 
-        SectorInfo& si = sectorInfo[i];
+        SectorInfo& si = sectorInfo[ks.sectorId];
         si.sectorId = ks.sectorId;
+        assert(si.sectorId >= 0 && si.sectorId < 6051);
         si.fileOffset = ks.subs[13].fileOffset;
         si.compressedSize = ks.subs[13].size;
         si.uncompressedSize = ks.subs[15].size;
@@ -475,8 +487,11 @@ bool loadSectorKeyx()
         i32 offsetHeightData = ks.subs[12].fileOffset;
         assert(offsetMapData == 32);
         assert(offsetHeightData == 131104);
+        assert(si.compressedSize > 0 && si.uncompressedSize > 0);
+        sectorAllDataSize += si.uncompressedSize;
     }
 
+    LOG_DBG("Resource> sectorAllDataSize: %lld ko", sectorAllDataSize/1024);
     LOG_SUCC("Resource> sectors.keyx loaded");
 
     if(!fileOpenToRead("../sacred_data/sectors.wldx", &fileSectors)) {
@@ -490,7 +505,7 @@ bool loadSectorKeyx()
 
 SectorxData* loadSectorData(i32 sectorId)
 {
-    assert(sectorId >= 0 && sectorId < sectorCount);
+    assert(sectorId > 0 && sectorId < sectorCount);
 
     const i32 fileOffset = sectorInfo[sectorId].fileOffset;
     const i32 compSize = sectorInfo[sectorId].compressedSize;
@@ -743,6 +758,16 @@ SectorxData* resource_loadSector(i32 sectorId)
 const SectorInfo& resource_getSectorInfo(i32 sectorId)
 {
     return DR.getSectorInfo(sectorId);
+}
+
+const SectorInfo* resource_getSectorInfoList()
+{
+    return DR.sectorInfo;
+}
+
+i32 resource_getSectorCount()
+{
+    return DR.sectorCount;
 }
 
 u16* resource_getTileTextureIds18()

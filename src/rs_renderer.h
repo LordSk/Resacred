@@ -97,10 +97,12 @@ struct RendererFrameData
     // check if frame is mandatory?
     // -> see pushFrame(frame)
 
+    bool viewIsIso; // TODO: remove, renderer should not know about this
     mat4 matCamProj;
     mat4 matCamViewIso;
     mat4 matCamViewOrtho;
     mat4 matSectorTileModel; // TODO: use a bunch of model matrices
+    mat4 matSectorMixedModel;
 
     i32 tvOff_base;
     i32 tvOff_floor;
