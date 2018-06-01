@@ -137,7 +137,7 @@ unsigned long thread_fileIO(void*)
             AFQ->handleAllBackRequests();
         }
         else {
-            threadSleep(15);
+            threadSleep(1);
             /*SwitchToThread();
             YieldProcessor();*/
         }

@@ -17,7 +17,18 @@
  *  - textures not being requested for a while will be destroyed
  */
 
-struct GPUResources
+// TODO: SOA this later on maybe?
+struct GpuSectorMesh
+{
+    i32 sectorId;
+    GLuint gpuBuffer;
+    i32 vertFloorOff;
+    i32 vertMixedOff;
+    mat4 matModelTiles;
+    mat4 matModelMixed;
+};
+
+struct GpuResources
 {
 u32 gpuTexDefault;
 u32 texGpuId[MAX_GPU_TEXTURES];
@@ -27,6 +38,7 @@ AtomicCounter texLoaded[MAX_GPU_TEXTURES];
 u8 texSlotOccupied[MAX_GPU_TEXTURES];
 TextureDesc2D texDesc[MAX_GPU_TEXTURES];
 RendererFrameData* frameData;
+Array<GpuSectorMesh,16> sectorMeshList;
 
 bool init()
 {
@@ -78,14 +90,12 @@ void destroyTexture(i32 texSlot)
 
 void newFrame()
 {
-    frameData = game_getFrameData();
-
     // find unused textures and destroy them
     for(i32 i = 0; i < MAX_GPU_TEXTURES; ++i) {
         if(texSlotOccupied[i]) {
             texFramesNotRequested[i]++;
 
-            if(texFramesNotRequested[i] > 10) {
+            if(texFramesNotRequested[i] > 10000) {
                 destroyTexture(i);
                 //LOG_DBG("ResourceGpu> evicting texture %d", i);
             }
@@ -195,7 +205,7 @@ void uploadTextures(i32* pakTextureUIDs, PakTextureInfo* textureInfos, u8** text
             textureDataSize = textureInfos[r].width * textureInfos[r].height * 4;
         }
         else {
-            desc.internalFormat = GL_RGBA8;
+            desc.internalFormat = GL_RGBA4;
             desc.dataFormat = GL_BGRA;
             desc.dataPixelCompType = GL_UNSIGNED_SHORT_4_4_4_4_REV;
             textureDataSize = textureInfos[r].width * textureInfos[r].height * 2;
@@ -274,7 +284,7 @@ AllocatorBucket textureDataAllocator;
 u8* tempTextureBuff;
 MemBlock tempTextureBuffBlock;
 
-GPUResources gpu;
+GpuResources gpu;
 
 u16* tileTextureId;
 i32 tileTextureIdCount;
@@ -603,7 +613,7 @@ void newFrame()
             textureDataBlock[i] = textureDataAllocator.ALLOC(textureSize);
             if(!textureDataBlock[i].ptr) {
                 // evict old texture data
-                textureDataBlock[i] = evictTexture(textureSize);
+                textureDataBlock[i] = evictTextureAllocNewBlock(textureSize);
             }
             memmove(textureDataBlock[i].ptr, tempTextureBuff, textureSize);
 
@@ -645,7 +655,7 @@ u8* fileRingAlloc(i64 size)
     return r;
 }
 
-MemBlock evictTexture(i64 size)
+MemBlock evictTextureAllocNewBlock(i64 size)
 {
     //LOG_DBG("Resource> evictTexture(%lld)", size);
 
@@ -669,6 +679,7 @@ MemBlock evictTexture(i64 size)
         textureGpuUpload[oldestTexture] = 0;
         textureAge[oldestTexture] = 0;
 
+        // try to alloc new texture
         MemBlock b = textureDataAllocator.ALLOC(size);
         if(b.ptr) {
             //LOG_DBG("Resource> textures evicted = %d", tries+1);
@@ -710,6 +721,20 @@ void requestGpuTextures(const i32* pakTextureUIDs, u32** out_gpuHandles, const i
     for(i32 i = 0; i < requestCount; ++i) {
         textureGpuUpload[pakTextureUIDs[i]] = 1;
     }
+}
+
+void ui_memory()
+{
+    ImGui::Begin("Resources memory");
+
+    u64 allocatedSpace, freeSpace;
+    textureDataAllocator.getFillInfo(&allocatedSpace, &freeSpace);
+
+    ImGui::Text("Texture allocator");
+    ImGui::Text("(%lld Ko / %lld Ko)", allocatedSpace/1024, (allocatedSpace+freeSpace)/1024);
+    ImGui::ProgressBar((f32)allocatedSpace/(allocatedSpace+freeSpace));
+
+    ImGui::End();
 }
 
 };
@@ -839,4 +864,9 @@ void resource_getWorldOrigin(i32* x, i32* y)
 {
     *x = DR.worldOriginX;
     *y = DR.worldOriginY;
+}
+
+void resources_dbgUi()
+{
+    DR.ui_memory();
 }

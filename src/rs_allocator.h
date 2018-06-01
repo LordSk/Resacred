@@ -173,12 +173,13 @@ struct AllocatorBucket: public IAllocator
     void init(MemBlock fromBlock, u32 bucketCount, u64 bucketSize, u8 alignment = 0);
 
     MemBlock __alloc(const char *filename, i32 line, u64 size, u8 alignment = 0);
-    MemBlock __realloc(const char *filename, i32 line, MemBlock block, u64 sisze, u8 alignment);
+    MemBlock __realloc(const char *filename, i32 line, MemBlock block, u64 size, u8 alignment);
     void __dealloc(const char *filename, i32 line, MemBlock block);
     inline bool owns(MemBlock block) const {
         return ((intptr_t)block.ptr >= (intptr_t)_bucketsPtr ||
                 (intptr_t)block.ptr < (intptr_t)_bucketsPtr + (_bucketSize * _bucketMaxCount));
     }
+    void getFillInfo(u64* allocatedSpace, u64* freeSpace);
 };
 
 /**

@@ -395,6 +395,23 @@ void AllocatorBucket::__dealloc(const char* filename, i32 line, MemBlock block)
     }
 }
 
+void AllocatorBucket::getFillInfo(u64* allocatedSpace, u64* freeSpace)
+{
+    const i32 count = _bucketMaxCount;
+    const i32 bucketSize = _bucketSize;
+    u64 allocatedSpace_ = 0;
+    u64 freeSpaced_ = 0;
+
+    for(u32 i = 0; i < count; ++i) {
+        const u8 b = _bytefield[i];
+        allocatedSpace_ += bucketSize * b;
+        freeSpaced_ += bucketSize * (!b);
+    }
+
+    *allocatedSpace = allocatedSpace_;
+    *freeSpace = freeSpaced_;
+}
+
 
 
 //
