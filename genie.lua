@@ -4,7 +4,7 @@ dofile("config.lua");
 PROJ_DIR = path.getabsolute("..")
 BUILD_DIR = path.join(PROJ_DIR, "build")
 
-solution "resacred_solution"
+solution "Resacred"
 	location "build"
 	
 	configurations {
@@ -21,7 +21,8 @@ solution "resacred_solution"
 	configuration {"Debug"}
 		targetsuffix "_debug"
 		flags {
-			"Symbols"
+			"Symbols",
+			"FullSymbols"
 		}
 		defines {
 			"DEBUG",
@@ -78,7 +79,7 @@ solution "resacred_solution"
 	buildoptions{ "/wd4577", "/wd4530" }
 	
 
-project "resacred_client"
+project "Resacred_client"
 	kind "WindowedApp" --TODO: change to console
 
 	configuration {}

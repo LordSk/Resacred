@@ -611,7 +611,7 @@ bool init()
                         (GLvoid*)OFFSETOF(ImDrawVert, col));
 
     // TODO: remove this
-    constexpr auto mat4Ortho = [](f32* matrix, f32 left, f32 right, f32 top, f32 bottom,
+	auto mat4Ortho = [](f32* matrix, f32 left, f32 right, f32 top, f32 bottom,
             f32 nearPlane, f32 farPlane)
     {
         memset(matrix, 0, sizeof(f32) * 16);

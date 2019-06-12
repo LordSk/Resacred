@@ -46,6 +46,7 @@ u32 strHash(const char* src, u32 length)
     return hash;
 }
 
+#if 0
 i64 parseI64(const char* str, i32 strLength)
 {
     if(strLength < 0) {
@@ -67,7 +68,7 @@ i64 parseI64(const char* str, i32 strLength)
     i32 start = min((u32)strLength, maxDigits) - 1;
 
     for(i32 i = start; i >= offset; --i) {
-        result += (i64)pow(10.0, start - i) * (i64)(str[i] - '0');
+		result += (i64)pow(10.0, (u32)(start - i)) * (i64)(str[i] - '0');
     }
 
     if(negative) {
@@ -211,7 +212,7 @@ void f64ToStr(f64 fnum, char* dest, u32 precision)
 
     dest[index + precision + 1] = 0;
 }
-
+#endif
 void strAppendEx(char* str, u32* pSize, const char* toAppend, u32 length)
 {
     memcpy(str + *pSize, toAppend, length);

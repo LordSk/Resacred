@@ -84,6 +84,7 @@ inline bool isDigit(char c)
     return (c >= '0' && c <= '9');
 }
 
+#if 0
 /**
  * @brief String to i64
  * @param str
@@ -161,7 +162,7 @@ void f32ToStr(f32 fnum, char* dest, u32 precision = 5);
  * @param precision
  */
 void f64ToStr(f64 fnum, char* dest, u32 precision = 5);
-
+#endif
 //u32 strFormat(char* buff, const char* formatStr, ...);
 //u32 vstrFormat(char* buff, const char* formatStr, va_list args);
 

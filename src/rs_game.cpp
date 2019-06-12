@@ -672,7 +672,7 @@ void ui_tileInspector()
             assert(s.itemTypeId < resource_getItemTypesCount());
             PakItemType& itemType = resource_getItemTypes()[s.itemTypeId];
 
-            constexpr auto unkElementGet = [](void* data, i32 id, const char** outStr) -> bool {
+			auto unkElementGet = [](void* data, i32 id, const char** outStr) -> bool {
                 static char outBuff[32];
                 sprintf(outBuff, "%d", ((u8*)data)[id]);
                 *outStr = outBuff;
@@ -1117,10 +1117,11 @@ unsigned long thread_game(void*)
     Game game;
     pGame = &game;
 
-    if(!resource_init()) {
-        client.clientRunning = false;
-        return 1;
-    }
+	if(!resource_init()) {
+		LOG("ERROR: could not init resources");
+		client.clientRunning = 0;
+		return 1;
+	}
 
     client.addInputCallback(receiveGameInput, &game);
     game.init();
