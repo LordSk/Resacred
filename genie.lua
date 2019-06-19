@@ -76,7 +76,8 @@ solution "Resacred"
         --"SACRED_LOG_MEM_ALLOC",
 		"RS_MATH_OPERATORS",
 		"CONF_ENABLE_UI",
-		"_ITERATOR_DEBUG_LEVEL=0"
+		"_ITERATOR_DEBUG_LEVEL=0",
+		--"BGFX_CONFIG_MULTITHREADED=0"
     }
 	
 	-- disable exception related warnings

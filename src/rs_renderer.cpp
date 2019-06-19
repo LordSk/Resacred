@@ -492,7 +492,9 @@ bool init()
 	bgfxInit.platformData = pd;
 	bgfx::init(bgfxInit);
 
-	bgfx::setViewClear(0, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x443355FF, 1.0f, 0);
+	bgfx::setDebug(BGFX_DEBUG_TEXT);
+
+	bgfx::setViewClear(0, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x3F3F3FFF, 1.0f, 0);
 	bgfx::setViewRect(0, 0, 0, client.width, client.height);
 
 /*
@@ -926,6 +928,14 @@ void processFrames()
 		frameTime = timeDuration(timeNow() - t0);*/
 
 		bgfx::touch(0);
+
+		bgfx::dbgTextClear();
+		bgfx::dbgTextPrintf(0, 0, 0x0d, "Resacred by LordSk");
+		bgfx::dbgTextPrintf(0, 1, 0x0f, "Unicorn Multi-shot OP");
+
+		const bgfx::Stats* stats = bgfx::getStats();
+		bgfx::dbgTextPrintf(0, 2, 0x0e, "GPU Memory: [%.1f%%] %llu / %llu (MB)", stats->gpuMemoryUsed / (f64)stats->gpuMemoryMax, stats->gpuMemoryUsed/(1024*1024), stats->gpuMemoryMax/(1024*1024));
+
 		bgfx::frame();
 
 		if(get_clientWindow()) {
