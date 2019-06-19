@@ -1,7 +1,7 @@
 #include "rs_window.h"
 #include "rs_logger.h"
-#include "imgui_sdl2_setup.h"
 #include "imgui.h"
+#include "imgui_impl_sdl.h"
 #include <stdio.h>
 #include <SDL2/SDL.h>
 
@@ -9,10 +9,6 @@ Window* g_clientWindowPtr = nullptr;
 
 bool Window::create(const i32 width_, const i32 height_)
 {
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-    SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
-
     window = SDL_CreateWindow("Resacred",
                               SDL_WINDOWPOS_CENTERED,
                               SDL_WINDOWPOS_CENTERED,
@@ -27,25 +23,31 @@ bool Window::create(const i32 width_, const i32 height_)
     width = width_;
     height = height_;
 
+#ifdef CONF_ENABLE_UI
+	IMGUI_CHECKVERSION();
+	ImGui::CreateContext();
+	ImGui_ImplSDL2_Init(window);
+#endif
+
     return true;
 }
 
 void Window::handleInput()
 {
-    SDL_Event event;
-    while(SDL_WaitEvent(&event)) {
+	SDL_Event event;
+	while(SDL_WaitEvent(&event)) {
 #ifdef CONF_ENABLE_UI
-		//imguiHandleInput(event);
+		ImGui_ImplSDL2_ProcessEvent(&event);
 #endif
 
         if(event.type == SDL_QUIT) {
-            clientRunning = false;
+			isRunning = false;
             return;
         }
 
         if(event.type == SDL_KEYDOWN) {
             if(event.key.keysym.sym == SDLK_ESCAPE) {
-                clientRunning = false;
+				isRunning = false;
                 return;
             }
         }
@@ -76,24 +78,17 @@ void Window::addInputCallback(Window::Proc_InputCallback callback, void* userDat
     inputListeners.pushPOD(&listenner);
 }
 
-void Window::dbguiInit()
+void Window::dbgUiNewFrame()
 {
 #ifdef CONF_ENABLE_UI
-    imguiInit(width, height, "resacred_imgui.ini");
+	ImGui_ImplSDL2_NewFrame(window);
+	ImGui::NewFrame();
 #endif
 }
 
-void Window::dbguiNewFrame()
+void Window::dbgUiFrameEnd()
 {
 #ifdef CONF_ENABLE_UI
-    imguiUpdate(0);
-#endif
-}
-
-void Window::dbguiFrameEnd()
-{
-#ifdef CONF_ENABLE_UI
-    ImGui::EndFrame();
     ImGui::Render();
 #endif
 }

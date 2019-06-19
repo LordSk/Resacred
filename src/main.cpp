@@ -9,10 +9,17 @@
 #include "rs_base.h"
 #include "rs_logger.h"
 #include "rs_window.h"
-#include "rs_renderer.h"
 #include "rs_game.h"
-#include "rs_file.h"
-#include "rs_resources.h"
+
+/*
+ * MAIN THREAD
+ *
+ * Inits client window
+ * Starts all the other threads
+ *
+ * Handles user input (keyboard, mouse, gamepad, etc..)
+ *
+ */
 
 i32 main()
 {
@@ -28,22 +35,19 @@ i32 main()
 
     Window& client = *init_clientWindow();
     client.create(1600, 900);
-	//client.dbguiInit();
 
-	auto threadRenderer = threadCreate(thread_renderer, nullptr);
-
-	/*auto threadGame = threadCreate(thread_game, nullptr);
-    auto threadFileIO = threadCreate(thread_fileIO, nullptr);
+	auto threadGame = threadCreate(thread_game, nullptr);
+	/*auto threadFileIO = threadCreate(thread_fileIO, nullptr);
     const i32 procCount = threadGetLogicalProcessorCount();
     threadSetProcessorAffinity(threadGame, procCount-2);
 	threadSetProcessorAffinity(threadFileIO, procCount-3);*/
 
-    while(client.clientRunning) {
-        client.handleInput();
+	while(client.isRunning) {
+		client.handleInput();
     }
 
-	/*client.cleanup();
-    resource_deinit();
+	client.cleanup();
+	/*resource_deinit();
 
     threadWaitForClose(&threadGame);
 	threadWaitForClose(&threadFileIO);*/

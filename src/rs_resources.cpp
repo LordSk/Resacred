@@ -463,7 +463,7 @@ bool loadSectorKeyx()
     for(i32 i = 0; i < entryCount; ++i) {
         KeyxSector& ks = *(KeyxSector*)(top + keyxDataOffset);
         keyxDataOffset += sizeof(KeyxSector);
-        sectorCount = max(sectorCount, ks.sectorId+1);
+		sectorCount = MAX(sectorCount, ks.sectorId+1);
     }
 
     assert(sectorCount == 6051);

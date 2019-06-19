@@ -132,7 +132,7 @@ unsigned long thread_fileIO(void*)
     LOG_SUCC("FileIO> initialized");
 
     Window& client = *get_clientWindow();
-    while(client.clientRunning) {
+    while(client.isRunning) {
         if(AFQ->swapQueues()) {
             AFQ->handleAllBackRequests();
         }
@@ -570,7 +570,7 @@ bool pak_FloorRead(const char* filepath)
 
     u8* top = (u8*)fb.block.ptr;
     PakHeader* header = (PakHeader*)top;
-    i32 entryCount = min(header->entryCount, 10000);
+	i32 entryCount = MIN(header->entryCount, 10000);
     //const i32 entryCount = header->entryCount;
     PakSubFileDesc* fileDesc = (PakSubFileDesc*)(top + sizeof(PakHeader));
 

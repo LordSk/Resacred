@@ -143,9 +143,12 @@ struct VramInfo
 };
 
 unsigned long thread_renderer(void*);
+bool renderer_init();
 void renderer_waitForInit();
 bool renderer_setupImGuiSync(struct ImGuiGLSetup* ims, u8* pFontPixels, i32 fontTexWidth, i32 fontTexHeight);
 
 f64 renderer_getFrameTime();
 VramInfo renderer_getVramInfo();
 void renderer_pushFrame(const RendererFrameData& frameData);
+
+void renderer_renderImgui();

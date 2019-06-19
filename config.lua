@@ -5,3 +5,4 @@ ZLIB_lib = "C:/Prog/Libs/zlib-1.2.11/zlib.lib"
 ZLIB_include = "C:/Prog/Libs/zlib-1.2.11"
 bgfx_include = "libs/include"
 bgfx_libs = { "libs/bxDebug.lib", "libs/bimgDebug.lib", "libs/bimg_decodeDebug.lib", "libs/bgfxDebug.lib" }
+bx_compat = "libs/include/compat/msvc"

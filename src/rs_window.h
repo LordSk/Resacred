@@ -7,7 +7,7 @@
 struct Window
 {
     struct SDL_Window* window;
-    bool clientRunning = true;
+	bool isRunning = true;
     i32 width;
     i32 height;
 
@@ -26,9 +26,8 @@ struct Window
 
     void addInputCallback(Proc_InputCallback callback, void* userData);
 
-    void dbguiInit();
-    void dbguiNewFrame();
-    void dbguiFrameEnd();
+	void dbgUiNewFrame();
+	void dbgUiFrameEnd();
 };
 
 Window* get_clientWindow();

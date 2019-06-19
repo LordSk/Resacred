@@ -5,148 +5,21 @@
 #include "rs_array.h"
 #include "gl3w.h"
 #include "imgui.h"
-#include "imgui_sdl2_setup.h"
+#include "imgui_impl_sdl.h"
 #include <stdio.h>
 #include <assert.h>
 
 #include <SDL2/SDL.h>
 #include <SDL2/SDL_syswm.h>
+
 #include <bgfx/bgfx.h>
+#include <bgfx/embedded_shader.h>
+#include <bx/math.h>
 
-#define GL_GPU_MEMORY_INFO_DEDICATED_VIDMEM_NVX          0x9047
-#define GL_GPU_MEMORY_INFO_TOTAL_AVAILABLE_MEMORY_NVX    0x9048
-#define GL_GPU_MEMORY_INFO_CURRENT_AVAILABLE_VIDMEM_NVX  0x9049
-#define GL_GPU_MEMORY_INFO_EVICTION_COUNT_NVX            0x904A
-#define GL_GPU_MEMORY_INFO_EVICTED_MEMORY_NVX            0x904B
-
-void APIENTRY debugCallback(GLenum source, GLenum type, GLuint id,
-                            GLenum severity, GLsizei length, const GLchar* message,
-                            const void* userParam)
-{
-    constexpr i32 MAX_SCOPES = 8;
-    static i32 currentScopeId = -1;
-    static char currentGroupName[MAX_SCOPES][256];
-
-    if(severity == GL_DEBUG_SEVERITY_NOTIFICATION && (*(i32*)&id) < 0) {
-        if(type == GL_DEBUG_TYPE_PUSH_GROUP) {
-            currentScopeId++;
-            assert(currentScopeId < MAX_SCOPES);
-            memmove(currentGroupName[currentScopeId], message, length);
-            currentGroupName[currentScopeId][length] = 0;
-            //LOG_DBG("push: %s id=%d", message, id);
-        }
-        else if(type == GL_DEBUG_TYPE_POP_GROUP) {
-            currentGroupName[currentScopeId][0] = 0;
-            currentScopeId--;
-            assert(currentScopeId >= -1);
-        }
-    }
-
-    switch(source) {
-        case GL_DEBUG_SOURCE_API:
-            source = 0;
-        break;
-        case GL_DEBUG_SOURCE_APPLICATION:
-            source = 1;
-        break;
-        case GL_DEBUG_SOURCE_OTHER:
-            source = 2;
-        break;
-        case GL_DEBUG_SOURCE_SHADER_COMPILER:
-            source = 3;
-        break;
-        case GL_DEBUG_SOURCE_THIRD_PARTY:
-            source = 4;
-        break;
-        case GL_DEBUG_SOURCE_WINDOW_SYSTEM:
-            source = 5;
-        break;
-    }
-    constexpr const char* sourceStr[] = {
-        "SRC_API",
-        "SRC_APPLICATION",
-        "SRC_OTHER",
-        "SRC_SHADER_COMPILER",
-        "SRC_THIRD_PARTY",
-        "SRC_WINDOW_SYSTEM"
-    };
-
-    switch(type) {
-        case GL_DEBUG_TYPE_DEPRECATED_BEHAVIOR:
-            type = 0;
-        break;
-        case GL_DEBUG_TYPE_ERROR:
-            type = 1;
-        break;
-        case GL_DEBUG_TYPE_MARKER:
-            type = 2;
-        break;
-        case GL_DEBUG_TYPE_OTHER:
-            type = 3;
-        break;
-        case GL_DEBUG_TYPE_PERFORMANCE:
-            type = 4;
-        break;
-        case GL_DEBUG_TYPE_POP_GROUP:
-            type = 5;
-        break;
-        case GL_DEBUG_TYPE_PORTABILITY:
-            type = 6;
-        break;
-        case GL_DEBUG_TYPE_PUSH_GROUP:
-            type = 7;
-        break;
-        case GL_DEBUG_TYPE_UNDEFINED_BEHAVIOR:
-            type = 8;
-        break;
-    }
-    constexpr const char* typeStr[] = {
-        "TYPE_DEPRECATED_BEHAVIOR",
-        "TYPE_ERROR",
-        "TYPE_MARKER",
-        "TYPE_OTHER",
-        "TYPE_PERFORMANCE",
-        "TYPE_POP_GROUP",
-        "TYPE_PORTABILITY",
-        "TYPE_PUSH_GROUP",
-        "TYPE_UNDEFINED_BEHAVIOR"
-    };
-
-    switch(severity) {
-        case GL_DEBUG_SEVERITY_NOTIFICATION:
-            severity = 0;
-        break;
-        case GL_DEBUG_SEVERITY_LOW:
-            severity = 1;
-        break;
-        case GL_DEBUG_SEVERITY_MEDIUM:
-            severity = 2;
-        break;
-        case GL_DEBUG_SEVERITY_HIGH:
-            severity = 3;
-        break;
-    }
-    constexpr const char* severityStr[] = {
-        "SEV_NOTIFICATION",
-        "SEV_LOW",
-        "SEV_MEDIUM",
-        "SEV_HIGH",
-    };
-
-    if(severity < 1) {
-        return;
-    }
-
-    i32 color = LOG_COLOR_WARN;
-    if(severity > 2) {
-        color = LOG_COLOR_ERROR;
-    }
-    getGlobalLogger().logf(color, __FILE__, __LINE__,
-                           "OGL> {%s|%s|%s} id=%x group=%s \"%s\"",
-                           sourceStr[source], typeStr[type],
-                           severityStr[severity], id, currentGroupName[currentScopeId], message);
-    assert(severity <= 2);
-}
+#include "shaders/fs_ocornut_imgui.bin.h"
+#include "shaders/fs_imgui_image.bin.h"
+#include "shaders/vs_ocornut_imgui.bin.h"
+#include "shaders/vs_imgui_image.bin.h"
 
 GLuint createTexture2D(const TextureDesc2D& desc)
 {
@@ -221,16 +94,169 @@ inline void textureSlot(u32 texture, i32 slot)
     glBindTexture(GL_TEXTURE_2D, texture);
 }
 
-struct ImGuiGLSetup
+inline bool checkAvailTransientBuffers(uint32_t _numVertices, const bgfx::VertexDecl& _decl, uint32_t _numIndices)
 {
-    GLuint shaderProgram = 0;
-    GLint shaderViewUni = -1;
-    GLint shaderTextureUni = -1;
-    GLuint shaderVertexBuff = 0;
-    GLuint shaderElementsBuff = 0;
-    GLuint shaderVao = 0;
+	return _numVertices == bgfx::getAvailTransientVertexBuffer(_numVertices, _decl)
+		&& (0 == _numIndices || _numIndices == bgfx::getAvailTransientIndexBuffer(_numIndices) )
+		;
+}
+
+struct ImGuiSetup
+{
+	bgfx::ProgramHandle colorProgram;
+	bgfx::ProgramHandle imageProgram;
+	bgfx::UniformHandle uImageLodEnabled;
+	bgfx::UniformHandle uSampleTex;
+	bgfx::TextureHandle texture;
+	bgfx::VertexDecl decl;
+	const int viewId = 255;
     f32 viewMatrix[16];
     timept lastFrameTime;
+
+	bool init()
+	{
+		// setup imgui
+		static const bgfx::EmbeddedShader s_embeddedShaders[] =
+		{
+			BGFX_EMBEDDED_SHADER(vs_ocornut_imgui),
+			BGFX_EMBEDDED_SHADER(fs_ocornut_imgui),
+			BGFX_EMBEDDED_SHADER(vs_imgui_image),
+			BGFX_EMBEDDED_SHADER(fs_imgui_image),
+
+			BGFX_EMBEDDED_SHADER_END()
+		};
+
+		bgfx::RendererType::Enum type = bgfx::getRendererType();
+		colorProgram = bgfx::createProgram(
+					bgfx::createEmbeddedShader(s_embeddedShaders, type, "vs_ocornut_imgui"),
+					bgfx::createEmbeddedShader(s_embeddedShaders, type, "fs_ocornut_imgui"),
+					true);
+
+		uImageLodEnabled = bgfx::createUniform("u_imageLodEnabled", bgfx::UniformType::Vec4);
+		imageProgram = bgfx::createProgram(
+					bgfx::createEmbeddedShader(s_embeddedShaders, type, "vs_imgui_image"),
+					bgfx::createEmbeddedShader(s_embeddedShaders, type, "fs_imgui_image"),
+					true);
+
+		decl.begin()
+			.add(bgfx::Attrib::Position,  2, bgfx::AttribType::Float)
+			.add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
+			.add(bgfx::Attrib::Color0,    4, bgfx::AttribType::Uint8, true)
+		.end();
+
+		uSampleTex = bgfx::createUniform("s_tex", bgfx::UniformType::Sampler);
+
+		uint8_t* data;
+		int32_t width;
+		int32_t height;
+
+		ImGuiIO& io = ImGui::GetIO();
+
+		io.Fonts->GetTexDataAsRGBA32(&data, &width, &height);
+
+		texture = bgfx::createTexture2D((uint16_t)width, (uint16_t)height, false, 1, bgfx::TextureFormat::BGRA8, 0, bgfx::copy(data, width*height*4));
+
+		return true;
+	}
+
+	void render(ImDrawData* _drawData)
+	{
+		const ImGuiIO& io = ImGui::GetIO();
+		const float width  = io.DisplaySize.x;
+		const float height = io.DisplaySize.y;
+
+		bgfx::setViewName(viewId, "ImGui");
+		bgfx::setViewMode(viewId, bgfx::ViewMode::Sequential);
+
+		const bgfx::Caps* caps = bgfx::getCaps();
+		{
+			float ortho[16];
+			bx::mtxOrtho(ortho, 0.0f, width, height, 0.0f, 0.0f, 1000.0f, 0.0f, caps->homogeneousDepth);
+			bgfx::setViewTransform(viewId, NULL, ortho);
+			bgfx::setViewRect(viewId, 0, 0, uint16_t(width), uint16_t(height) );
+		}
+
+		// Render command lists
+		for (int32_t ii = 0, num = _drawData->CmdListsCount; ii < num; ++ii)
+		{
+			bgfx::TransientVertexBuffer tvb;
+			bgfx::TransientIndexBuffer tib;
+
+			const ImDrawList* drawList = _drawData->CmdLists[ii];
+			uint32_t numVertices = (uint32_t)drawList->VtxBuffer.size();
+			uint32_t numIndices  = (uint32_t)drawList->IdxBuffer.size();
+
+			if(!checkAvailTransientBuffers(numVertices, decl, numIndices) )
+			{
+				// not enough space in transient buffer just quit drawing the rest...
+				break;
+			}
+
+			bgfx::allocTransientVertexBuffer(&tvb, numVertices, decl);
+			bgfx::allocTransientIndexBuffer(&tib, numIndices);
+
+			ImDrawVert* verts = (ImDrawVert*)tvb.data;
+			bx::memCopy(verts, drawList->VtxBuffer.begin(), numVertices * sizeof(ImDrawVert) );
+
+			ImDrawIdx* indices = (ImDrawIdx*)tib.data;
+			bx::memCopy(indices, drawList->IdxBuffer.begin(), numIndices * sizeof(ImDrawIdx) );
+
+			uint32_t offset = 0;
+			for (const ImDrawCmd* cmd = drawList->CmdBuffer.begin(), *cmdEnd = drawList->CmdBuffer.end(); cmd != cmdEnd; ++cmd)
+			{
+				if (cmd->UserCallback)
+				{
+					cmd->UserCallback(drawList, cmd);
+				}
+				else if (0 != cmd->ElemCount)
+				{
+					uint64_t state = 0
+						| BGFX_STATE_WRITE_RGB
+						| BGFX_STATE_WRITE_A
+						| BGFX_STATE_MSAA
+						;
+
+					bgfx::TextureHandle th = texture;
+					bgfx::ProgramHandle prog = colorProgram;
+
+					if (NULL != cmd->TextureId)
+					{
+						union { ImTextureID ptr; struct { bgfx::TextureHandle handle; uint8_t flags; uint8_t mip; } s; } texture = { cmd->TextureId };
+						state |= 0 != (0x1 & texture.s.flags)
+							? BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA)
+							: BGFX_STATE_NONE
+							;
+						th = texture.s.handle;
+						if (0 != texture.s.mip)
+						{
+							const float lodEnabled[4] = { float(texture.s.mip), 1.0f, 0.0f, 0.0f };
+							bgfx::setUniform(uImageLodEnabled, lodEnabled);
+							prog = imageProgram;
+						}
+					}
+					else
+					{
+						state |= BGFX_STATE_BLEND_FUNC(BGFX_STATE_BLEND_SRC_ALPHA, BGFX_STATE_BLEND_INV_SRC_ALPHA);
+					}
+
+					const uint16_t xx = uint16_t(bx::max(cmd->ClipRect.x, 0.0f) );
+					const uint16_t yy = uint16_t(bx::max(cmd->ClipRect.y, 0.0f) );
+					bgfx::setScissor(xx, yy
+						, uint16_t(bx::min(cmd->ClipRect.z, 65535.0f)-xx)
+						, uint16_t(bx::min(cmd->ClipRect.w, 65535.0f)-yy)
+						);
+
+					bgfx::setState(state);
+					bgfx::setTexture(0, uSampleTex, th);
+					bgfx::setVertexBuffer(0, &tvb, 0, numVertices);
+					bgfx::setIndexBuffer(&tib, offset, cmd->ElemCount);
+					bgfx::submit(viewId, prog);
+				}
+
+				offset += cmd->ElemCount;
+			}
+		}
+	}
 };
 
 struct TileShader
@@ -454,7 +480,7 @@ struct Renderer
 i32 fillingQueueId = 0;
 f64 frameTime = 0;
 timept framet0 = timeNow();
-ImGuiGLSetup imguiSetup;
+ImGuiSetup imguiSetup;
 
 bool initialized = false;
 Mutex queueMutex;
@@ -496,6 +522,8 @@ bool init()
 
 	bgfx::setViewClear(0, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x3F3F3FFF, 1.0f, 0);
 	bgfx::setViewRect(0, 0, 0, client.width, client.height);
+
+	imguiSetup.init();
 
 /*
 #ifdef CONF_DEBUG
@@ -695,7 +723,7 @@ void frameDoSectorRender(const RendererFrameData& frame)
 
     if(frame.doUploadTileVertexData) {
         if(tileVertexDataCount > gpuTileVertexCount) {
-            gpuTileVertexCount = max(gpuTileVertexCount * 2, tileVertexDataCount);
+			gpuTileVertexCount = MAX(gpuTileVertexCount * 2, tileVertexDataCount);
             glBufferData(GL_ARRAY_BUFFER, sizeof(TileVertex) * gpuTileVertexCount, 0, GL_DYNAMIC_DRAW);
         }
 
@@ -749,7 +777,7 @@ void frameDoDbgObjects(const RendererFrameData& frame)
     bindArrayBuffer(shader_dbgColor.vbo_vertexData);
     const i32 dbgQuadVertCount = frame.dbgQuadVertData.count();
     if(dbgQuadVertCount > gpuDbgQuadVertexCount) {
-        gpuDbgQuadVertexCount = max(gpuDbgQuadVertexCount * 2, dbgQuadVertCount);
+		gpuDbgQuadVertexCount = MAX(gpuDbgQuadVertexCount * 2, dbgQuadVertCount);
         glBufferData(GL_ARRAY_BUFFER, sizeof(QuadVertex) * gpuDbgQuadVertexCount, 0, GL_DYNAMIC_DRAW);
     }
 
@@ -892,7 +920,7 @@ void frameDoImGui(const RendererFrameData& frame)
 void processFrames()
 {
     Window& client = *get_clientWindow();
-    while(client.clientRunning) {
+	while(client.isRunning) {
 		/*timept t0 = timeNow();
         while(!frameReady[backFrameId]) {
             _mm_pause();
@@ -926,21 +954,6 @@ void processFrames()
         curFrame.clear();
         frameMutex.unlock();
 		frameTime = timeDuration(timeNow() - t0);*/
-
-		bgfx::touch(0);
-
-		bgfx::dbgTextClear();
-		bgfx::dbgTextPrintf(0, 0, 0x0d, "Resacred by LordSk");
-		bgfx::dbgTextPrintf(0, 1, 0x0f, "Unicorn Multi-shot OP");
-
-		const bgfx::Stats* stats = bgfx::getStats();
-		bgfx::dbgTextPrintf(0, 2, 0x0e, "GPU Memory: [%.1f%%] %llu / %llu (MB)", stats->gpuMemoryUsed / (f64)stats->gpuMemoryMax, stats->gpuMemoryUsed/(1024*1024), stats->gpuMemoryMax/(1024*1024));
-
-		bgfx::frame();
-
-		if(get_clientWindow()) {
-			client.swapBuffers();
-		}
     }
 }
 
@@ -1004,6 +1017,13 @@ unsigned long thread_renderer(void*)
     return 0;
 }
 
+bool renderer_init()
+{
+	static Renderer r;
+	g_rendererPtr = &r;
+	return r.init();
+}
+
 void renderer_waitForInit()
 {
     while(!g_rendererPtr || !g_rendererPtr->initialized) {
@@ -1024,4 +1044,9 @@ void renderer_pushFrame(const RendererFrameData& frameData)
 VramInfo renderer_getVramInfo()
 {
     return g_rendererPtr->vramInfo;
+}
+
+void renderer_renderImgui()
+{
+	g_rendererPtr->imguiSetup.render(ImGui::GetDrawData());
 }

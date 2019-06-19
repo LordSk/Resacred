@@ -77,11 +77,12 @@ solution "Resacred"
 		"RS_MATH_OPERATORS",
 		"CONF_ENABLE_UI",
 		"_ITERATOR_DEBUG_LEVEL=0",
-		--"BGFX_CONFIG_MULTITHREADED=0"
+		--"BGFX_CONFIG_MULTITHREADED=0",
+		"NOMINMAX"
     }
 	
 	-- disable exception related warnings
-	buildoptions{ "/wd4577", "/wd4530" }
+	buildoptions{ "/wd4577", "/wd4530", "/std:c++14" }
 	
 
 project "Resacred_client"
@@ -97,7 +98,8 @@ project "Resacred_client"
 	includedirs {
 		SDL2_include,
 		ZLIB_include,
-		bgfx_include
+		bgfx_include,
+		bx_compat
 	}
 	
 	links {

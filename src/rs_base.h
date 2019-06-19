@@ -99,12 +99,9 @@ inline T abs(T value) {
     return value;
 }
 
-#ifndef min
-    #define min(a, b) ((a) < (b) ? (a) : (b))
-#endif
-#ifndef max
-    #define max(a, b) ((a) > (b) ? (a) : (b))
-#endif
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+
 
 #define arr_count(arr) (sizeof(arr)/sizeof(arr[0]))
 #define mem_zero(arr) memset(arr, 0, sizeof(arr))

@@ -9,6 +9,8 @@
 #include "rs_resources.h"
 #include "rs_dbg_draw.h"
 
+#include <bgfx/bgfx.h>
+
 
 
 // interesting sectors:
@@ -480,10 +482,10 @@ void ui_frameGraph()
     f32 gameMin = 1000.0, gameMax = 0.0;
 
     for(i32 i = 0; i < count; ++i) {
-        rdrMin = min(rdrFtStack[i], rdrMin);
-        rdrMax = max(rdrFtStack[i], rdrMax);
-        gameMin = min(gameFtStack[i], gameMin);
-        gameMax = max(gameFtStack[i], gameMax);
+		rdrMin = MIN(rdrFtStack[i], rdrMin);
+		rdrMax = MAX(rdrFtStack[i], rdrMax);
+		gameMin = MIN(gameFtStack[i], gameMin);
+		gameMax = MAX(gameFtStack[i], gameMax);
     }
 
     ImGui::Text("Renderer frametime .. [%.3f, %.3f] (ms)", rdrMin, rdrMax);
@@ -1111,6 +1113,36 @@ unsigned long thread_game(void*)
 
     LOG("Game> initialization...");
     Window& client = *get_clientWindow();
+
+	// NOTE: must be called on this thread (bgfx::init and bgfx::frame need to be on the same thread)
+	if(!renderer_init()) {
+		LOG("ERROR: could not init renderer"); // TODO: error display here maybe?
+		return 1;
+	}
+
+	while(client.isRunning) {
+		bgfx::touch(0);
+
+		bgfx::dbgTextClear();
+		bgfx::dbgTextPrintf(0, 0, 0x0d, "Resacred by LordSk");
+		bgfx::dbgTextPrintf(0, 1, 0x0f, "Unicorn Multi-shot OP");
+
+		const bgfx::Stats* stats = bgfx::getStats();
+		bgfx::dbgTextPrintf(0, 2, 0x0e, "GPU Memory: [%.1f%%] %llu / %llu (MB)", stats->gpuMemoryUsed / (f64)stats->gpuMemoryMax, stats->gpuMemoryUsed/(1024*1024), stats->gpuMemoryMax/(1024*1024));
+
+		client.dbgUiNewFrame();
+
+		ImGui::ShowDemoWindow();
+
+		client.dbgUiFrameEnd();
+		renderer_renderImgui();
+
+		bgfx::frame();
+
+		client.swapBuffers();
+	}
+
+	/*
     initTileUVs();
 
     renderer_waitForInit();
@@ -1142,9 +1174,9 @@ unsigned long thread_game(void*)
         game.requestTexBrowserTextures();
 
 #ifdef CONF_ENABLE_UI
-        client.dbguiNewFrame();
+		client.dbgUiNewFrame();
         game.ui_all();
-        client.dbguiFrameEnd();
+		client.dbgUiFrameEnd();
 
         ImGuiCopyFrameData(&game.frameData);
 #endif
@@ -1159,7 +1191,7 @@ unsigned long thread_game(void*)
     // TODO: wait for deinit
     LOG("Game> cleaning up...");
     game.deinit();
-
+*/
     return 0;
 }
 
