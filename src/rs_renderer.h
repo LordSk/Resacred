@@ -175,7 +175,7 @@ struct RendererFrameData
 
     // world draw data
     Array<TileVertex> tileVertexData;
-    Array<u32*> tileQuadGpuTex;
+	Array<bgfx::TextureHandle> tileQuadGpuTex;
     bool doUploadTileVertexData = false;
     // FIXME: we can overwrite frames if the renderer
     // is much slower than the game loop, thus never uploading the data

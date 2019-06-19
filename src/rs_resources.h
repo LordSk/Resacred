@@ -31,7 +31,7 @@ void resource_deinit();
 void resource_newFrame();
 
 void resource_requestTextures(const i32* textureIds, const i32 textureCount);
-void resource_requestGpuTextures(const i32* textureUIDs, u32** out_gpuHandles, const i32 textureCount);
+void resource_requestGpuTextures(const i32* textureUIDs, bgfx::TextureHandle *out_gpuHandles, const i32 textureCount);
 bgfx::TextureHandle resource_defaultGpuTexture();
 
 SectorxData* resource_loadSector(i32 sectorId);

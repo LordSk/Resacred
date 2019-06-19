@@ -38,7 +38,6 @@ i32 texDiskId[MAX_GPU_TEXTURES];
 i32 texFramesNotRequested[MAX_GPU_TEXTURES];
 AtomicCounter texLoaded[MAX_GPU_TEXTURES];
 u8 texSlotOccupied[MAX_GPU_TEXTURES];
-TextureDesc2D texDesc[MAX_GPU_TEXTURES];
 RendererFrameData* frameData;
 Array<GpuSectorMesh,16> sectorMeshList;
 
@@ -47,6 +46,10 @@ bool init()
     memset(texFramesNotRequested, 0, sizeof(texFramesNotRequested));
     memset(texSlotOccupied, 0, sizeof(texSlotOccupied));
     memset(texLoaded, 0, sizeof(texLoaded));
+
+	for(int t = 0; t < MAX_GPU_TEXTURES; t++) {
+		texGpuId[t] = BGFX_INVALID_HANDLE;
+	}
 
 	const i32 texWidth = 16;
     static u32 textureData[texWidth*texWidth];
@@ -83,13 +86,14 @@ bool init()
 
 void destroyTexture(i32 texSlot)
 {
-   /* if(texGpuId[texSlot] != gpuTexDefault) {
-        frameData->_addTextureToDestroyList(texGpuId[texSlot]);
+	if(texGpuId[texSlot].idx != gpuTexDefault.idx) {
+		//frameData->_addTextureToDestroyList(texGpuId[texSlot]);
+		bgfx::destroy(texGpuId[texSlot]);
     }
     texGpuId[texSlot] = gpuTexDefault;
     texDiskId[texSlot] = 0;
     texLoaded[texSlot].set(0);
-	texSlotOccupied[texSlot] = false;*/
+	texSlotOccupied[texSlot] = false;
 }
 
 void newFrame()
@@ -138,9 +142,11 @@ i32 _occupyNextTextureSlot(i32 pakTexId)
     return oldestId;
 }
 
-void requestTextures(const i32* inPakTextureIds, u32** outGpuTexHandles, const i32 requestCount)
+void requestTextures(const i32* inPakTextureIds, bgfx::TextureHandle* outGpuTexHandles, const i32 requestCount)
 {
-	/*memset(outGpuTexHandles, 0, sizeof(outGpuTexHandles[0]) * requestCount);
+	for(i32 r = 0; r < requestCount; ++r) {
+		outGpuTexHandles[r] = gpuTexDefault;
+	}
 
     // assign already loaded/loading textures
     for(i32 r = 0; r < requestCount; ++r) {
@@ -152,7 +158,7 @@ void requestTextures(const i32* inPakTextureIds, u32** outGpuTexHandles, const i
         for(i32 i = 0; i < MAX_GPU_TEXTURES; ++i) {
             const i32 id = (fastId + i) % MAX_GPU_TEXTURES;
             if(texSlotOccupied[id] && texDiskId[id] == pakTexId) {
-                outGpuTexHandles[r] = &texGpuId[id];
+				outGpuTexHandles[r] = texGpuId[id];
                 texFramesNotRequested[id] = 1;
                 found = true;
                 break;
@@ -161,7 +167,7 @@ void requestTextures(const i32* inPakTextureIds, u32** outGpuTexHandles, const i
 
         if(!found) {
             const i32 newId = _occupyNextTextureSlot(pakTexId);
-            outGpuTexHandles[r] = &texGpuId[newId];
+			outGpuTexHandles[r] = texGpuId[newId];
             texGpuId[newId] = gpuTexDefault;
             texDiskId[newId] = pakTexId;
             texFramesNotRequested[newId] = 1;
@@ -169,12 +175,12 @@ void requestTextures(const i32* inPakTextureIds, u32** outGpuTexHandles, const i
             // choose one
             texLoaded[newId].set(0);
         }
-	}*/
+	}
 }
 
 void uploadTextures(i32* pakTextureUIDs, PakTextureInfo* textureInfos, u8** textureData, const i32 count)
 {
-	/*// for all remaining requests create a new gpu texture and assign it
+	// for all remaining requests create a new gpu texture and assign it
     for(i32 r = 0; r < count; ++r) {
         const i32 pakTexId = pakTextureUIDs[r];
         i32 gpuId = -1;
@@ -194,46 +200,36 @@ void uploadTextures(i32* pakTextureUIDs, PakTextureInfo* textureInfos, u8** text
 
         //LOG_DBG("ResourcesGpu> uploading pakId=%d gpuId=%d", pakTexId, gpuId);
 
-        TextureDesc2D& desc = texDesc[gpuId];
-
-        // upload texture to gpu
-        desc.width = textureInfos[r].width;
-        desc.height = textureInfos[r].height;
-        desc.data =  nullptr; // filled later in Renderer
+		bgfx::TextureFormat::Enum texFormat;
+		u16 texWidth = textureInfos[r].width;
+		u16 texHeight = textureInfos[r].height;
 
         u32 textureDataSize = 0;
         if(textureInfos[r].type == PakTextureType::TYPE_RGBA8) {
-            desc.internalFormat = GL_RGBA8;
-            desc.dataFormat = GL_RGBA;
-            desc.dataPixelCompType = GL_UNSIGNED_BYTE;
+			texFormat = bgfx::TextureFormat::RGBA8;
             textureDataSize = textureInfos[r].width * textureInfos[r].height * 4;
         }
         else {
-            desc.internalFormat = GL_RGBA4;
-            desc.dataFormat = GL_BGRA;
-            desc.dataPixelCompType = GL_UNSIGNED_SHORT_4_4_4_4_REV;
+			texFormat = bgfx::TextureFormat::RGBA4;
             textureDataSize = textureInfos[r].width * textureInfos[r].height * 2;
         }
 
-        desc.minFilter = GL_NEAREST;
-        desc.magFilter = GL_NEAREST;
-
         texLoaded[gpuId].increment();
-        frameData->_addTextureCreate(desc, &texGpuId[gpuId], textureData[r], textureDataSize);
-	}*/
+		//frameData->_addTextureCreate(desc, &texGpuId[gpuId], textureData[r], textureDataSize);
+		texGpuId[gpuId] = bgfx::createTexture2D(texWidth, texHeight, false, 1, texFormat, BGFX_SAMPLER_POINT, bgfx::makeRef(textureData[r], textureDataSize));
+	}
 }
 
 void deinit()
 {
-    // TODO: implement
-    /*for(i32 i = 0; i < MAX_GPU_TEXTURES; ++i) {
-        if(texSlotOccupied[i]) {
-            cmds.destroyTexture(texGpuId[i]);
-        }
-    }*/
+	bgfx::destroy(gpuTexDefault);
+	for(i32 i = 0; i < MAX_GPU_TEXTURES; ++i) {
+		if(bgfx::isValid(texGpuId[i]))
+			bgfx::destroy(texGpuId[i]);
+	}
 }
 
-/*void debugUi()
+void debugUi()
 {
     ImGui::Begin("Gpu resources");
 
@@ -246,12 +242,12 @@ void deinit()
             textColor = ImColor(128, 0, 0, 255);
         }
         ImGui::TextColored(textColor, "[%4d] gpuId=%4d diskId=%4d frames=%4d", i,
-            texGpuId[i], texDiskId[i], texFramesNotRequested[i]);
+			texGpuId[i].idx, texDiskId[i], texFramesNotRequested[i]);
     }
     ImGui::End();
 
     ImGui::End();
-}*/
+}
 };
 
 #define FILE_RING_BUFFER_SIZE Megabyte(200)
@@ -705,7 +701,8 @@ MemBlock evictTextureAllocNewBlock(i64 size)
 
 void requestTextures(const i32* pakTextureUIDs, const i32 requestCount)
 {
-    for(i32 i = 0; i < requestCount; ++i) {
+	// FIXME: reenable
+	for(i32 i = 0; i < requestCount; ++i) {
         const i32 texUID = pakTextureUIDs[i];
         assert(texUID > 0 && texUID < textureCount);
         textureAge[texUID] = 0;
@@ -722,10 +719,10 @@ void requestTextures(const i32* pakTextureUIDs, const i32 requestCount)
 			fileAsyncReadAbsolute(&fileTexturePak, textureFileOffset[texUID], size,
                     (u8*)textureDataBlock[texUID].ptr, &textureDiskLoadStatus[texUID]);
         }
-    }
+	}
 }
 
-void requestGpuTextures(const i32* pakTextureUIDs, u32** out_gpuHandles, const i32 requestCount)
+void requestGpuTextures(const i32* pakTextureUIDs, bgfx::TextureHandle* out_gpuHandles, const i32 requestCount)
 {
     gpu.requestTextures(pakTextureUIDs, out_gpuHandles, requestCount);
 
@@ -737,6 +734,8 @@ void requestGpuTextures(const i32* pakTextureUIDs, u32** out_gpuHandles, const i
 
 void debugUi()
 {
+	gpu.debugUi();
+
     ImGui::Begin("Resources memory");
 
 	ImGui::Image(gpu.gpuTexDefault, ImVec2(256, 256));
@@ -779,7 +778,7 @@ void resource_requestTextures(const i32* textureIds, const i32 textureCount)
 	s_ResourceManager.requestTextures(textureIds, textureCount);
 }
 
-void resource_requestGpuTextures(const i32* textureUIDs, u32** out_gpuHandles, const i32 textureCount)
+void resource_requestGpuTextures(const i32* textureUIDs, bgfx::TextureHandle* out_gpuHandles, const i32 textureCount)
 {
 	s_ResourceManager.requestGpuTextures(textureUIDs, out_gpuHandles, textureCount);
 }

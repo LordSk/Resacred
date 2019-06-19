@@ -10,6 +10,7 @@
 #include "rs_logger.h"
 #include "rs_window.h"
 #include "rs_game.h"
+#include "rs_file.h"
 
 /*
  * MAIN THREAD
@@ -37,10 +38,11 @@ i32 main()
     client.create(1600, 900);
 
 	auto threadGame = threadCreate(thread_game, nullptr);
-	/*auto threadFileIO = threadCreate(thread_fileIO, nullptr);
+	// TODO: remove file IO thread, use a job system instead
+	auto threadFileIO = threadCreate(thread_fileIO, nullptr);
     const i32 procCount = threadGetLogicalProcessorCount();
     threadSetProcessorAffinity(threadGame, procCount-2);
-	threadSetProcessorAffinity(threadFileIO, procCount-3);*/
+	threadSetProcessorAffinity(threadFileIO, procCount-3);
 
 	while(client.isRunning) {
 		client.handleInput();
@@ -48,8 +50,8 @@ i32 main()
 
 	client.cleanup();
 
-	/*threadWaitForClose(&threadGame);
-	threadWaitForClose(&threadFileIO);*/
+	threadWaitForClose(&threadGame);
+	threadWaitForClose(&threadFileIO);
 
     SDL_Quit();
 

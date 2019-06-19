@@ -88,10 +88,11 @@ inline void blendModeTransparency()
     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 }
 
-inline void textureSlot(u32 texture, i32 slot)
+inline void textureSlot(bgfx::TextureHandle texture, i32 slot)
 {
-    glActiveTexture(GL_TEXTURE0 + slot);
-    glBindTexture(GL_TEXTURE_2D, texture);
+	// FIXME: reenable
+	/*glActiveTexture(GL_TEXTURE0 + slot);
+	glBindTexture(GL_TEXTURE_2D, texture);*/
 }
 
 inline bool checkAvailTransientBuffers(uint32_t _numVertices, const bgfx::VertexDecl& _decl, uint32_t _numIndices)
@@ -614,7 +615,7 @@ void frameDoSectorRender(const RendererFrameData& frame)
 
     const i32 baseEnd = frame.tvOff_floor;
     for(i32 i = 0; i < baseEnd; i += 6) {
-        textureSlot(*frame.tileQuadGpuTex[i/6], 0);
+		textureSlot(frame.tileQuadGpuTex[i/6], 0);
         glDrawArrays(GL_TRIANGLES, i, 6);
     }
 
@@ -623,8 +624,8 @@ void frameDoSectorRender(const RendererFrameData& frame)
     const i32 floorEnd = frame.tvOff_mixed;
     const i32 alphaMaskTexOffset = (floorEnd - baseEnd) / 6;
     for(i32 i = baseEnd; i < floorEnd; i += 6) {
-        textureSlot(*frame.tileQuadGpuTex[i/6], 0);
-        textureSlot(*frame.tileQuadGpuTex[i/6 + alphaMaskTexOffset], 1);
+		textureSlot(frame.tileQuadGpuTex[i/6], 0);
+		textureSlot(frame.tileQuadGpuTex[i/6 + alphaMaskTexOffset], 1);
         glDrawArrays(GL_TRIANGLES, i, 6);
     }
 
@@ -633,7 +634,7 @@ void frameDoSectorRender(const RendererFrameData& frame)
 
     const i32 mixedEnd = tileVertexDataCount;
     for(i32 i = floorEnd; i < mixedEnd; i += 6) {
-        textureSlot(*frame.tileQuadGpuTex[alphaMaskTexOffset + i/6], 0);
+		textureSlot(frame.tileQuadGpuTex[alphaMaskTexOffset + i/6], 0);
         glDrawArrays(GL_TRIANGLES, i, 6);
     }
 

@@ -135,7 +135,7 @@ i32 winWidth;
 i32 winHeight;
 f64 frameTime = 0;
 i32 texBrowser_texIds[PAGE_TEXTURES_COUNT];
-GLuint* texBrowser_texGpu[PAGE_TEXTURES_COUNT];
+bgfx::TextureHandle texBrowser_texGpu[PAGE_TEXTURES_COUNT];
 i32 pageId = 0;
 i32 testTileLocalId = 0;
 
@@ -536,8 +536,7 @@ void ui_textureBrowser()
 
     for(int i = 0; i < PAGE_TEXTURES_COUNT; ++i) {
         ImGui::BeginGroup();
-        ImGui::Image((ImTextureID)(intptr_t)*texBrowser_texGpu[i],
-                     ImVec2(256, 256));
+		ImGui::Image(texBrowser_texGpu[i], ImVec2(256, 256));
         i32 diskTexId = texBrowser_texIds[i];
 
 #ifdef CONF_DEBUG
@@ -1131,6 +1130,11 @@ unsigned long thread_game(void*)
 	client.addInputCallback(receiveGameInput, &game);
 
 	while(client.isRunning) {
+		game.processInput();
+		resource_newFrame();
+
+		game.requestTexBrowserTextures();
+
 		bgfx::touch(0);
 
 		bgfx::dbgTextClear();
@@ -1144,6 +1148,7 @@ unsigned long thread_game(void*)
 
 		ImGui::ShowDemoWindow();
 		resources_debugUi();
+		game.ui_textureBrowser();
 
 		renderer_renderDbgUi();
 		renderer_frame();
@@ -1152,6 +1157,10 @@ unsigned long thread_game(void*)
 	}
 
 	resource_deinit();
+	renderer_cleanUp();
+
+	LOG("Game> cleaning up...");
+	game.deinit();
 
 	/*dbgDrawInit();
 
@@ -1181,10 +1190,6 @@ unsigned long thread_game(void*)
         renderer_pushFrame(game.frameData);
         game.frameData.clear();
     }
-
-    // TODO: wait for deinit
-    LOG("Game> cleaning up...");
-    game.deinit();
 */
     return 0;
 }
