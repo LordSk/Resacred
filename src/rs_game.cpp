@@ -1118,14 +1118,17 @@ unsigned long thread_game(void*)
 		return 1;
 	}
 
-	Game game;
-	pGame = &game;
-
 	if(!resource_init()) {
 		LOG("ERROR: could not init resources");
 		client.isRunning = false;
 		return 1;
 	}
+
+	Game game;
+	pGame = &game;
+	game.init();
+
+	client.addInputCallback(receiveGameInput, &game);
 
 	while(client.isRunning) {
 		bgfx::touch(0);
@@ -1148,10 +1151,9 @@ unsigned long thread_game(void*)
 		client.swapBuffers();
 	}
 
-	/*client.addInputCallback(receiveGameInput, &game);
-    game.init();
+	resource_deinit();
 
-    dbgDrawInit();
+	/*dbgDrawInit();
 
     //pak_FloorRead("../sacred_data/Floor.pak");
     //bin_WorldRead("../sacred_data/World.bin");

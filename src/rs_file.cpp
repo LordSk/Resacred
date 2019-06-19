@@ -714,7 +714,7 @@ bool pak_staticRead(const char* path, Array<PakStatic>* out)
 
 bool pak_mixedRead(PakMixedFileData* out)
 {
-    LOG_DBG("pak_MixedRead> start reading data...");
+	LOG_DBG("pak_MixedRead> start reading data...");
 
     // read keyx file
     FileBuffer fbMixed = fileReadWhole("../sacred_data/mixed.pak");

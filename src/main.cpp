@@ -47,9 +47,8 @@ i32 main()
     }
 
 	client.cleanup();
-	/*resource_deinit();
 
-    threadWaitForClose(&threadGame);
+	/*threadWaitForClose(&threadGame);
 	threadWaitForClose(&threadFileIO);*/
 
     SDL_Quit();

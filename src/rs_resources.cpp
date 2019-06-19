@@ -268,7 +268,7 @@ void deinit()
 
 struct ResourceManager {
 
-DiskFile fileTexture;
+DiskFile fileTexturePak;
 i32 textureCount;
 i32* textureFileOffset;
 i32* textureFileSize;
@@ -328,65 +328,10 @@ enum class LoadStatus: i32 {
 bool init()
 {
     gpu.init();
-	return true;
 
-    if(!fileOpenToRead("../sacred_data/texture.pak", &fileTexture)) {
-        return false;
-    }
-
-    // Setup texture related stuff
-    textureFileAndRawBlock = MEM_ALLOC(TEXTURE_DATA_SIZE + FILE_RING_BUFFER_SIZE);
-    assert(textureFileAndRawBlock.ptr);
-    textureRawData = (u8*)textureFileAndRawBlock.ptr;
-    fileData = textureRawData + TEXTURE_DATA_SIZE;
-
-    LOG_DBG("Resource> textureFileAndRawBlock size=%lldmb",
-            (TEXTURE_DATA_SIZE + FILE_RING_BUFFER_SIZE)/(1024*1024));
-
-    MemBlock textureRawDataBlock;
-    textureRawDataBlock.ptr = textureRawData;
-    textureRawDataBlock.size = TEXTURE_DATA_SIZE;
-    textureDataAllocator.init(textureRawDataBlock, TEXTURE_DATA_SIZE/1024, 1024);
-
-    tempTextureBuffBlock = MEM_ALLOC(TEXTURE_TEMP_SIZE);
-    assert(tempTextureBuffBlock.ptr);
-    tempTextureBuff = (u8*)tempTextureBuffBlock.ptr;
-
-    PakHeader header;
-    fileReadAdvance(&fileTexture, sizeof(header), &header);
-    textureCount = header.entryCount;
-
-    // alloc texture metadata
-    textureMetaBlock = MEM_ALLOC((sizeof(*textureFileOffset) + sizeof(*textureFileSize) +
-            sizeof(*textureDiskLoadStatus) +
-            sizeof(*textureDataBlock) + sizeof(*textureInfo) + sizeof(*textureGpuUpload) +
-            sizeof(*textureAge)) * textureCount);
-    assert(textureMetaBlock.ptr);
-
-    LOG_DBG("Resource> textureMetaBlock size=%lldkb", textureMetaBlock.size/1024);
-
-    textureFileOffset = (i32*)textureMetaBlock.ptr;
-    textureFileSize = (i32*)(textureFileOffset + textureCount);
-    textureDiskLoadStatus = (AtomicCounter*)(textureFileSize + textureCount);
-    textureDataBlock = (MemBlock*)(textureDiskLoadStatus + textureCount);
-    textureInfo = (PakTextureInfo*)(textureDataBlock + textureCount);
-    textureGpuUpload = (u8*)(textureInfo + textureCount);
-    textureAge = (i32*)(textureGpuUpload + textureCount);
-
-    i64 fileOffsetsSize = textureCount * sizeof(PakSubFileDesc);
-    MemBlock b = MEM_ALLOC(fileOffsetsSize);
-    assert(b.ptr);
-
-    PakSubFileDesc* fileOffsets = (PakSubFileDesc*)b.ptr;
-    fileReadAdvance(&fileTexture, fileOffsetsSize, fileOffsets);
-
-    for(i32 i = 0; i < textureCount; ++i) {
-        textureFileOffset[i] = fileOffsets[i].offset;
-        textureFileSize[i] = fileOffsets[i].size;
-        //LOG("%d offset=%d", i, textureOffset[i]);
-    }
-
-    MEM_DEALLOC(b);
+	if(!loadTexturePak()) {
+		return false;
+	}
 
     if(!loadTileTextureIds()) {
         return false;
@@ -415,6 +360,68 @@ bool init()
     LOG_SUCC("Resource> initialized");
 
     return true;
+}
+
+bool loadTexturePak()
+{
+	if(!fileOpenToRead("../sacred_data/texture.pak", &fileTexturePak)) {
+		return false;
+	}
+
+	// Setup texture related stuff
+	textureFileAndRawBlock = MEM_ALLOC(TEXTURE_DATA_SIZE + FILE_RING_BUFFER_SIZE);
+	assert(textureFileAndRawBlock.ptr);
+	textureRawData = (u8*)textureFileAndRawBlock.ptr;
+	fileData = textureRawData + TEXTURE_DATA_SIZE;
+
+	LOG_DBG("Resource> textureFileAndRawBlock size=%lldmb",
+			(TEXTURE_DATA_SIZE + FILE_RING_BUFFER_SIZE)/(1024*1024));
+
+	MemBlock textureRawDataBlock;
+	textureRawDataBlock.ptr = textureRawData;
+	textureRawDataBlock.size = TEXTURE_DATA_SIZE;
+	textureDataAllocator.init(textureRawDataBlock, TEXTURE_DATA_SIZE/1024, 1024);
+
+	tempTextureBuffBlock = MEM_ALLOC(TEXTURE_TEMP_SIZE);
+	assert(tempTextureBuffBlock.ptr);
+	tempTextureBuff = (u8*)tempTextureBuffBlock.ptr;
+
+	PakHeader header;
+	fileReadAdvance(&fileTexturePak, sizeof(header), &header);
+	textureCount = header.entryCount;
+
+	// alloc texture metadata
+	textureMetaBlock = MEM_ALLOC((sizeof(*textureFileOffset) + sizeof(*textureFileSize) +
+			sizeof(*textureDiskLoadStatus) +
+			sizeof(*textureDataBlock) + sizeof(*textureInfo) + sizeof(*textureGpuUpload) +
+			sizeof(*textureAge)) * textureCount);
+	assert(textureMetaBlock.ptr);
+
+	LOG_DBG("Resource> textureMetaBlock size=%lldkb", textureMetaBlock.size/1024);
+
+	textureFileOffset = (i32*)textureMetaBlock.ptr;
+	textureFileSize = (i32*)(textureFileOffset + textureCount);
+	textureDiskLoadStatus = (AtomicCounter*)(textureFileSize + textureCount);
+	textureDataBlock = (MemBlock*)(textureDiskLoadStatus + textureCount);
+	textureInfo = (PakTextureInfo*)(textureDataBlock + textureCount);
+	textureGpuUpload = (u8*)(textureInfo + textureCount);
+	textureAge = (i32*)(textureGpuUpload + textureCount);
+
+	i64 fileOffsetsSize = textureCount * sizeof(PakSubFileDesc);
+	MemBlock b = MEM_ALLOC(fileOffsetsSize);
+	assert(b.ptr);
+
+	PakSubFileDesc* fileOffsets = (PakSubFileDesc*)b.ptr;
+	fileReadAdvance(&fileTexturePak, fileOffsetsSize, fileOffsets);
+
+	for(i32 i = 0; i < textureCount; ++i) {
+		textureFileOffset[i] = fileOffsets[i].offset;
+		textureFileSize[i] = fileOffsets[i].size;
+		//LOG("%d offset=%d", i, textureOffset[i]);
+	}
+
+	MEM_DEALLOC(b);
+	return true;
 }
 
 bool loadTileTextureIds()
@@ -584,7 +591,7 @@ void deinit()
     MEM_DEALLOC(floorData);
     MEM_DEALLOC(mixed.block);
 
-    fileClose(&fileTexture);
+	fileClose(&fileTexturePak);
     gpu.deinit();
 }
 
@@ -712,7 +719,7 @@ void requestTextures(const i32* pakTextureUIDs, const i32 requestCount)
             textureDataBlock[texUID].ptr = fileRingAlloc(size);
             textureDataBlock[texUID].size = size;
 
-            fileAsyncReadAbsolute(&fileTexture, textureFileOffset[texUID], size,
+			fileAsyncReadAbsolute(&fileTexturePak, textureFileOffset[texUID], size,
                     (u8*)textureDataBlock[texUID].ptr, &textureDiskLoadStatus[texUID]);
         }
     }
