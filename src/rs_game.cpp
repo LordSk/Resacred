@@ -1088,7 +1088,8 @@ static void ImGuiCopyFrameData(RendererFrameData* frame)
     ImDrawData* drawData = ImGui::GetDrawData();
     ImDrawList** list = drawData->CmdLists;
     const i32 cmdListsCount = drawData->CmdListsCount;
-    frame->imguiDrawList.reserve(cmdListsCount);
+	// FIXME: reenable
+	/*frame->imguiDrawList.reserve(cmdListsCount);
 
     for(i32 i = 0; i < cmdListsCount; ++i) {
         frame->imguiDrawList.push(*list[i]);
@@ -1101,7 +1102,7 @@ static void ImGuiCopyFrameData(RendererFrameData* frame)
         assert(frame->imguiDrawList[i].VtxBuffer.Data !=
                list[i]->VtxBuffer.Data);
         assert(frame->imguiDrawList[i].VtxBuffer.size() > 0);
-    }
+	}*/
 }
 
 unsigned long thread_game(void*)

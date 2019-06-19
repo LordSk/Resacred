@@ -32,7 +32,8 @@ solution "Resacred"
 	configuration {"Release"}
 		targetsuffix "_release"
 		flags {
-			"Optimize"
+			"Optimize",
+			"NoBufferSecurityCheck"
 		}
 		defines {
 			"NDEBUG",
@@ -66,13 +67,16 @@ solution "Resacred"
 		"EnableSSE2",
 		"EnableAVX",
 		"EnableAVX2",
+		"EnableMinimalRebuild",
+		"StaticRuntime",
 	}
 	
 	defines {
         --"LOGGER_DONT_WRITE",
         --"SACRED_LOG_MEM_ALLOC",
 		"RS_MATH_OPERATORS",
-        "CONF_ENABLE_UI"
+		"CONF_ENABLE_UI",
+		"_ITERATOR_DEBUG_LEVEL=0"
     }
 	
 	-- disable exception related warnings
@@ -92,6 +96,7 @@ project "Resacred_client"
 	includedirs {
 		SDL2_include,
 		ZLIB_include,
+		bgfx_include
 	}
 	
 	links {
@@ -100,4 +105,5 @@ project "Resacred_client"
 		"opengl32",
 		SDL2_lib,
 		ZLIB_lib,
+		bgfx_libs
 	}

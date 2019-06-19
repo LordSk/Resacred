@@ -8,7 +8,10 @@
 #include "imgui_sdl2_setup.h"
 #include <stdio.h>
 #include <assert.h>
+
 #include <SDL2/SDL.h>
+#include <SDL2/SDL_syswm.h>
+#include <bgfx/bgfx.h>
 
 #define GL_GPU_MEMORY_INFO_DEDICATED_VIDMEM_NVX          0x9047
 #define GL_GPU_MEMORY_INFO_TOTAL_AVAILABLE_MEMORY_NVX    0x9048
@@ -426,7 +429,8 @@ void RendererFrameData::clear()
     texToDestroyCount = 0;
     texToCreateCount = 0;
     doUploadTileVertexData = false;
-    imguiDrawList.clear();
+	// FIXME: reenable
+	//imguiDrawList.clear();
     tileVertexData.clearPOD();
     tileQuadGpuTex.clearPOD();
     textureData.clearPOD();
@@ -447,7 +451,6 @@ void RendererFrameData::copy(const RendererFrameData& other)
 struct Renderer
 {
 
-SDL_GLContext glContext;
 i32 fillingQueueId = 0;
 f64 frameTime = 0;
 timept framet0 = timeNow();
@@ -473,31 +476,34 @@ bool init()
     LOG("Renderer> initialization...");
 
     Window& client = *get_clientWindow();
-    glContext = SDL_GL_CreateContext(client.window);
-    if(!glContext) {
-        LOG("ERROR: can't create OpenGL 3.3 context (%s)",  SDL_GetError());
-        return false;
-    }
 
-    if(gl3w_init()) {
-        LOG("ERROR: can't init gl3w");
-        return false;
-    }
+	bgfx::PlatformData pd;
+	SDL_SysWMinfo wmInfo;
+	SDL_VERSION(&wmInfo.version);
+	SDL_GetWindowWMInfo(client.window, &wmInfo);
+	pd.nwh = wmInfo.info.win.window;
 
-    if(!gl3w_is_supported(3, 3)) {
-        LOG("ERROR: OpenGL 3.3 isn't available on this system");
-        return false;
-    }
+	bgfx::Init bgfxInit;
+	bgfxInit.type = bgfx::RendererType::Count; // Automatically choose a renderer.
+	//bgfxInit.type = bgfx::RendererType::Direct3D12; // Automatically choose a renderer.
+	bgfxInit.resolution.width = client.width;
+	bgfxInit.resolution.height = client.height;
+	bgfxInit.resolution.reset = BGFX_RESET_NONE; // no vsync
+	bgfxInit.platformData = pd;
+	bgfx::init(bgfxInit);
 
-    SDL_GL_SetSwapInterval(0); // no vsync
+	bgfx::setViewClear(0, BGFX_CLEAR_COLOR | BGFX_CLEAR_DEPTH, 0x443355FF, 1.0f, 0);
+	bgfx::setViewRect(0, 0, 0, client.width, client.height);
 
+/*
 #ifdef CONF_DEBUG
     glEnable(GL_DEBUG_OUTPUT);
     glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
     glDebugMessageCallback(debugCallback, this);
 #endif
+*/
 
-    shader_tile.loadAndCompile();
+	/*shader_tile.loadAndCompile();
     // TODO: make a bunch of buffers for each sector and update only on loading
     glBindBuffer(GL_ARRAY_BUFFER, shader_tile.vbo);
     glBufferData(GL_ARRAY_BUFFER, sizeof(TileVertex) * gpuTileVertexCount, nullptr,
@@ -509,7 +515,7 @@ bool init()
 
     bindArrayBuffer(shader_dbgColor.vbo_vertexData);
     glBufferData(GL_ARRAY_BUFFER, sizeof(QuadVertex) * gpuDbgQuadVertexCount, nullptr,
-                 GL_DYNAMIC_DRAW);
+				 GL_DYNAMIC_DRAW);
 
     ImGuiIO& io = ImGui::GetIO();
     u8* pFontPixels;
@@ -642,7 +648,7 @@ bool init()
     glEnable(GL_DEBUG_OUTPUT_SYNCHRONOUS);
     glDebugMessageCallback(debugCallback, this);
 #endif
-
+*/
     initialized = true;
     return true;
 }
@@ -775,7 +781,8 @@ void frameDoImGui(const RendererFrameData& frame)
     if (fb_width == 0 || fb_height == 0)
         return;
 
-    const i32 imguiDrawListCount = frame.imguiDrawList.count();
+	// FIXME: reenable
+	/*const i32 imguiDrawListCount = frame.imguiDrawList.count();
     ImDrawList* drawLists = frame.imguiDrawList.data();
 
     // scale clip rects
@@ -790,7 +797,7 @@ void frameDoImGui(const RendererFrameData& frame)
             cmd->ClipRect = ImVec4(cmd->ClipRect.x * scale.x, cmd->ClipRect.y * scale.y,
                                    cmd->ClipRect.z * scale.x, cmd->ClipRect.w * scale.y);
         }
-    }
+	}
 
     // Backup GL state
     GLint last_program; glGetIntegerv(GL_CURRENT_PROGRAM, &last_program);
@@ -876,13 +883,15 @@ void frameDoImGui(const RendererFrameData& frame)
     if (last_enable_depth_test) glEnable(GL_DEPTH_TEST); else glDisable(GL_DEPTH_TEST);
     if (last_enable_scissor_test) glEnable(GL_SCISSOR_TEST); else glDisable(GL_SCISSOR_TEST);
     glViewport(last_viewport[0], last_viewport[1], (GLsizei)last_viewport[2], (GLsizei)last_viewport[3]);
+
+	*/
 }
 
 void processFrames()
 {
     Window& client = *get_clientWindow();
     while(client.clientRunning) {
-        timept t0 = timeNow();
+		/*timept t0 = timeNow();
         while(!frameReady[backFrameId]) {
             _mm_pause();
         }
@@ -914,13 +923,21 @@ void processFrames()
 
         curFrame.clear();
         frameMutex.unlock();
-        frameTime = timeDuration(timeNow() - t0);
+		frameTime = timeDuration(timeNow() - t0);*/
+
+		bgfx::touch(0);
+		bgfx::frame();
+
+		if(get_clientWindow()) {
+			client.swapBuffers();
+		}
     }
 }
 
 void cleanUp()
 {
     LOG_DBG("Renderer> cleaning up...");
+	bgfx::shutdown();
 }
 
 void pushFrame(const RendererFrameData& frameData_)
@@ -971,7 +988,7 @@ unsigned long thread_renderer(void*)
         return 1;
     }
 
-    r.processFrames();
+	r.processFrames();
     r.cleanUp();
 
     return 0;

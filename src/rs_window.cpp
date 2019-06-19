@@ -35,7 +35,7 @@ void Window::handleInput()
     SDL_Event event;
     while(SDL_WaitEvent(&event)) {
 #ifdef CONF_ENABLE_UI
-        imguiHandleInput(event);
+		//imguiHandleInput(event);
 #endif
 
         if(event.type == SDL_QUIT) {

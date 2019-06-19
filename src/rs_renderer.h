@@ -6,14 +6,14 @@
 #include "rs_math.h"
 #include "imgui.h"
 
-#ifdef CONF_DEBUG
+/*#ifdef CONF_DEBUG
     #define OGL_DBG_GROUP_BEGIN(name) \
-        glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, -(__COUNTER__^(__LINE__*1337)), strLen(#name), #name)
+		glPushDebugGroup(GL_DEBUG_SOURCE_APPLICATION, -(__COUNTER__^(__LINE__*1337)), strLen(#name), #name)
     #define OGL_DBG_GROUP_END(name) glPopDebugGroup()
-#else
+#else*/
     #define OGL_DBG_GROUP_BEGIN(name)
     #define OGL_DBG_GROUP_END(name)
-#endif
+//#endif
 
 #define OFFSETOF(TYPE, ELEMENT) ((size_t)&(((TYPE *)0)->ELEMENT))
 
@@ -85,7 +85,8 @@ struct RendererFrameData
     i32 texToCreateCount = 0;
 
     // imgui draw data
-    Array<ImDrawList> imguiDrawList;
+	// FIXME: reenable
+	//Array<ImDrawList> imguiDrawList;
 
     // world draw data
     Array<TileVertex> tileVertexData;
@@ -112,7 +113,7 @@ struct RendererFrameData
     Array<MeshDef> dbgQuadMeshDef;
     Array<mat4> dbgQuadModelMat;
 
-    RendererFrameData() = default;
+	RendererFrameData() = default;
     void copy(const RendererFrameData& other);
     void clear();
 
