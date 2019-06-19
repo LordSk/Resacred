@@ -1,6 +1,7 @@
 #pragma once
 #include "rs_base.h"
 #include "rs_file.h"
+#include <bgfx/bgfx.h>
 
 struct PakTextureInfo
 {
@@ -31,7 +32,7 @@ void resource_newFrame();
 
 void resource_requestTextures(const i32* textureIds, const i32 textureCount);
 void resource_requestGpuTextures(const i32* textureUIDs, u32** out_gpuHandles, const i32 textureCount);
-u32 resource_defaultGpuTexture();
+bgfx::TextureHandle resource_defaultGpuTexture();
 
 SectorxData* resource_loadSector(i32 sectorId);
 const SectorInfo& resource_getSectorInfo(i32 sectorId);
@@ -56,4 +57,4 @@ i32 resource_getMixedDescsCount();
 PakMixedData* resource_getMixedData();
 
 void resource_getWorldOrigin(i32* x, i32* y);
-void resources_dbgUi();
+void resources_debugUi();

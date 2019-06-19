@@ -23,33 +23,33 @@
 #define SECTOR_INVALID_ID (0x0)
 #define SECTOR_DRAWN_COUNT 9 // 3 * 3
 
-static vec2 tileUV[18][4];
+static vec2 s_tileUV[18][4];
 
-void initTileUVs()
+static void initTileUVs()
 {
-    tileUV[0][0] = vec2(0, 24.5/256.f);
-    tileUV[0][1] = vec2(50.5/256.f, 0/256.f);
-    tileUV[0][2] = vec2(99.5/256.f, 24.5/256.f);
-    tileUV[0][3] = vec2(50.5/256.f, 49/256.f);
+	s_tileUV[0][0] = vec2(0, 24.5/256.f);
+	s_tileUV[0][1] = vec2(50.5/256.f, 0/256.f);
+	s_tileUV[0][2] = vec2(99.5/256.f, 24.5/256.f);
+	s_tileUV[0][3] = vec2(50.5/256.f, 49/256.f);
 
-    tileUV[1][0] = vec2(104.5/256.f, 24.5/256.f);
-    tileUV[1][1] = vec2(153.5/256.f, 0/256.f);
-    tileUV[1][2] = vec2(204/256.f, 24.5/256.f);
-    tileUV[1][3] = vec2(153.5/256.f, 49/256.f);
+	s_tileUV[1][0] = vec2(104.5/256.f, 24.5/256.f);
+	s_tileUV[1][1] = vec2(153.5/256.f, 0/256.f);
+	s_tileUV[1][2] = vec2(204/256.f, 24.5/256.f);
+	s_tileUV[1][3] = vec2(153.5/256.f, 49/256.f);
 
     for(i32 i = 2; i < 18; i += 2) {
         i32 line = i / 2;
         f32 offsetX = (line & 1) * 52/256.f;
 
-        tileUV[i][0] = vec2fAdd(tileUV[0][0], vec2(offsetX, 25/256.f * line));
-        tileUV[i][1] = vec2fAdd(tileUV[0][1], vec2(offsetX, 25/256.f * line));
-        tileUV[i][2] = vec2fAdd(tileUV[0][2], vec2(offsetX, 25/256.f * line));
-        tileUV[i][3] = vec2fAdd(tileUV[0][3], vec2(offsetX, 25/256.f * line));
+		s_tileUV[i][0] = vec2fAdd(s_tileUV[0][0], vec2(offsetX, 25/256.f * line));
+		s_tileUV[i][1] = vec2fAdd(s_tileUV[0][1], vec2(offsetX, 25/256.f * line));
+		s_tileUV[i][2] = vec2fAdd(s_tileUV[0][2], vec2(offsetX, 25/256.f * line));
+		s_tileUV[i][3] = vec2fAdd(s_tileUV[0][3], vec2(offsetX, 25/256.f * line));
 
-        tileUV[i+1][0] = vec2fAdd(tileUV[1][0], vec2(offsetX, 25/256.f * line));
-        tileUV[i+1][1] = vec2fAdd(tileUV[1][1], vec2(offsetX, 25/256.f * line));
-        tileUV[i+1][2] = vec2fAdd(tileUV[1][2], vec2(offsetX, 25/256.f * line));
-        tileUV[i+1][3] = vec2fAdd(tileUV[1][3], vec2(offsetX, 25/256.f * line));
+		s_tileUV[i+1][0] = vec2fAdd(s_tileUV[1][0], vec2(offsetX, 25/256.f * line));
+		s_tileUV[i+1][1] = vec2fAdd(s_tileUV[1][1], vec2(offsetX, 25/256.f * line));
+		s_tileUV[i+1][2] = vec2fAdd(s_tileUV[1][2], vec2(offsetX, 25/256.f * line));
+		s_tileUV[i+1][3] = vec2fAdd(s_tileUV[1][3], vec2(offsetX, 25/256.f * line));
     }
 }
 
@@ -59,53 +59,53 @@ void makeTileMesh(TileVertex* mesh, i32 localTileId, f32 x, f32 y, f32 z, u32 co
 
     if(alphaMaskTileId) {
         mesh[0] = TileVertex(0.0 + x, 0.0 + y, z,
-                tileUV[localTileId][1].x, tileUV[localTileId][1].y,
-                tileUV[alphaMaskTileId][1].x, tileUV[alphaMaskTileId][1].y,
+				s_tileUV[localTileId][1].x, s_tileUV[localTileId][1].y,
+				s_tileUV[alphaMaskTileId][1].x, s_tileUV[alphaMaskTileId][1].y,
                 color);
         mesh[1] = TileVertex(1.0 + x, 0.0 + y, z,
-                tileUV[localTileId][2].x, tileUV[localTileId][2].y,
-                tileUV[alphaMaskTileId][2].x, tileUV[alphaMaskTileId][2].y,
+				s_tileUV[localTileId][2].x, s_tileUV[localTileId][2].y,
+				s_tileUV[alphaMaskTileId][2].x, s_tileUV[alphaMaskTileId][2].y,
                 color);
         mesh[2] = TileVertex(1.0 + x, 1.0 + y, z,
-                tileUV[localTileId][3].x, tileUV[localTileId][3].y,
-                tileUV[alphaMaskTileId][3].x, tileUV[alphaMaskTileId][3].y,
+				s_tileUV[localTileId][3].x, s_tileUV[localTileId][3].y,
+				s_tileUV[alphaMaskTileId][3].x, s_tileUV[alphaMaskTileId][3].y,
                 color);
         mesh[3] = TileVertex(0.0 + x, 0.0 + y, z,
-                tileUV[localTileId][1].x, tileUV[localTileId][1].y,
-                tileUV[alphaMaskTileId][1].x, tileUV[alphaMaskTileId][1].y,
+				s_tileUV[localTileId][1].x, s_tileUV[localTileId][1].y,
+				s_tileUV[alphaMaskTileId][1].x, s_tileUV[alphaMaskTileId][1].y,
                 color);
         mesh[4] = TileVertex(1.0 + x, 1.0 + y, z,
-                tileUV[localTileId][3].x, tileUV[localTileId][3].y,
-                tileUV[alphaMaskTileId][3].x, tileUV[alphaMaskTileId][3].y,
+				s_tileUV[localTileId][3].x, s_tileUV[localTileId][3].y,
+				s_tileUV[alphaMaskTileId][3].x, s_tileUV[alphaMaskTileId][3].y,
                 color);
         mesh[5] = TileVertex(0.0 + x, 1.0 + y, z,
-                tileUV[localTileId][0].x, tileUV[localTileId][0].y,
-                tileUV[alphaMaskTileId][0].x, tileUV[alphaMaskTileId][0].y,
+				s_tileUV[localTileId][0].x, s_tileUV[localTileId][0].y,
+				s_tileUV[alphaMaskTileId][0].x, s_tileUV[alphaMaskTileId][0].y,
                 color);
     }
     else {
         mesh[0] = TileVertex(0.0 + x, 0.0 + y, z,
-                tileUV[localTileId][1].x, tileUV[localTileId][1].y,
+				s_tileUV[localTileId][1].x, s_tileUV[localTileId][1].y,
                 -1, -1,
                 color);
         mesh[1] = TileVertex(1.0 + x, 0.0 + y, z,
-                tileUV[localTileId][2].x, tileUV[localTileId][2].y,
+				s_tileUV[localTileId][2].x, s_tileUV[localTileId][2].y,
                 -1, -1,
                 color);
         mesh[2] = TileVertex(1.0 + x, 1.0 + y, z,
-                tileUV[localTileId][3].x, tileUV[localTileId][3].y,
+				s_tileUV[localTileId][3].x, s_tileUV[localTileId][3].y,
                 -1, -1,
                 color);
         mesh[3] = TileVertex(0.0 + x, 0.0 + y, z,
-                tileUV[localTileId][1].x, tileUV[localTileId][1].y,
+				s_tileUV[localTileId][1].x, s_tileUV[localTileId][1].y,
                 -1, -1,
                 color);
         mesh[4] = TileVertex(1.0 + x, 1.0 + y, z,
-                tileUV[localTileId][3].x, tileUV[localTileId][3].y,
+				s_tileUV[localTileId][3].x, s_tileUV[localTileId][3].y,
                 -1, -1,
                 color);
         mesh[5] = TileVertex(0.0 + x, 1.0 + y, z,
-                tileUV[localTileId][0].x, tileUV[localTileId][0].y,
+				s_tileUV[localTileId][0].x, s_tileUV[localTileId][0].y,
                 -1, -1,
                 color);
     }
@@ -234,16 +234,12 @@ inline vec3 posOrthoToIso(vec3 v)
 
 inline vec3 sacred_worldToScreen(vec3 v)
 {
-    return vec3(v.x * 0.89442718 + v.y * -0.89442718,
-                 v.x * 0.44721359 + v.y * 0.44721359,
-                 v.z);
+	return vec3(v.x * 0.89442718 + v.y * -0.89442718, v.x * 0.44721359 + v.y * 0.44721359, v.z);
 }
 
 inline vec3 sacred_screenToWorld(vec3 v)
 {
-    return vec3((v.x * 0.44721359 - v.y * -0.89442718)/* * 1.25*/,
-                 (v.y * 0.89442718 - v.x * 0.44721359)/* * 1.25*/,
-                 v.z);
+	return vec3((v.x * 0.44721359 - v.y * -0.89442718)/* * 1.25*/, (v.y * 0.89442718 - v.x * 0.44721359)/* * 1.25*/, v.z);
 }
 
 void init()
@@ -270,6 +266,8 @@ void init()
         assert(sectorIdMap[gridY * 100 + gridX] == SECTOR_INVALID_ID);
         sectorIdMap[gridY * 100 + gridX] = si.sectorId;
     }
+
+	initTileUVs();
 }
 
 void loadSectorsIfNeeded()
@@ -513,7 +511,7 @@ void ui_all()
 
     ui_tileInspector();
 
-    resources_dbgUi();
+	resources_debugUi();
 
     //ImGui::ShowTestWindow();
 }
@@ -1120,6 +1118,15 @@ unsigned long thread_game(void*)
 		return 1;
 	}
 
+	Game game;
+	pGame = &game;
+
+	if(!resource_init()) {
+		LOG("ERROR: could not init resources");
+		client.isRunning = false;
+		return 1;
+	}
+
 	while(client.isRunning) {
 		bgfx::touch(0);
 
@@ -1133,30 +1140,15 @@ unsigned long thread_game(void*)
 		client.dbgUiNewFrame();
 
 		ImGui::ShowDemoWindow();
+		resources_debugUi();
 
-		client.dbgUiFrameEnd();
-		renderer_renderImgui();
-
-		bgfx::frame();
+		renderer_renderDbgUi();
+		renderer_frame();
 
 		client.swapBuffers();
 	}
 
-	/*
-    initTileUVs();
-
-    renderer_waitForInit();
-
-    Game game;
-    pGame = &game;
-
-	if(!resource_init()) {
-		LOG("ERROR: could not init resources");
-		client.clientRunning = 0;
-		return 1;
-	}
-
-    client.addInputCallback(receiveGameInput, &game);
+	/*client.addInputCallback(receiveGameInput, &game);
     game.init();
 
     dbgDrawInit();

@@ -3,6 +3,8 @@
 #include "rs_file.h"
 #include "rs_game.h"
 
+#include <bgfx/bgfx.h>
+
 // TODO: move all file operations out of here?
 // TODO: Load a range of textures instead of just one
 
@@ -30,8 +32,8 @@ struct GpuSectorMesh
 
 struct GpuResources
 {
-u32 gpuTexDefault;
-u32 texGpuId[MAX_GPU_TEXTURES];
+bgfx::TextureHandle gpuTexDefault;
+bgfx::TextureHandle texGpuId[MAX_GPU_TEXTURES];
 i32 texDiskId[MAX_GPU_TEXTURES];
 i32 texFramesNotRequested[MAX_GPU_TEXTURES];
 AtomicCounter texLoaded[MAX_GPU_TEXTURES];
@@ -46,7 +48,7 @@ bool init()
     memset(texSlotOccupied, 0, sizeof(texSlotOccupied));
     memset(texLoaded, 0, sizeof(texLoaded));
 
-    constexpr i32 texWidth = 16;
+	const i32 texWidth = 16;
     static u32 textureData[texWidth*texWidth];
 
     for(i32 i = 0; i < texWidth*texWidth; ++i) {
@@ -59,7 +61,7 @@ bool init()
         }
     }
 
-    TextureDesc2D desc;
+	/*TextureDesc2D desc;
     desc.internalFormat = GL_RGBA8;
     desc.dataFormat = GL_RGBA;
     desc.dataPixelCompType = GL_UNSIGNED_BYTE;
@@ -72,20 +74,22 @@ bool init()
     desc.magFilter = GL_NEAREST;
 
     frameData = game_getFrameData();
-    frameData->_addTextureCreate(desc, &gpuTexDefault, textureData, sizeof(textureData));
+	frameData->_addTextureCreate(desc, &gpuTexDefault, textureData, sizeof(textureData));*/
+
+	gpuTexDefault = bgfx::createTexture2D(texWidth, texWidth, false, 1, bgfx::TextureFormat::RGBA8, BGFX_SAMPLER_UVW_MIRROR|BGFX_SAMPLER_POINT, bgfx::makeRef((u8*)textureData, texWidth*texWidth*4));
 
     return true;
 }
 
 void destroyTexture(i32 texSlot)
 {
-    if(texGpuId[texSlot] != gpuTexDefault) {
+   /* if(texGpuId[texSlot] != gpuTexDefault) {
         frameData->_addTextureToDestroyList(texGpuId[texSlot]);
     }
     texGpuId[texSlot] = gpuTexDefault;
     texDiskId[texSlot] = 0;
     texLoaded[texSlot].set(0);
-    texSlotOccupied[texSlot] = false;
+	texSlotOccupied[texSlot] = false;*/
 }
 
 void newFrame()
@@ -136,7 +140,7 @@ i32 _occupyNextTextureSlot(i32 pakTexId)
 
 void requestTextures(const i32* inPakTextureIds, u32** outGpuTexHandles, const i32 requestCount)
 {
-    memset(outGpuTexHandles, 0, sizeof(outGpuTexHandles[0]) * requestCount);
+	/*memset(outGpuTexHandles, 0, sizeof(outGpuTexHandles[0]) * requestCount);
 
     // assign already loaded/loading textures
     for(i32 r = 0; r < requestCount; ++r) {
@@ -165,12 +169,12 @@ void requestTextures(const i32* inPakTextureIds, u32** outGpuTexHandles, const i
             // choose one
             texLoaded[newId].set(0);
         }
-    }
+	}*/
 }
 
 void uploadTextures(i32* pakTextureUIDs, PakTextureInfo* textureInfos, u8** textureData, const i32 count)
 {
-    // for all remaining requests create a new gpu texture and assign it
+	/*// for all remaining requests create a new gpu texture and assign it
     for(i32 r = 0; r < count; ++r) {
         const i32 pakTexId = pakTextureUIDs[r];
         i32 gpuId = -1;
@@ -216,7 +220,7 @@ void uploadTextures(i32* pakTextureUIDs, PakTextureInfo* textureInfos, u8** text
 
         texLoaded[gpuId].increment();
         frameData->_addTextureCreate(desc, &texGpuId[gpuId], textureData[r], textureDataSize);
-    }
+	}*/
 }
 
 void deinit()
@@ -324,6 +328,7 @@ enum class LoadStatus: i32 {
 bool init()
 {
     gpu.init();
+	return true;
 
     if(!fileOpenToRead("../sacred_data/texture.pak", &fileTexture)) {
         return false;
@@ -723,9 +728,11 @@ void requestGpuTextures(const i32* pakTextureUIDs, u32** out_gpuHandles, const i
     }
 }
 
-void ui_memory()
+void debugUi()
 {
     ImGui::Begin("Resources memory");
+
+	ImGui::Image(gpu.gpuTexDefault, ImVec2(256, 256));
 
     u64 allocatedSpace, freeSpace;
     textureDataAllocator.getFillInfo(&allocatedSpace, &freeSpace);
@@ -743,130 +750,130 @@ void ui_memory()
 
 
 
-static ResourceManager DR;
+static ResourceManager s_ResourceManager;
 
 bool resource_init()
 {
-    return DR.init();
+	return s_ResourceManager.init();
 }
 
 void resource_deinit()
 {
-    DR.deinit();
+	s_ResourceManager.deinit();
 }
 
 void resource_newFrame()
 {
-    DR.newFrame();
+	s_ResourceManager.newFrame();
 }
 
 void resource_requestTextures(const i32* textureIds, const i32 textureCount)
 {
-    DR.requestTextures(textureIds, textureCount);
+	s_ResourceManager.requestTextures(textureIds, textureCount);
 }
 
 void resource_requestGpuTextures(const i32* textureUIDs, u32** out_gpuHandles, const i32 textureCount)
 {
-    DR.requestGpuTextures(textureUIDs, out_gpuHandles, textureCount);
+	s_ResourceManager.requestGpuTextures(textureUIDs, out_gpuHandles, textureCount);
 }
 
-u32 resource_defaultGpuTexture()
+bgfx::TextureHandle resource_defaultGpuTexture()
 {
-    return DR.gpu.gpuTexDefault;
+	return s_ResourceManager.gpu.gpuTexDefault;
 }
 
 SectorxData* resource_loadSector(i32 sectorId)
 {
-    return DR.loadSectorData(sectorId);
+	return s_ResourceManager.loadSectorData(sectorId);
 }
 
 const SectorInfo& resource_getSectorInfo(i32 sectorId)
 {
-    return DR.getSectorInfo(sectorId);
+	return s_ResourceManager.getSectorInfo(sectorId);
 }
 
 const SectorInfo* resource_getSectorInfoList()
 {
-    return DR.sectorInfo;
+	return s_ResourceManager.sectorInfo;
 }
 
 i32 resource_getSectorCount()
 {
-    return DR.sectorCount;
+	return s_ResourceManager.sectorCount;
 }
 
 u16* resource_getTileTextureIds18()
 {
-    return DR.tileTextureId;
+	return s_ResourceManager.tileTextureId;
 }
 
 i32 resource_getTextureCount()
 {
-    return DR.textureCount;
+	return s_ResourceManager.textureCount;
 }
 
 PakTextureInfo* resource_getTextureInfos()
 {
-    return DR.textureInfo;
+	return s_ResourceManager.textureInfo;
 }
 
 FloorEntry* resource_getFloors()
 {
-    return DR.floors;
+	return s_ResourceManager.floors;
 }
 
 i32 resource_getFloorCount()
 {
-    return DR.floorEntryCount;
+	return s_ResourceManager.floorEntryCount;
 }
 
 i32 resource_getTileCount18()
 {
-    return DR.tileTextureIdCount;
+	return s_ResourceManager.tileTextureIdCount;
 }
 
 PakStatic* resource_getStatic()
 {
-    return DR.statics.data();
+	return s_ResourceManager.statics.data();
 }
 
 PakItemType* resource_getItemTypes()
 {
-    return DR.itemTypes.data();
+	return s_ResourceManager.itemTypes.data();
 }
 
 i32 resource_getStaticCount()
 {
-    return DR.statics.count();
+	return s_ResourceManager.statics.count();
 }
 
 i32 resource_getItemTypesCount()
 {
-    return DR.itemTypes.count();
+	return s_ResourceManager.itemTypes.count();
 }
 
 PakMixedDesc* resource_getMixedDescs()
 {
-    return DR.mixed.desc;
+	return s_ResourceManager.mixed.desc;
 }
 
 i32 resource_getMixedDescsCount()
 {
-    return DR.mixed.descCount;
+	return s_ResourceManager.mixed.descCount;
 }
 
 PakMixedData* resource_getMixedData()
 {
-    return DR.mixed.mixed;
+	return s_ResourceManager.mixed.mixed;
 }
 
 void resource_getWorldOrigin(i32* x, i32* y)
 {
-    *x = DR.worldOriginX;
-    *y = DR.worldOriginY;
+	*x = s_ResourceManager.worldOriginX;
+	*y = s_ResourceManager.worldOriginY;
 }
 
-void resources_dbgUi()
+void resources_debugUi()
 {
-    DR.ui_memory();
+	s_ResourceManager.debugUi();
 }

@@ -519,8 +519,8 @@ bool init()
 	pd.nwh = wmInfo.info.win.window;
 
 	bgfx::Init bgfxInit;
-	bgfxInit.type = bgfx::RendererType::Count; // Automatically choose a renderer.
-	//bgfxInit.type = bgfx::RendererType::Direct3D12; // Automatically choose a renderer.
+	//bgfxInit.type = bgfx::RendererType::Count; // Automatically choose a renderer.
+	bgfxInit.type = bgfx::RendererType::Direct3D12;
 	bgfxInit.resolution.width = client.width;
 	bgfxInit.resolution.height = client.height;
 	bgfxInit.resolution.reset = BGFX_RESET_NONE; // no vsync
@@ -799,7 +799,13 @@ VramInfo renderer_getVramInfo()
     return g_rendererPtr->vramInfo;
 }
 
-void renderer_renderImgui()
+void renderer_renderDbgUi()
 {
+	ImGui::Render();
 	g_rendererPtr->imguiSetup.render(ImGui::GetDrawData());
+}
+
+void renderer_frame()
+{
+	bgfx::frame();
 }

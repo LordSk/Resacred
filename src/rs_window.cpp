@@ -86,13 +86,6 @@ void Window::dbgUiNewFrame()
 #endif
 }
 
-void Window::dbgUiFrameEnd()
-{
-#ifdef CONF_ENABLE_UI
-    ImGui::Render();
-#endif
-}
-
 
 Window* get_clientWindow()
 {

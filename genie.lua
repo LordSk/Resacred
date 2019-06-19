@@ -110,3 +110,15 @@ project "Resacred_client"
 		ZLIB_lib,
 		bgfx_libs
 	}
+
+	configuration {"Release"}
+
+	links {
+		bgfx_libs_release
+	}
+
+	configuration {"Debug"}
+
+	links {
+		bgfx_libs_debug
+	}

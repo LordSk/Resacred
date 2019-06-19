@@ -27,7 +27,6 @@ struct Window
     void addInputCallback(Proc_InputCallback callback, void* userData);
 
 	void dbgUiNewFrame();
-	void dbgUiFrameEnd();
 };
 
 Window* get_clientWindow();
