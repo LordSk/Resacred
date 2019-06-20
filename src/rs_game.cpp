@@ -1156,11 +1156,11 @@ unsigned long thread_game(void*)
 		client.swapBuffers();
 	}
 
+	LOG("Game> cleaning up...");
+	ImGui::DestroyContext();
 	resource_deinit();
 	renderer_cleanUp();
-
-	LOG("Game> cleaning up...");
-	game.deinit();
+	game.deinit();	
 
 	/*dbgDrawInit();
 

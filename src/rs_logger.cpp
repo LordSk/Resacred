@@ -62,20 +62,15 @@ void Logger::logf(u32 typeColor, const char* filename, i32 lineNumber, const cha
     }
     filenameLen -= onlyFileStart;
 
-    logLineStr.append("[", 1);
-
-    logLineStr.appendf("%20s", filename + onlyFileStart);
-    logLineStr.appendf(":%5d", lineNumber);
-
-    logLineStr.append("] ", 2);
+	logLineStr.appendf("[%20s:%5d] ", filename + onlyFileStart, lineNumber);
 
     va_list args;
     va_start(args, format);
-    _formattedLen = vsnprintf(_formatStr, MAX_LINE_SIZE - logLineStr.len() - 1, format, args);
+	_formattedLen = vsnprintf(_formatStr, MAX_LINE_SIZE - logLineStr.len() - 1, format, args);
     va_end(args);
 
     logLineStr.append(_formatStr, _formattedLen);
-    logLineStr.append("\n", 1);
+	logLineStr.append("\n", 1);
 
 /*#ifdef CONF_WINDOWS
     OutputDebugStringA(logLineStr.c_str());

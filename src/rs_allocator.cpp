@@ -105,6 +105,7 @@ MemBlock AllocatorStack::__alloc(const char* filename, i32 line, u64 size, u8 al
             LOG_MEM("[AllocatorStack] allocator full, using fallback instead");
             return _fallback->ALLOC(size, alignment);
         }
+
         return NULL_MEMBLOCK;
     }
 
@@ -191,6 +192,12 @@ void AllocatorStack::__dealloc(const char* filename, i32 line, MemBlock block)
         return;
     }
 
+	if(!owns(block)) {
+		if(_fallback) {
+			_fallback->dealloc(block);
+		}
+	}
+
     LOG_MEM("[AllocatorStack] %s:%d dealloc(%#x, %d)", filename, line, block.ptr, block.size);
 
     u64 marker = (intptr_t)block.notaligned - (intptr_t)_block.ptr;
@@ -198,10 +205,9 @@ void AllocatorStack::__dealloc(const char* filename, i32 line, MemBlock block)
     _topStackMarker = marker;
 }
 
-void AllocatorStack::deallocTo(u64 marker, const char* filename, i32 line)
+void AllocatorStack::deallocTo(u64 marker)
 {
     assert(marker < _block.size);
-    LOG_MEM("[AllocatorStack] %s:%d deallocTo(%llu)", filename, line, marker);
     _topStackMarker = marker;
 }
 
@@ -215,8 +221,13 @@ void AllocatorBucket::init(MemBlock fromBlock, u64 bucketSize, u8 alignment)
 
 	i32 maxBuckets = fromBlock.size / bucketSize;
 	while(maxBuckets > 0) {
-		MemBlock bytefield = stack.ALLOC(maxBuckets);
-		MemBlock fsBlocks = stack.ALLOC(maxBuckets * bucketSize, alignment);
+		MemBlock bytefield;
+		MemBlock fsBlocks;
+
+		if((maxBuckets * sizeof(u8) + maxBuckets * bucketSize) < fromBlock.size) {
+			bytefield = stack.ALLOC(maxBuckets);
+			fsBlocks = stack.ALLOC(maxBuckets * bucketSize, alignment);
+		}
 
 		if(bytefield.isValid() && fsBlocks.isValid()) {
 			_bytefield = (u8*)bytefield.ptr;
@@ -297,10 +308,9 @@ MemBlock AllocatorBucket::__alloc(const char* filename, i32 line, u64 size, u8 a
         }
     }
 
-	assert_msg(0, "AllocatorBucket allocation failed");
-
 	if(_fallback) {
-		return _fallback->__alloc(filename, line, size, alignment);
+		LOG_MEM("[AllocatorBucket] %s:%d allocator full, using fallback instead", filename, line);
+		return _fallback->ALLOC(size, alignment);
 	}
 
 	assert(0); // should never be reached
@@ -390,9 +400,16 @@ MemBlock AllocatorBucket::__realloc(const char* filename, i32 line, MemBlock blo
 
 void AllocatorBucket::__dealloc(const char* filename, i32 line, MemBlock block)
 {
-    if(!block.ptr || !block.notaligned || block.size == 0 || !owns(block)) {
+	if(!block.ptr || !block.notaligned || block.size == 0) {
         return;
     }
+
+	if(!owns(block)) {
+		if(_fallback) {
+			_fallback->dealloc(block);
+		}
+		return;
+	}
 
     u64 uaSize = block.unalignedSize();
 

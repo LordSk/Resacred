@@ -124,7 +124,7 @@ struct AllocatorStack: public IAllocator
      * @param line
      * @param block
      */
-    void deallocTo(u64 marker, const char* filename = "unknown_file", i32 line = -1);
+	void deallocTo(u64 marker);
 
     /**
      * @brief Returns top marker. Doubles as a "how much memory are we using"

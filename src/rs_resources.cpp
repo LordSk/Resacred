@@ -256,7 +256,7 @@ void debugUi()
 
 #define FILE_RING_BUFFER_SIZE Megabyte(200)
 #define TEXTURE_CACHE_SIZE Megabyte(300)
-#define TEXTURE_TEMP_SIZE Megabyte(5)
+#define TEXTURE_TEMP_READ_SIZE Megabyte(5)
 #define FRAME_MAX_PROCESSING_COUNT 24
 
 /*
@@ -283,10 +283,9 @@ MemBlock fileRingData;
 u8* textureRamCache;
 MemBlock textureRamCacheBlock;
 intptr_t fileRingCursor = 0;
-AllocatorBucket textureDataAllocator;
+AllocatorBucket textureRamCacheAllocator;
 
-u8* tempTextureBuff;
-MemBlock tempTextureBuffBlock;
+MemBlock texTempReadBlock;
 
 GpuResources gpu;
 
@@ -379,14 +378,11 @@ bool loadTexturePak()
 	LOG_DBG("Resource> textureRamCache=%lldMB fileRingData=%lldMB",
 			(TEXTURE_CACHE_SIZE)/(1024*1024), FILE_RING_BUFFER_SIZE/(1024*1024));
 
-	MemBlock textureRawDataBlock;
-	textureRawDataBlock.ptr = textureRamCache;
-	textureRawDataBlock.size = TEXTURE_CACHE_SIZE;
-	textureDataAllocator.init(textureRawDataBlock, 2048);
+	// setup bucket allocator
+	textureRamCacheAllocator.init(textureRamCacheBlock, 2048);
 
-	tempTextureBuffBlock = MEM_ALLOC(TEXTURE_TEMP_SIZE);
-	assert(tempTextureBuffBlock.ptr);
-	tempTextureBuff = (u8*)tempTextureBuffBlock.ptr;
+	texTempReadBlock = MEM_ALLOC(TEXTURE_TEMP_READ_SIZE);
+	assert(texTempReadBlock.isValid());
 
 	PakHeader header;
 	fileReadAdvance(&fileTexturePak, sizeof(header), &header);
@@ -397,7 +393,7 @@ bool loadTexturePak()
 			sizeof(*textureDiskLoadStatus) +
 			sizeof(*textureDataBlock) + sizeof(*textureInfo) + sizeof(*textureGpuUpload) +
 			sizeof(*textureAge)) * textureCount);
-	assert(textureMetaBlock.ptr);
+	assert(textureMetaBlock.isValid());
 
 	LOG_DBG("Resource> textureMetaBlock size=%lldkb", textureMetaBlock.size/1024);
 
@@ -411,7 +407,7 @@ bool loadTexturePak()
 
 	i64 fileOffsetsSize = textureCount * sizeof(PakSubFileDesc);
 	MemBlock b = MEM_ALLOC(fileOffsetsSize);
-	assert(b.ptr);
+	assert(b.isValid());
 
 	PakSubFileDesc* fileOffsets = (PakSubFileDesc*)b.ptr;
 	fileReadAdvance(&fileTexturePak, fileOffsetsSize, fileOffsets);
@@ -586,7 +582,7 @@ void deinit()
 {
     MEM_DEALLOC(textureMetaBlock);
 	MEM_DEALLOC(textureRamCacheBlock);
-    MEM_DEALLOC(tempTextureBuffBlock);
+	MEM_DEALLOC(texTempReadBlock);
     MEM_DEALLOC(tileTextureIdBlock);
     MEM_DEALLOC(sectorInfoBlock);
     MEM_DEALLOC(sectorDataBlock);
@@ -620,16 +616,15 @@ void newFrame()
             //LOG("Resource> texId=%d file loaded", i);
             i32 width, height, type, textureSize;
             char name[32];
-            pak_textureRead((char*)textureDataBlock[i].ptr, textureDataBlock[i].size,
-                            &width, &height, &type, tempTextureBuff, &textureSize, name);
-            assert(textureSize < TEXTURE_TEMP_SIZE);
+			pak_textureRead((char*)textureDataBlock[i].ptr, textureDataBlock[i].size, &width, &height, &type, (u8*)texTempReadBlock.ptr, &textureSize, name);
+			assert(textureSize < TEXTURE_TEMP_READ_SIZE);
 
-            textureDataBlock[i] = textureDataAllocator.ALLOC(textureSize);
+			textureDataBlock[i] = textureRamCacheAllocator.ALLOC(textureSize);
             if(!textureDataBlock[i].ptr) {
                 // evict old texture data
                 textureDataBlock[i] = evictTextureAllocNewBlock(textureSize);
             }
-            memmove(textureDataBlock[i].ptr, tempTextureBuff, textureSize);
+			memmove(textureDataBlock[i].ptr, texTempReadBlock.ptr, textureSize);
 
             PakTextureInfo& info = textureInfo[i];
             info.width = width;
@@ -694,7 +689,7 @@ MemBlock evictTextureAllocNewBlock(i64 size)
         textureAge[oldestTexture] = 0;
 
         // try to alloc new texture
-        MemBlock b = textureDataAllocator.ALLOC(size);
+		MemBlock b = textureRamCacheAllocator.ALLOC(size);
         if(b.ptr) {
             //LOG_DBG("Resource> textures evicted = %d", tries+1);
             return b;
@@ -746,7 +741,7 @@ void debugUi()
 	ImGui::Image(gpu.gpuTexDefault, ImVec2(256, 256));
 
     u64 allocatedSpace, freeSpace;
-    textureDataAllocator.getFillInfo(&allocatedSpace, &freeSpace);
+	textureRamCacheAllocator.getFillInfo(&allocatedSpace, &freeSpace);
 
     ImGui::Text("Texture allocator");
     ImGui::Text("(%lld Ko / %lld Ko)", allocatedSpace/1024, (allocatedSpace+freeSpace)/1024);
