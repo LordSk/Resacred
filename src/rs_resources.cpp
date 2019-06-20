@@ -2,6 +2,7 @@
 #include "rs_renderer.h"
 #include "rs_file.h"
 #include "rs_game.h"
+#include "lucy.h"
 
 #include <bgfx/bgfx.h>
 
@@ -324,40 +325,104 @@ enum class LoadStatus: i32 {
     FILE_LOADING,
 };
 
+AtomicCounter jobsSuccessfullCount;
+
 bool init()
 {
     gpu.init();
 
+#if 1
 	if(!loadTexturePak()) {
 		return false;
 	}
 
-    if(!loadTileTextureIds()) {
-        return false;
-    }
+	if(!loadTileTextureIds()) {
+		return false;
+	}
 
-    if(!loadSectorKeyx()) {
-        return false;
-    }
+	if(!loadSectorKeyx()) {
+		return false;
+	}
 
-    if(!loadFloorData()) {
-        return false;
-    }
+	if(!loadFloorData()) {
+		return false;
+	}
 
-    if(!pak_mixedRead(&mixed)) {
-        return false;
-    }
+	if(!pak_mixedRead(&mixed)) {
+		return false;
+	}
 
-    if(!pak_staticRead("../sacred_data/Static.pak", &statics)) {
-        return false;
-    }
+	if(!pak_staticRead("../sacred_data/Static.pak", &statics)) {
+		return false;
+	}
 
-    if(!pak_itemRead("../sacred_data/items.pak", &itemTypes)) {
-        return false;
-    }
+	if(!pak_itemRead("../sacred_data/items.pak", &itemTypes)) {
+		return false;
+	}
+#else
+	lucy::SignalHandle finished = lucy::INVALID_HANDLE;
+	jobsSuccessfullCount.reset();
+
+	lucy::run(this, [](void* data) {
+		ResourceManager& rThis = *(ResourceManager*)data;
+		if(rThis.loadTexturePak()) {
+			rThis.jobsSuccessfullCount.increment();
+		}
+	}, &finished);
+
+	lucy::run(this, [](void* data) {
+		ResourceManager& rThis = *(ResourceManager*)data;
+		if(rThis.loadTileTextureIds()) {
+			rThis.jobsSuccessfullCount.increment();
+		}
+	}, &finished);
+
+	lucy::run(this, [](void* data) {
+		ResourceManager& rThis = *(ResourceManager*)data;
+		if(rThis.loadSectorKeyx()) {
+			rThis.jobsSuccessfullCount.increment();
+		}
+	}, &finished);
+
+	lucy::run(this, [](void* data) {
+		ResourceManager& rThis = *(ResourceManager*)data;
+		if(rThis.loadFloorData()) {
+			rThis.jobsSuccessfullCount.increment();
+		}
+	}, &finished);
+
+	lucy::run(this, [](void* data) {
+		ResourceManager& rThis = *(ResourceManager*)data;
+		if(pak_mixedRead(&rThis.mixed)) {
+			rThis.jobsSuccessfullCount.increment();
+		}
+	}, &finished);
+
+	lucy::run(this, [](void* data) {
+		ResourceManager& rThis = *(ResourceManager*)data;
+		if(pak_staticRead("../sacred_data/Static.pak", &rThis.statics)) {
+			rThis.jobsSuccessfullCount.increment();
+		}
+	}, &finished);
+
+	lucy::run(this, [](void* data) {
+		ResourceManager& rThis = *(ResourceManager*)data;
+		if(pak_itemRead("../sacred_data/items.pak", &rThis.itemTypes)) {
+			rThis.jobsSuccessfullCount.increment();
+		}
+	}, &finished);
+
+	//lucy::wait(finished); // wait for all jobs to finish
+	while(jobsSuccessfullCount.get() != 7) {
+		_mm_pause();
+	}
+
+	if(jobsSuccessfullCount.get() != 7) {
+		return false;
+	}
+#endif
 
     LOG_SUCC("Resource> initialized");
-
     return true;
 }
 

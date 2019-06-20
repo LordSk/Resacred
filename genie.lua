@@ -82,7 +82,8 @@ solution "Resacred"
     }
 	
 	-- disable exception related warnings
-	buildoptions{ "/wd4577", "/wd4530", "/std:c++14" }
+	-- c++17 is needed for lucy
+	buildoptions{ "/wd4577", "/wd4530", "/std:c++17" }
 	
 
 project "Resacred_client"

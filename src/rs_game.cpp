@@ -466,10 +466,12 @@ void ui_frameGraph()
     static f32 gameFtStack[1000] = {0};
     memmove(rdrFtStack + 1, rdrFtStack, sizeof(rdrFtStack) - sizeof(rdrFtStack[0]));
     memmove(gameFtStack + 1, gameFtStack, sizeof(gameFtStack) - sizeof(gameFtStack[0]));
-    rdrFtStack[0] = renderer_getFrameTime() * 1000.0;
+
+	const bgfx::Stats* pStats = bgfx::getStats();
+	rdrFtStack[0] = (pStats->gpuTimeEnd - pStats->gpuTimeBegin)/(double)pStats->gpuTimerFreq * 1000.0;
     gameFtStack[0] = frameTime * 1000.0;
 
-    if(!dbgShowFrameGraph) return;
+	//if(!dbgShowFrameGraph) return;
 
     ImGui::Begin("Frame graph");
 
@@ -1106,7 +1108,7 @@ static void ImGuiCopyFrameData(RendererFrameData* frame)
 
 unsigned long thread_game(void*)
 {
-    LOG("thread_game started [%x]", threadGetId());
+	LOG("thread_game started [%x]", threadGetId());
 
     LOG("Game> initialization...");
     Window& client = *get_clientWindow();
@@ -1130,6 +1132,8 @@ unsigned long thread_game(void*)
 	client.addInputCallback(receiveGameInput, &game);
 
 	while(client.isRunning) {
+		auto t0 = timeNow();
+
 		game.processInput();
 		resource_newFrame();
 
@@ -1143,17 +1147,20 @@ unsigned long thread_game(void*)
 
 		const bgfx::Stats* stats = bgfx::getStats();
 		bgfx::dbgTextPrintf(0, 2, 0x0e, "GPU Memory: [%.1f%%] %llu / %llu (MB)", stats->gpuMemoryUsed / (f64)stats->gpuMemoryMax, stats->gpuMemoryUsed/(1024*1024), stats->gpuMemoryMax/(1024*1024));
+		bgfx::dbgTextPrintf(0, 3, 0x0c, "GPU frametime: %.5f", (stats->gpuTimeEnd-stats->gpuTimeBegin)/(double)stats->gpuTimerFreq);
 
 		client.dbgUiNewFrame();
 
 		ImGui::ShowDemoWindow();
 		resources_debugUi();
 		game.ui_textureBrowser();
+		game.ui_frameGraph();
 
 		renderer_renderDbgUi();
 		renderer_frame();
 
 		client.swapBuffers();
+		game.frameTime = timeDurSince(t0);
 	}
 
 	LOG("Game> cleaning up...");
