@@ -156,7 +156,7 @@ bool fileOpenToRead(const char* path, DiskFile* file)
 							   0 /*FILE_SHARE_READ*/, // TODO: change this to 0
                                NULL,
                                OPEN_EXISTING,
-                               FILE_ATTRIBUTE_READONLY,
+							   FILE_ATTRIBUTE_READONLY|FILE_FLAG_OVERLAPPED,
                                NULL);
 
     if(hFile != INVALID_HANDLE_VALUE) {
@@ -187,28 +187,25 @@ void fileClose(DiskFile* file)
 #endif
 }
 
-
 void fileReadFromPos(const DiskFile* file, i64 from, i64 size, void* dest)
 {
 #ifdef CONF_WINDOWS
     assert(file->handle);
     assert(dest);
 
-    // move cursor to pos
-    LARGE_INTEGER dist;
-    dist.QuadPart = from;
-    BOOL r = SetFilePointerEx(file->handle, dist, NULL, FILE_BEGIN);
-    assert(r);
-
     // read
-    DWORD unused;
-    r = ReadFile(file->handle, dest, size, &unused, NULL);
-    assert(r);
+	OVERLAPPED overlapped;
+	memset(&overlapped, 0, sizeof(overlapped));
+	overlapped.Pointer = (void*)from;
+	overlapped.hEvent = CreateEventA(NULL, TRUE, FALSE, NULL);
 
-    // move back cursor
-    dist.QuadPart = file->cursor;
-    r = SetFilePointerEx(file->handle, dist, NULL, FILE_BEGIN);
-    assert(r);
+    DWORD unused;
+	BOOL r = ReadFile(file->handle, dest, size, NULL, &overlapped);
+	if(!r && GetLastError() != ERROR_IO_PENDING) {
+		LOG_ERR("ERROR: reading file '%s' (%d)", file->path, GetLastError());
+		assert_msg(0, "Error reading file");
+	}
+	GetOverlappedResult(file->handle, &overlapped, &unused, TRUE);
 #endif
 }
 
@@ -218,12 +215,18 @@ void fileReadAdvance(DiskFile* file, i64 size, void* dest)
     assert(file->handle);
     assert(dest);
 
-    DWORD unused;
-    BOOL r = ReadFile(file->handle, dest, size, &unused, NULL); // advances file pointer
-    if(!r) {
-        LOG_ERR("ERROR: reading file '%s' (%d)", file->path, GetLastError());
-    }
-    assert(r);
+	DWORD unused;
+	OVERLAPPED overlapped;
+	memset(&overlapped, 0, sizeof(overlapped));
+	overlapped.Offset = file->cursor;
+	overlapped.hEvent = CreateEventA(NULL, TRUE, FALSE, NULL);
+
+	BOOL r = ReadFile(file->handle, dest, size, NULL, &overlapped); // advances file pointer
+	if(!r && GetLastError() != ERROR_IO_PENDING) {
+		LOG_ERR("ERROR: reading file '%s' (%d)", file->path, GetLastError());
+		assert_msg(0, "Error reading file");
+	}
+	GetOverlappedResult(file->handle, &overlapped, &unused, TRUE);
 
     file->cursor += size;
 #endif
@@ -234,7 +237,7 @@ AsyncFileRequest fileAsyncReadAbsolute(const DiskFile* file, i64 start, i64 size
 {
     assert(((i64)start + size) < file->size);
     assert(out);
-#if 1
+#if 0
     return AFQ->newRequest(FileReqType::READ_ABSOLUTE, (DiskFile*)file, (u8*)start, size, out, counter);
 #else
 	struct JobData {
@@ -244,6 +247,8 @@ AsyncFileRequest fileAsyncReadAbsolute(const DiskFile* file, i64 start, i64 size
 		u8* out;
 		Mutex* pMutex;
 		AllocatorPool* pParentPool;
+		AtomicCounter* pCounter;
+		MemBlock block;
 	};
 
 	static AllocatorPool g_jobDataPool;
@@ -256,23 +261,22 @@ AsyncFileRequest fileAsyncReadAbsolute(const DiskFile* file, i64 start, i64 size
 
 	static Mutex mutex;
 	mutex.lock();
-	JobData* jd = (JobData*)g_jobDataPool.ALLOC(sizeof(JobData)).ptr;
+	MemBlock jdBlock = g_jobDataPool.ALLOC(sizeof(JobData));
+	JobData* jd = (JobData*)jdBlock.ptr;
 	mutex.unlock();
-	assert(jd);
+	assert(jdBlock.isValid());
 
-	*jd = JobData{file, start, size, out, &mutex, &g_jobDataPool};
+	*jd = JobData{file, start, size, out, &mutex, &g_jobDataPool, counter, jdBlock};
 
 	jobRun(jd, [](void* pData) {
 		JobData data = *(JobData*)pData;
 
 		fileReadFromPos(data.file, data.start, data.size, data.out);
 
-		MemBlock block;
-		block.ptr = pData;
-		block.size = sizeof(JobData);
 		data.pMutex->lock();
-		data.pParentPool->dealloc(block);
+		data.pParentPool->dealloc(data.block);
 		data.pMutex->unlock();
+		data.pCounter->decrement();
 	}, counter);
 
 	return {};

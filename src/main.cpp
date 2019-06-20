@@ -47,10 +47,10 @@ i32 main()
 
 	auto threadGame = threadCreate(thread_game, nullptr);
 	// TODO: remove file IO thread, use a job system instead
-	auto threadFileIO = threadCreate(thread_fileIO, nullptr);
+	//auto threadFileIO = threadCreate(thread_fileIO, nullptr);
     const i32 procCount = threadGetLogicalProcessorCount();
 	threadSetProcessorAffinity(threadGame, 1);
-	threadSetProcessorAffinity(threadFileIO, 2);
+	//threadSetProcessorAffinity(threadFileIO, 2);
 
 
 	while(client.isRunning) {
@@ -60,7 +60,7 @@ i32 main()
 	client.cleanup();
 
 	threadWaitForClose(&threadGame);
-	threadWaitForClose(&threadFileIO);
+	//threadWaitForClose(&threadFileIO);
 
 	//lucy::shutdown();
 	jobSystemShutdown();

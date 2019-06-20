@@ -844,8 +844,12 @@ void requestTextures(const i32* pakTextureUIDs, const i32 requestCount)
             textureDataBlock[texUID].ptr = fileRingAlloc(size);
             textureDataBlock[texUID].size = size;
 
-			fileAsyncReadAbsolute(&fileTexturePak, textureFileOffset[texUID], size,
-					(u8*)textureDataBlock[texUID].ptr, &textureDiskLoadStatus[texUID]);
+			fileAsyncReadAbsolute(&fileTexturePak, textureFileOffset[texUID], size, (u8*)textureDataBlock[texUID].ptr, &textureDiskLoadStatus[texUID]);
+
+			// FIXME: remove this
+			while(textureDiskLoadStatus[texUID].get() != (i32)LoadStatus::FILE_LOADED) {
+				_mm_pause();
+			}
         }
 	}
 }
