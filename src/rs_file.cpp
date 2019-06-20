@@ -6,6 +6,7 @@
 #include <sys/stat.h>
 #include <stdio.h>
 #include "zlib.h"
+#include "rs_jobs.h"
 
 enum class FileReqType: i32 {
     INVALID = 0,
@@ -151,8 +152,8 @@ bool fileOpenToRead(const char* path, DiskFile* file)
 {
 #ifdef CONF_WINDOWS
     HANDLE hFile = CreateFileA(path,
-                               GENERIC_READ,
-                               0 /*FILE_SHARE_READ*/, // TODO: change this to 0
+							   GENERIC_READ,
+							   0 /*FILE_SHARE_READ*/, // TODO: change this to 0
                                NULL,
                                OPEN_EXISTING,
                                FILE_ATTRIBUTE_READONLY,
@@ -179,9 +180,10 @@ bool fileOpenToRead(const char* path, DiskFile* file)
 void fileClose(DiskFile* file)
 {
 #ifdef CONF_WINDOWS
-    assert(file->handle);
-    CloseHandle(file->handle);
-    file->handle = 0;
+	if(file->handle) {
+		CloseHandle(file->handle);
+		file->handle = 0;
+	}
 #endif
 }
 
@@ -232,7 +234,49 @@ AsyncFileRequest fileAsyncReadAbsolute(const DiskFile* file, i64 start, i64 size
 {
     assert(((i64)start + size) < file->size);
     assert(out);
+#if 1
     return AFQ->newRequest(FileReqType::READ_ABSOLUTE, (DiskFile*)file, (u8*)start, size, out, counter);
+#else
+	struct JobData {
+		const DiskFile* file;
+		i64 start;
+		i64 size;
+		u8* out;
+		Mutex* pMutex;
+		AllocatorPool* pParentPool;
+	};
+
+	static AllocatorPool g_jobDataPool;
+	static bool once = true;
+	if(once) {
+		once = false;
+		MemBlock block = MEM_ALLOC(sizeof(JobData) * 1024);
+		g_jobDataPool.init(block, sizeof(JobData));
+	}
+
+	static Mutex mutex;
+	mutex.lock();
+	JobData* jd = (JobData*)g_jobDataPool.ALLOC(sizeof(JobData)).ptr;
+	mutex.unlock();
+	assert(jd);
+
+	*jd = JobData{file, start, size, out, &mutex, &g_jobDataPool};
+
+	jobRun(jd, [](void* pData) {
+		JobData data = *(JobData*)pData;
+
+		fileReadFromPos(data.file, data.start, data.size, data.out);
+
+		MemBlock block;
+		block.ptr = pData;
+		block.size = sizeof(JobData);
+		data.pMutex->lock();
+		data.pParentPool->dealloc(block);
+		data.pMutex->unlock();
+	}, counter);
+
+	return {};
+#endif
 }
 
 

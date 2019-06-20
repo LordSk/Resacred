@@ -130,7 +130,7 @@ i32 _occupyNextTextureSlot(i32 pakTexId)
     i32 oldestId = -1;
     for(i32 i = 0; i < MAX_GPU_TEXTURES; ++i) {
         if(texSlotOccupied[i] && texFramesNotRequested[i] > oldestFrameCount &&
-           texLoaded[i].get() == 1) {
+		   texLoaded[i].get() == 1) {
             oldestId = i;
             oldestFrameCount = texFramesNotRequested[i];
         }
@@ -320,10 +320,10 @@ Array<PakItemType> itemTypes;
 PakMixedFileData mixed;
 
 enum class LoadStatus: i32 {
-    NONE = 0,
-    PROCESSED,
-    FILE_LOADED,
-    FILE_LOADING,
+	NONE = 0,
+	PROCESSED,
+	FILE_LOADED,
+	FILE_LOADING,
 };
 
 AtomicCounter jobsSuccessfullCount;
@@ -740,7 +740,7 @@ void newFrame()
     // decompress texture if necessary and upload them to the gpu (if requested)
     i32 workDoneCount = 0;
     for(i32 i = 0; i < textureCount && workDoneCount < FRAME_MAX_PROCESSING_COUNT; ++i) {
-        if((LoadStatus)textureDiskLoadStatus[i].get() == LoadStatus::FILE_LOADED) {
+		if((LoadStatus)textureDiskLoadStatus[i].get() == LoadStatus::FILE_LOADED) {
             //LOG("Resource> texId=%d file loaded", i);
             i32 width, height, type, textureSize;
             char name[32];
@@ -837,7 +837,7 @@ void requestTextures(const i32* pakTextureUIDs, const i32 requestCount)
 
         if((LoadStatus)textureDiskLoadStatus[texUID].get() == LoadStatus::NONE &&
            textureDataBlock[texUID].ptr == nullptr) {
-            textureDiskLoadStatus[texUID].set((i32)LoadStatus::FILE_LOADING);
+			textureDiskLoadStatus[texUID].set((i32)LoadStatus::FILE_LOADING);
 
             i32 size = textureFileSize[texUID] + sizeof(PakTextureHeader);
             assert(size > 0);
@@ -845,7 +845,7 @@ void requestTextures(const i32* pakTextureUIDs, const i32 requestCount)
             textureDataBlock[texUID].size = size;
 
 			fileAsyncReadAbsolute(&fileTexturePak, textureFileOffset[texUID], size,
-                    (u8*)textureDataBlock[texUID].ptr, &textureDiskLoadStatus[texUID]);
+					(u8*)textureDataBlock[texUID].ptr, &textureDiskLoadStatus[texUID]);
         }
 	}
 }

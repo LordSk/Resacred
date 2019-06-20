@@ -55,7 +55,7 @@ struct AsyncFileRequest
     i32 requestUID;
 };
 
-AsyncFileRequest fileAsyncReadAbsolute(const DiskFile* file, i64 start, i64 size, u8* out, AtomicCounter* counter);
+AsyncFileRequest fileAsyncReadAbsolute(const DiskFile *file, i64 start, i64 size, u8* out, AtomicCounter* counter);
 
 
 

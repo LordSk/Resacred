@@ -35,7 +35,7 @@ unsigned long workerThread(void* pData)
 
 	while(js.running) {
 		js.queueMutex.lock();
-		js.queueCv.SleepUntilWokenUpTime(&js.queueMutex, 500);
+		js.queueCv.SleepUntilWokenUp(&js.queueMutex);
 
 		if(js.queue.count() > 0) {
 			// pop last
@@ -50,6 +50,9 @@ unsigned long workerThread(void* pData)
 			task.pSignal->decrement();
 
 			LOG_SUCC("[JobSystem] wid=%d tid=%x jobId=%d JOB DONE", wtd.id, tid, task.id);
+		}
+		else {
+			js.queueMutex.unlock();
 		}
 	}
 
