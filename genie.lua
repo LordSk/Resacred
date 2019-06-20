@@ -33,6 +33,7 @@ solution "Resacred"
 		targetsuffix "_release"
 		flags {
 			"Optimize",
+			"Symbols",
 			"NoBufferSecurityCheck"
 		}
 		defines {

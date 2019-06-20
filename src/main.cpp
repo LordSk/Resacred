@@ -12,6 +12,7 @@
 #include "rs_game.h"
 #include "rs_file.h"
 #include "lucy.h"
+#include "rs_jobs.h"
 
 /*
  * MAIN THREAD
@@ -38,16 +39,19 @@ i32 main()
     Window& client = *init_clientWindow();
     client.create(1600, 900);
 
-	/*const i32 workerCount = MAX(threadGetLogicalProcessorCount() - 2, 1);
-	LOG("lucy job system: workerCount=%d", workerCount);
+	const i32 workerCount = MAX(threadGetLogicalProcessorCount() - 3, 1);
+	/*LOG("lucy job system: workerCount=%d", workerCount);
 	lucy::init(workerCount);*/
+	LOG("job system: workerCount=%d", workerCount);
+	jobSystemInit(workerCount);
 
 	auto threadGame = threadCreate(thread_game, nullptr);
 	// TODO: remove file IO thread, use a job system instead
 	auto threadFileIO = threadCreate(thread_fileIO, nullptr);
     const i32 procCount = threadGetLogicalProcessorCount();
-    threadSetProcessorAffinity(threadGame, procCount-2);
-	threadSetProcessorAffinity(threadFileIO, procCount-3);
+	threadSetProcessorAffinity(threadGame, 1);
+	threadSetProcessorAffinity(threadFileIO, 2);
+
 
 	while(client.isRunning) {
 		client.handleInput();
@@ -59,6 +63,7 @@ i32 main()
 	threadWaitForClose(&threadFileIO);
 
 	//lucy::shutdown();
+	jobSystemShutdown();
 
     SDL_Quit();
 

@@ -3,6 +3,7 @@
 #include "rs_file.h"
 #include "rs_game.h"
 #include "lucy.h"
+#include "rs_jobs.h"
 
 #include <bgfx/bgfx.h>
 
@@ -331,7 +332,9 @@ bool init()
 {
     gpu.init();
 
-#if 1
+	auto t0 = timeNow();
+
+#if 0
 	if(!loadTexturePak()) {
 		return false;
 	}
@@ -360,6 +363,65 @@ bool init()
 		return false;
 	}
 #else
+	AtomicCounter finished;
+	jobsSuccessfullCount.reset();
+
+	jobRun(this, [](void* data) {
+		ResourceManager& rThis = *(ResourceManager*)data;
+		if(rThis.loadTexturePak()) {
+			rThis.jobsSuccessfullCount.increment();
+		}
+	}, &finished);
+
+	jobRun(this, [](void* data) {
+		ResourceManager& rThis = *(ResourceManager*)data;
+		if(rThis.loadTileTextureIds()) {
+			rThis.jobsSuccessfullCount.increment();
+		}
+	}, &finished);
+
+	jobRun(this, [](void* data) {
+		ResourceManager& rThis = *(ResourceManager*)data;
+		if(rThis.loadSectorKeyx()) {
+			rThis.jobsSuccessfullCount.increment();
+		}
+	}, &finished);
+
+	jobRun(this, [](void* data) {
+		ResourceManager& rThis = *(ResourceManager*)data;
+		if(rThis.loadFloorData()) {
+			rThis.jobsSuccessfullCount.increment();
+		}
+	}, &finished);
+
+	jobRun(this, [](void* data) {
+		ResourceManager& rThis = *(ResourceManager*)data;
+		if(pak_mixedRead(&rThis.mixed)) {
+			rThis.jobsSuccessfullCount.increment();
+		}
+	}, &finished);
+
+	jobRun(this, [](void* data) {
+		ResourceManager& rThis = *(ResourceManager*)data;
+		if(pak_staticRead("../sacred_data/Static.pak", &rThis.statics)) {
+			rThis.jobsSuccessfullCount.increment();
+		}
+	}, &finished);
+
+	jobRun(this, [](void* data) {
+		ResourceManager& rThis = *(ResourceManager*)data;
+		if(pak_itemRead("../sacred_data/items.pak", &rThis.itemTypes)) {
+			rThis.jobsSuccessfullCount.increment();
+		}
+	}, &finished);
+
+	//lucy::wait(finished); // wait for all jobs to finish
+	jobWait(&finished);
+
+	if(jobsSuccessfullCount.get() != 7) {
+		return false;
+	}
+#if 0
 	lucy::SignalHandle finished = lucy::INVALID_HANDLE;
 	jobsSuccessfullCount.reset();
 
@@ -421,8 +483,9 @@ bool init()
 		return false;
 	}
 #endif
+#endif
 
-    LOG_SUCC("Resource> initialized");
+	LOG_SUCC("Resource> initialized (%.5fs)", timeDurSince(t0));
     return true;
 }
 

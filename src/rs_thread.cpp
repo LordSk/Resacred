@@ -3,25 +3,25 @@
 #include <thread>
 
 #ifdef _WIN32
+	#define WIN32_LEAN_AND_MEAN
     #include <windows.h>
 #endif
 
-
-void* threadCreate(ThreadFuncType func, void* pUserData)
+ThreadHandle threadCreate(ThreadFuncType func, void* pUserData)
 {
 #ifdef _WIN32
     return CreateThread(0, 0, (LPTHREAD_START_ROUTINE)func, pUserData, 0, nullptr);
 #endif
 }
 
-void threadClose(void* thread)
+void threadClose(ThreadHandle thread)
 {
 #ifdef _WIN32
     TerminateThread(thread, 0);
 #endif
 }
 
-void threadWaitForClose(void** threads, i32 count)
+void threadWaitForClose(ThreadHandle *threads, i32 count)
 {
 #ifdef _WIN32
     WaitForMultipleObjects(count, threads, true, INFINITE);
@@ -47,7 +47,7 @@ i32 threadGetLogicalProcessorCount()
     return std::thread::hardware_concurrency();
 }
 
-void threadSetProcessorAffinity(void* threadHandle, i32 procId)
+void threadSetProcessorAffinity(ThreadHandle threadHandle, i32 procId)
 {
 #ifdef _WIN32
     DWORD_PTR mask = 1 << procId;

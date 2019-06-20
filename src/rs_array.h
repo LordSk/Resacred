@@ -210,6 +210,10 @@ struct Array
         return Iter<T>(_data);
     }
 
+	inline Iter<T> last() {
+		return Iter<T>(_data + _count - 1);
+	}
+
     inline Iter<T> end() {
         return Iter<T>(_data + _count);
     }
