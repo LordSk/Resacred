@@ -90,9 +90,9 @@ void destroyTexture(i32 texSlot)
 		//frameData->_addTextureToDestroyList(texGpuId[texSlot]);
 		bgfx::destroy(texGpuId[texSlot]);
     }
-    texGpuId[texSlot] = gpuTexDefault;
+	texGpuId[texSlot] = BGFX_INVALID_HANDLE;
     texDiskId[texSlot] = 0;
-    texLoaded[texSlot].set(0);
+	texLoaded[texSlot].reset();
 	texSlotOccupied[texSlot] = false;
 }
 
@@ -134,8 +134,12 @@ i32 _occupyNextTextureSlot(i32 pakTexId)
         }
     }
 
-    assert(oldestId >= 0);
-    assert(oldestFrameCount > 0);
+	assert(oldestId >= 0);
+	assert(oldestFrameCount > 0);
+
+	/*if(oldestId == -1) {
+		oldestId = fastId;
+	}*/
 
     destroyTexture(oldestId);
     texSlotOccupied[oldestId] = true;
@@ -173,7 +177,7 @@ void requestTextures(const i32* inPakTextureIds, bgfx::TextureHandle* outGpuTexH
             texFramesNotRequested[newId] = 1;
             // TODO: it increments here but decrements in ResourceManager?
             // choose one
-            texLoaded[newId].set(0);
+			texLoaded[newId].reset();
         }
 	}
 }
@@ -251,7 +255,7 @@ void debugUi()
 };
 
 #define FILE_RING_BUFFER_SIZE Megabyte(200)
-#define TEXTURE_DATA_SIZE Megabyte(300)
+#define TEXTURE_CACHE_SIZE Megabyte(300)
 #define TEXTURE_TEMP_SIZE Megabyte(5)
 #define FRAME_MAX_PROCESSING_COUNT 24
 
@@ -275,9 +279,9 @@ u8* textureGpuUpload;
 i32* textureAge; // in frames
 MemBlock textureMetaBlock;
 
-u8* fileData;
-u8* textureRawData;
-MemBlock textureFileAndRawBlock;
+MemBlock fileRingData;
+u8* textureRamCache;
+MemBlock textureRamCacheBlock;
 intptr_t fileRingCursor = 0;
 AllocatorBucket textureDataAllocator;
 
@@ -365,18 +369,20 @@ bool loadTexturePak()
 	}
 
 	// Setup texture related stuff
-	textureFileAndRawBlock = MEM_ALLOC(TEXTURE_DATA_SIZE + FILE_RING_BUFFER_SIZE);
-	assert(textureFileAndRawBlock.ptr);
-	textureRawData = (u8*)textureFileAndRawBlock.ptr;
-	fileData = textureRawData + TEXTURE_DATA_SIZE;
+	textureRamCacheBlock = MEM_ALLOC(TEXTURE_CACHE_SIZE);
+	assert(textureRamCacheBlock.isValid());
+	textureRamCache = (u8*)textureRamCacheBlock.ptr;
 
-	LOG_DBG("Resource> textureFileAndRawBlock size=%lldmb",
-			(TEXTURE_DATA_SIZE + FILE_RING_BUFFER_SIZE)/(1024*1024));
+	fileRingData = MEM_ALLOC(FILE_RING_BUFFER_SIZE);
+	assert(fileRingData.isValid());
+
+	LOG_DBG("Resource> textureRamCache=%lldMB fileRingData=%lldMB",
+			(TEXTURE_CACHE_SIZE)/(1024*1024), FILE_RING_BUFFER_SIZE/(1024*1024));
 
 	MemBlock textureRawDataBlock;
-	textureRawDataBlock.ptr = textureRawData;
-	textureRawDataBlock.size = TEXTURE_DATA_SIZE;
-	textureDataAllocator.init(textureRawDataBlock, TEXTURE_DATA_SIZE/1024, 1024);
+	textureRawDataBlock.ptr = textureRamCache;
+	textureRawDataBlock.size = TEXTURE_CACHE_SIZE;
+	textureDataAllocator.init(textureRawDataBlock, 2048);
 
 	tempTextureBuffBlock = MEM_ALLOC(TEXTURE_TEMP_SIZE);
 	assert(tempTextureBuffBlock.ptr);
@@ -557,7 +563,7 @@ bool loadFloorData()
     if(fb.error != FileError::NO_FILE_ERROR) {
         return false;
     }
-    defer(fb.block.dealloc());
+	defer(MEM_DEALLOC(fb.block));
 
     u8* top = (u8*)fb.block.ptr;
     PakHeader& header = *(PakHeader*)top;
@@ -579,7 +585,7 @@ bool loadFloorData()
 void deinit()
 {
     MEM_DEALLOC(textureMetaBlock);
-    MEM_DEALLOC(textureFileAndRawBlock);
+	MEM_DEALLOC(textureRamCacheBlock);
     MEM_DEALLOC(tempTextureBuffBlock);
     MEM_DEALLOC(tileTextureIdBlock);
     MEM_DEALLOC(sectorInfoBlock);
@@ -658,7 +664,7 @@ u8* fileRingAlloc(i64 size)
         assert(fileRingCursor + size <= FILE_RING_BUFFER_SIZE);
     }
 
-    u8* r = fileData + fileRingCursor;
+	u8* r = (u8*)fileRingData.ptr + fileRingCursor;
     fileRingCursor += size;
     return r;
 }
@@ -683,7 +689,7 @@ MemBlock evictTextureAllocNewBlock(i64 size)
 
         // delete texture data
         MEM_DEALLOC(textureDataBlock[oldestTexture]);
-        textureDiskLoadStatus[oldestTexture].set(0);
+		textureDiskLoadStatus[oldestTexture].reset();
         textureGpuUpload[oldestTexture] = 0;
         textureAge[oldestTexture] = 0;
 
@@ -701,7 +707,6 @@ MemBlock evictTextureAllocNewBlock(i64 size)
 
 void requestTextures(const i32* pakTextureUIDs, const i32 requestCount)
 {
-	// FIXME: reenable
 	for(i32 i = 0; i < requestCount; ++i) {
         const i32 texUID = pakTextureUIDs[i];
         assert(texUID > 0 && texUID < textureCount);

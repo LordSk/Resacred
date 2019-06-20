@@ -30,6 +30,10 @@ struct MemBlock
     }
 
     inline void __dealloc(const char* filename, i32 line);
+
+	inline bool isValid() const {
+		return ptr != nullptr;
+	}
 };
 
 #define NULL_MEMBLOCK MemBlock{}
@@ -146,6 +150,10 @@ struct AllocatorStack: public IAllocator
         return block.ptr >= _block.ptr &&
                 (intptr_t)block.ptr < ((intptr_t)_block.ptr + (intptr_t)_block.size);
     }
+
+	inline void setNoFallback() {
+		_fallback = nullptr;
+	}
 };
 
 /**
@@ -163,14 +171,15 @@ struct AllocatorBucket: public IAllocator
     u32 _bucketSize = 1;
     u32 _bucketMaxCount = 0;
     u8 _bucketAlignment = 0;
+	IAllocator* _fallback = &MEM_MALLOCATOR;
 
     AllocatorBucket() = default;
 
-    AllocatorBucket(MemBlock fromBlock, u32 bucketCount, u64 bucketSize, u8 alignment = 0) {
-        init(fromBlock, bucketCount, bucketSize, alignment);
+	AllocatorBucket(MemBlock fromBlock, u64 bucketSize, u8 alignment = 0) {
+		init(fromBlock, bucketSize, alignment);
     }
 
-    void init(MemBlock fromBlock, u32 bucketCount, u64 bucketSize, u8 alignment = 0);
+	void init(MemBlock fromBlock, u64 bucketSize, u8 alignment = 0);
 
     MemBlock __alloc(const char *filename, i32 line, u64 size, u8 alignment = 0);
     MemBlock __realloc(const char *filename, i32 line, MemBlock block, u64 size, u8 alignment);
@@ -277,6 +286,7 @@ struct MemoryContext
 };
 
 MemoryContext& getMemoryContext();
+
 inline void resetTempAllocator()
 {
     getMemoryContext().tempAllocator->deallocTo(0);

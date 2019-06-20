@@ -515,10 +515,6 @@ bool pak_textureRead(char* fileBuff, i64 size, i32* out_width, i32* out_height, 
     }
     else {
         i32 compressedSize = size;
-        /*i32 compressedSize = fb.size - fileDesc[i].offset;
-        if(i + 1 < entryCount) {
-            compressedSize = fileDesc[i + 1].offset - fileDesc[i].offset;
-        }*/
         i32 texSize = tex.width * tex.height * 2;
         *out_size = texSize;
         i32 ret = zlib_decompress(fileBuff + 80, compressedSize, out_data, texSize);

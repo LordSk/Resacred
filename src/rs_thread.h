@@ -65,6 +65,10 @@ struct AtomicCounter
         _InterlockedExchange(&_count, val);
     }
 
+	inline void reset() {
+		_InterlockedExchange(&_count, 0);
+	}
+
     inline vli32 get() const {
         return _count;
     }

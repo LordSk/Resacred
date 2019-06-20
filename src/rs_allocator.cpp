@@ -208,20 +208,30 @@ void AllocatorStack::deallocTo(u64 marker, const char* filename, i32 line)
 //
 // Bucket Allocator
 //
-void AllocatorBucket::init(MemBlock fromBlock, u32 bucketCount, u64 bucketSize, u8 alignment)
+void AllocatorBucket::init(MemBlock fromBlock, u64 bucketSize, u8 alignment)
 {
     AllocatorStack stack(fromBlock);
+	stack.setNoFallback();
 
-    MemBlock bytefield = stack.ALLOC(bucketCount);
-    assert(bytefield.ptr);
-    _bytefield = (u8*)bytefield.ptr;
+	i32 maxBuckets = fromBlock.size / bucketSize;
+	while(maxBuckets > 0) {
+		MemBlock bytefield = stack.ALLOC(maxBuckets);
+		MemBlock fsBlocks = stack.ALLOC(maxBuckets * bucketSize, alignment);
 
-    MemBlock fsBlocks = stack.ALLOC(bucketCount * bucketSize, alignment);
-    assert(fsBlocks.ptr);
-    _bucketsPtr = fsBlocks.ptr;
+		if(bytefield.isValid() && fsBlocks.isValid()) {
+			_bytefield = (u8*)bytefield.ptr;
+			_bucketsPtr = fsBlocks.ptr;
+			break;
+		}
+
+		maxBuckets--;
+		stack.deallocTo(0);
+	}
+
+	assert_msg(maxBuckets > 0, "AllocatorBucket bucket count is invalid");
 
     _memBlock = fromBlock;
-    _bucketMaxCount = bucketCount;
+	_bucketMaxCount = maxBuckets;
     _bucketSize = bucketSize;
     _bucketAlignment = alignment;
 }
@@ -287,7 +297,13 @@ MemBlock AllocatorBucket::__alloc(const char* filename, i32 line, u64 size, u8 a
         }
     }
 
-    //TODO: fallback allocator + log
+	assert_msg(0, "AllocatorBucket allocation failed");
+
+	if(_fallback) {
+		return _fallback->__alloc(filename, line, size, alignment);
+	}
+
+	assert(0); // should never be reached
     return NULL_MEMBLOCK;
 }
 
@@ -621,7 +637,7 @@ void AllocatorRing::__dealloc(const char* filename, i32 line, MemBlock block)
 
 MemoryContext::MemoryContext()
 {
-    thread_local u8 __tempStack[SACRED_TEMP_STACK_SIZE] alignas(i64);
+	thread_local u8 __tempStack[SACRED_TEMP_STACK_SIZE];
     thread_local AllocatorStack tempStackAllocator;
 
     MemBlock block;
