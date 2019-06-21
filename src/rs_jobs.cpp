@@ -51,11 +51,13 @@ unsigned long workerThread(void* pData)
 
 			task.func(task.pUserData);
 
-			task.pSignal->decrement();
+			if(task.pSignal) {
+				task.pSignal->decrement();
+			}
 
 			if(task.dataBlock.isValid()) {
 				js.tempAllocMutex.lock();
-				js.tempAlloc.dealloc(task.dataBlock);
+				MEM_DEALLOC(task.dataBlock);
 				js.tempAllocMutex.unlock();
 			}
 
@@ -106,7 +108,9 @@ i32 jobRun(void *pUserData, JobFunc func, AtomicCounter *pFinishSignal)
 i32 jobRunEx(void *pUserData, i32 sizeOfData, JobFunc func, AtomicCounter *pFinishSignal)
 {
 	assert(g_pJobSystem);
-	pFinishSignal->increment();
+	if(pFinishSignal) {
+		pFinishSignal->increment();
+	}
 
 	Job task;
 	task.id = g_pJobSystem->nextJobId++;

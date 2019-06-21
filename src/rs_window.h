@@ -22,7 +22,7 @@ struct Window
     bool create(const i32 width_, const i32 height_);
     void handleInput();
     void swapBuffers();
-    void cleanup();
+    void shutdown();
 
     void addInputCallback(Proc_InputCallback callback, void* userData);
 

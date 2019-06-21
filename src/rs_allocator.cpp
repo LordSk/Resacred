@@ -313,7 +313,6 @@ MemBlock AllocatorBucket::__alloc(const char* filename, i32 line, u64 size, u8 a
 		return _fallback->ALLOC(size, alignment);
 	}
 
-	assert(0); // should never be reached
     return NULL_MEMBLOCK;
 }
 

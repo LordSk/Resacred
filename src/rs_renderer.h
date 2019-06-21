@@ -229,7 +229,7 @@ struct VramInfo
 
 unsigned long thread_renderer(void*);
 bool renderer_init();
-void renderer_cleanUp();
+void renderer_shutdown();
 void renderer_waitForInit();
 bool renderer_setupImGuiSync(struct ImGuiGLSetup* ims, u8* pFontPixels, i32 fontTexWidth, i32 fontTexHeight);
 

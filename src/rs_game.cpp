@@ -1070,7 +1070,7 @@ vec3 screenToWorldPos(const vec2 screenPos)
     return vec3(camWorldPos.x, camWorldPos.y, 0);
 }
 
-void deinit()
+void shutdown()
 {
 }
 
@@ -1165,9 +1165,9 @@ unsigned long thread_game(void*)
 
 	LOG("Game> cleaning up...");
 	ImGui::DestroyContext();
-	resource_deinit();
-	renderer_cleanUp();
-	game.deinit();	
+	resource_shutdown();
+	renderer_shutdown();
+	game.shutdown();	
 
 	/*dbgDrawInit();
 

@@ -57,7 +57,7 @@ i32 main()
 		client.handleInput();
     }
 
-	client.cleanup();
+	client.shutdown();
 
 	threadWaitForClose(&threadGame);
 	//threadWaitForClose(&threadFileIO);

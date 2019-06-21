@@ -268,8 +268,8 @@ bool pak_FloorRead(const char* filepath);
 bool keyx_sectorsRead(const char* keyx_filepath, const char* wldx_filepath, DiskSectors* diskSectors);
 void deflateSectorData(DiskFile* file, i32 offset, i32 compSize, i32 uncompSize, u8* outFileBuffer, u8* outData);
 
-bool pak_textureRead(char* fileBuff, i64 size, i32* out_width, i32* out_height, i32* out_type,
-                     u8* out_data, i32* out_size, char* out_name);
+bool pak_textureRead(const char *fileBuff, i64 size, i32* out_width, i32* out_height, i32* out_type, u8* out_data, i32* out_size, char* out_name);
+void pak_textureReadInfo(const char *fileBuff, i32* out_width, i32* out_height, i32* out_type, i32* out_size, char* out_name);
 
 
 struct PakMixedDesc

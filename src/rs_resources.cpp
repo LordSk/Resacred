@@ -92,7 +92,7 @@ void destroyTexture(i32 texSlot)
 		//frameData->_addTextureToDestroyList(texGpuId[texSlot]);
 		bgfx::destroy(texGpuId[texSlot]);
     }
-	texGpuId[texSlot] = BGFX_INVALID_HANDLE;
+	texGpuId[texSlot] = gpuTexDefault;
     texDiskId[texSlot] = 0;
 	texLoaded[texSlot].reset();
 	texSlotOccupied[texSlot] = false;
@@ -226,7 +226,7 @@ void uploadTextures(i32* pakTextureUIDs, PakTextureInfo* textureInfos, u8** text
 	}
 }
 
-void deinit()
+void shutdown()
 {
 	bgfx::destroy(gpuTexDefault);
 	for(i32 i = 0; i < MAX_GPU_TEXTURES; ++i) {
@@ -256,9 +256,29 @@ void debugUi()
 }
 };
 
-#define FILE_RING_BUFFER_SIZE Megabyte(200)
-#define TEXTURE_CACHE_SIZE Megabyte(300)
-#define TEXTURE_TEMP_READ_SIZE Megabyte(5)
+struct ThreadTempStorage
+{
+	AllocatorStack allocator;
+
+	ThreadTempStorage()
+	{
+		allocator.init(MEM_MALLOCATOR.ALLOC(Megabyte(20)));
+		allocator.setNoFallback();
+	}
+
+	~ThreadTempStorage()
+	{
+		allocator.release();
+	}
+};
+
+ThreadTempStorage& getThreadTempStorage()
+{
+	thread_local ThreadTempStorage tempStorage;
+	return tempStorage;
+}
+
+#define TEXTURE_CACHE_SIZE Megabyte(200)
 #define FRAME_MAX_PROCESSING_COUNT 24
 
 /*
@@ -275,19 +295,14 @@ i32 textureCount;
 i32* textureFileOffset;
 i32* textureFileSize;
 AtomicCounter* textureDiskLoadStatus; // 2 == loading from disk, 1 == loaded
-MemBlock* textureDataBlock;
+MemBlock* textureFileCache;
 PakTextureInfo* textureInfo;
 u8* textureGpuUpload;
 i32* textureAge; // in frames
 MemBlock textureMetaBlock;
 
-MemBlock fileRingData;
-u8* textureRamCache;
-MemBlock textureRamCacheBlock;
-intptr_t fileRingCursor = 0;
-AllocatorBucket textureRamCacheAllocator;
-
-MemBlock texTempReadBlock;
+AllocatorBucket textureFileCacheAllocator;
+Mutex textureFileCacheMutex;
 
 GpuResources gpu;
 
@@ -331,6 +346,9 @@ AtomicCounter jobsSuccessfullCount;
 bool init()
 {
     gpu.init();
+
+	textureFileCacheAllocator.init(MEM_MALLOCATOR.ALLOC(TEXTURE_CACHE_SIZE), 2048);
+	textureFileCacheAllocator.setNoFallback();
 
 	auto t0 = timeNow();
 
@@ -496,22 +514,6 @@ bool loadTexturePak()
 	}
 
 	// Setup texture related stuff
-	textureRamCacheBlock = MEM_ALLOC(TEXTURE_CACHE_SIZE);
-	assert(textureRamCacheBlock.isValid());
-	textureRamCache = (u8*)textureRamCacheBlock.ptr;
-
-	fileRingData = MEM_ALLOC(FILE_RING_BUFFER_SIZE);
-	assert(fileRingData.isValid());
-
-	LOG_DBG("Resource> textureRamCache=%lldMB fileRingData=%lldMB",
-			(TEXTURE_CACHE_SIZE)/(1024*1024), FILE_RING_BUFFER_SIZE/(1024*1024));
-
-	// setup bucket allocator
-	textureRamCacheAllocator.init(textureRamCacheBlock, 2048);
-
-	texTempReadBlock = MEM_ALLOC(TEXTURE_TEMP_READ_SIZE);
-	assert(texTempReadBlock.isValid());
-
 	PakHeader header;
 	fileReadAdvance(&fileTexturePak, sizeof(header), &header);
 	textureCount = header.entryCount;
@@ -519,7 +521,7 @@ bool loadTexturePak()
 	// alloc texture metadata
 	textureMetaBlock = MEM_ALLOC((sizeof(*textureFileOffset) + sizeof(*textureFileSize) +
 			sizeof(*textureDiskLoadStatus) +
-			sizeof(*textureDataBlock) + sizeof(*textureInfo) + sizeof(*textureGpuUpload) +
+			sizeof(*textureFileCache) + sizeof(*textureInfo) + sizeof(*textureGpuUpload) +
 			sizeof(*textureAge)) * textureCount);
 	assert(textureMetaBlock.isValid());
 
@@ -528,8 +530,8 @@ bool loadTexturePak()
 	textureFileOffset = (i32*)textureMetaBlock.ptr;
 	textureFileSize = (i32*)(textureFileOffset + textureCount);
 	textureDiskLoadStatus = (AtomicCounter*)(textureFileSize + textureCount);
-	textureDataBlock = (MemBlock*)(textureDiskLoadStatus + textureCount);
-	textureInfo = (PakTextureInfo*)(textureDataBlock + textureCount);
+	textureFileCache = (MemBlock*)(textureDiskLoadStatus + textureCount);
+	textureInfo = (PakTextureInfo*)(textureFileCache + textureCount);
 	textureGpuUpload = (u8*)(textureInfo + textureCount);
 	textureAge = (i32*)(textureGpuUpload + textureCount);
 
@@ -653,6 +655,8 @@ bool loadSectorKeyx()
 
 SectorxData* loadSectorData(i32 sectorId)
 {
+	// FIXME: reenable
+	/*
     assert(sectorId > 0 && sectorId < sectorCount);
 
     const i32 fileOffset = sectorInfo[sectorId].fileOffset;
@@ -673,6 +677,8 @@ SectorxData* loadSectorData(i32 sectorId)
 #endif
 
     return output;
+	*/
+	return nullptr;
 }
 
 const SectorInfo& getSectorInfo(i32 sectorId)
@@ -706,11 +712,10 @@ bool loadFloorData()
     return true;
 }
 
-void deinit()
+void shutdown()
 {
+	textureFileCacheAllocator.release();
     MEM_DEALLOC(textureMetaBlock);
-	MEM_DEALLOC(textureRamCacheBlock);
-	MEM_DEALLOC(texTempReadBlock);
     MEM_DEALLOC(tileTextureIdBlock);
     MEM_DEALLOC(sectorInfoBlock);
     MEM_DEALLOC(sectorDataBlock);
@@ -718,7 +723,7 @@ void deinit()
     MEM_DEALLOC(mixed.block);
 
 	fileClose(&fileTexturePak);
-    gpu.deinit();
+	gpu.shutdown();
 }
 
 void newFrame()
@@ -738,37 +743,10 @@ void newFrame()
     _texInfoUpload.clearPOD();
 
     // decompress texture if necessary and upload them to the gpu (if requested)
-    i32 workDoneCount = 0;
-    for(i32 i = 0; i < textureCount && workDoneCount < FRAME_MAX_PROCESSING_COUNT; ++i) {
-		if((LoadStatus)textureDiskLoadStatus[i].get() == LoadStatus::FILE_LOADED) {
-            //LOG("Resource> texId=%d file loaded", i);
-            i32 width, height, type, textureSize;
-            char name[32];
-			pak_textureRead((char*)textureDataBlock[i].ptr, textureDataBlock[i].size, &width, &height, &type, (u8*)texTempReadBlock.ptr, &textureSize, name);
-			assert(textureSize < TEXTURE_TEMP_READ_SIZE);
-
-			textureDataBlock[i] = textureRamCacheAllocator.ALLOC(textureSize);
-            if(!textureDataBlock[i].ptr) {
-                // evict old texture data
-                textureDataBlock[i] = evictTextureAllocNewBlock(textureSize);
-            }
-			memmove(textureDataBlock[i].ptr, texTempReadBlock.ptr, textureSize);
-
-            PakTextureInfo& info = textureInfo[i];
-            info.width = width;
-            info.height = height;
-            info.type = (PakTextureType)type;
-#ifdef CONF_DEBUG
-            memmove(info.name, name, 32);
-#endif
-
-            textureDiskLoadStatus[i].decrement(); // -> PROCESSED
-            workDoneCount++;
-        }
-
+	for(i32 i = 0; i < textureCount; ++i) {
         if((LoadStatus)textureDiskLoadStatus[i].get() == LoadStatus::PROCESSED && textureGpuUpload[i]) {
             _pakTexIdUpload.pushPOD(&i);
-            _dataUpload.pushPOD((u8**)&textureDataBlock[i].ptr);
+			_dataUpload.pushPOD((u8**)&textureFileCache[i].ptr);
             _texInfoUpload.pushPOD(&textureInfo[i]);
             textureGpuUpload[i] = 0;
         }
@@ -778,18 +756,6 @@ void newFrame()
     if(toUploadCount > 0) {
         gpu.uploadTextures(_pakTexIdUpload.data(), _texInfoUpload.data(), _dataUpload.data(), toUploadCount);
     }
-}
-
-u8* fileRingAlloc(i64 size)
-{
-    if(fileRingCursor + size > FILE_RING_BUFFER_SIZE) {
-        fileRingCursor = 0;
-        assert(fileRingCursor + size <= FILE_RING_BUFFER_SIZE);
-    }
-
-	u8* r = (u8*)fileRingData.ptr + fileRingCursor;
-    fileRingCursor += size;
-    return r;
 }
 
 MemBlock evictTextureAllocNewBlock(i64 size)
@@ -811,13 +777,13 @@ MemBlock evictTextureAllocNewBlock(i64 size)
         assert(oldestTexture != -1);
 
         // delete texture data
-        MEM_DEALLOC(textureDataBlock[oldestTexture]);
+		MEM_DEALLOC(textureFileCache[oldestTexture]);
 		textureDiskLoadStatus[oldestTexture].reset();
         textureGpuUpload[oldestTexture] = 0;
         textureAge[oldestTexture] = 0;
 
         // try to alloc new texture
-		MemBlock b = textureRamCacheAllocator.ALLOC(size);
+		MemBlock b = textureFileCacheAllocator.ALLOC(size);
         if(b.ptr) {
             //LOG_DBG("Resource> textures evicted = %d", tries+1);
             return b;
@@ -836,18 +802,78 @@ void requestTextures(const i32* pakTextureUIDs, const i32 requestCount)
         textureAge[texUID] = 0;
 
         if((LoadStatus)textureDiskLoadStatus[texUID].get() == LoadStatus::NONE &&
-           textureDataBlock[texUID].ptr == nullptr) {
+		   !textureFileCache[texUID].isValid()) {
 			textureDiskLoadStatus[texUID].set((i32)LoadStatus::FILE_LOADING);
 
             i32 size = textureFileSize[texUID] + sizeof(PakTextureHeader);
             assert(size > 0);
-            textureDataBlock[texUID].ptr = fileRingAlloc(size);
-            textureDataBlock[texUID].size = size;
 
-			fileAsyncReadAbsolute(&fileTexturePak, textureFileOffset[texUID], size, (u8*)textureDataBlock[texUID].ptr, &textureDiskLoadStatus[texUID]);
+			struct TextureFileLoadAndProcessJob {
+				const DiskFile* file;
+				i64 start;
+				i64 fileBufferSize;
+				AtomicCounter* pCounter;
+				ResourceManager* pResMngr;
+				i32 texUID;
+			};
+
+			TextureFileLoadAndProcessJob jd = {
+				&fileTexturePak,
+				textureFileOffset[texUID],
+				size,
+				&textureDiskLoadStatus[texUID],
+				this,
+				texUID
+			};
+
+			jobRunEx(&jd, sizeof(jd), [](void* pData) {
+				TextureFileLoadAndProcessJob data = *(TextureFileLoadAndProcessJob*)pData;
+				ResourceManager& rThis = *data.pResMngr;
+
+				auto& ts = getThreadTempStorage();
+				MemBlock extractedBlock = ts.allocator.ALLOC(Megabyte(5));
+				assert(extractedBlock.isValid());
+
+				MemBlock fileBuffer = ts.allocator.ALLOC(data.fileBufferSize);
+				assert(fileBuffer.isValid());
+
+				fileReadFromPos(data.file, data.start, data.fileBufferSize, (u8*)fileBuffer.ptr);
+				data.pCounter->decrement();
+
+				i32 width, height, type, textureSize;
+				char name[32];
+
+				pak_textureRead((char*)fileBuffer.ptr, data.fileBufferSize, &width, &height, &type, (u8*)extractedBlock.ptr, &textureSize, name);
+				assert(textureSize < extractedBlock.size);
+
+				const i32 texUID = data.texUID;
+				rThis.textureFileCacheMutex.lock();
+
+				rThis.textureFileCache[texUID] = rThis.textureFileCacheAllocator.ALLOC(textureSize);
+				if(!rThis.textureFileCache[texUID].ptr) {
+					// evict old texture data
+					rThis.textureFileCache[texUID] = rThis.evictTextureAllocNewBlock(textureSize);
+				}
+
+				rThis.textureFileCacheMutex.unlock();
+
+				memmove(rThis.textureFileCache[texUID].ptr, extractedBlock.ptr, textureSize);
+
+				ts.allocator.deallocTo(0); // empty allocator
+
+				PakTextureInfo& info = rThis.textureInfo[texUID];
+				info.width = width;
+				info.height = height;
+				info.type = (PakTextureType)type;
+				#ifdef CONF_DEBUG
+					memmove(info.name, name, 32);
+				#endif
+
+				data.pCounter->decrement();
+			}, nullptr);
 
 			// FIXME: remove this
-			while(textureDiskLoadStatus[texUID].get() != (i32)LoadStatus::FILE_LOADED) {
+			while(textureDiskLoadStatus[texUID].get() != (i32)LoadStatus::PROCESSED) {
 				_mm_pause();
 			}
         }
@@ -873,7 +899,7 @@ void debugUi()
 	ImGui::Image(gpu.gpuTexDefault, ImVec2(256, 256));
 
     u64 allocatedSpace, freeSpace;
-	textureRamCacheAllocator.getFillInfo(&allocatedSpace, &freeSpace);
+	textureFileCacheAllocator.getFillInfo(&allocatedSpace, &freeSpace);
 
     ImGui::Text("Texture allocator");
     ImGui::Text("(%lld Ko / %lld Ko)", allocatedSpace/1024, (allocatedSpace+freeSpace)/1024);
@@ -895,9 +921,9 @@ bool resource_init()
 	return s_ResourceManager.init();
 }
 
-void resource_deinit()
+void resource_shutdown()
 {
-	s_ResourceManager.deinit();
+	s_ResourceManager.shutdown();
 }
 
 void resource_newFrame()

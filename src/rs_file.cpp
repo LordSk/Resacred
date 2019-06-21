@@ -237,29 +237,7 @@ AsyncFileRequest fileAsyncReadAbsolute(const DiskFile* file, i64 start, i64 size
 {
     assert(((i64)start + size) < file->size);
     assert(out);
-#if 0
     return AFQ->newRequest(FileReqType::READ_ABSOLUTE, (DiskFile*)file, (u8*)start, size, out, counter);
-#else
-	struct JobData {
-		const DiskFile* file;
-		i64 start;
-		i64 size;
-		u8* out;
-		AtomicCounter* pCounter;
-	};
-
-	JobData jd = JobData{file, start, size, out, counter};
-
-	jobRunEx(&jd, sizeof(JobData), [](void* pData) {
-		JobData data = *(JobData*)pData;
-
-		fileReadFromPos(data.file, data.start, data.size, data.out);
-
-		data.pCounter->decrement();
-	}, counter);
-
-	return {};
-#endif
 }
 
 
@@ -523,8 +501,7 @@ bool pak_texturesRead(const char* filepath, DiskTextures* textures)
 }
 #endif
 
-bool pak_textureRead(char* fileBuff, i64 size, i32* out_width, i32* out_height, i32* out_type,
-                     u8* out_data, i32* out_size, char* out_name)
+bool pak_textureRead(const char* fileBuff, i64 size, i32* out_width, i32* out_height, i32* out_type, u8* out_data, i32* out_size, char* out_name)
 {
     PakTextureHeader& tex = *(PakTextureHeader*)fileBuff;
 
@@ -549,6 +526,27 @@ bool pak_textureRead(char* fileBuff, i64 size, i32* out_width, i32* out_height, 
     }
 
     return true;
+}
+
+void pak_textureReadInfo(const char *fileBuff, i32 *out_width, i32 *out_height, i32 *out_type, i32 *out_size, char *out_name)
+{
+	const PakTextureHeader& tex = *(const PakTextureHeader*)fileBuff;
+
+	*out_type = tex.typeId;
+	*out_width = tex.width;
+	*out_height = tex.height;
+#ifdef CONF_DEBUG
+	memmove(out_name, tex.filename, 32);
+#endif
+
+	if(tex.typeId == 6) {
+		i32 texSize = tex.width * tex.height * 4;
+		*out_size = texSize;
+	}
+	else {
+		i32 texSize = tex.width * tex.height * 2;
+		*out_size = texSize;
+	}
 }
 
 struct WorldBinEntry

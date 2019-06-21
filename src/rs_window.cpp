@@ -35,7 +35,7 @@ bool Window::create(const i32 width_, const i32 height_)
 void Window::handleInput()
 {
 	SDL_Event event;
-	while(SDL_WaitEvent(&event)) {
+	while(SDL_WaitEventTimeout(&event, 1000)) {
 #ifdef CONF_ENABLE_UI
 		ImGui_ImplSDL2_ProcessEvent(&event);
 #endif
@@ -63,7 +63,7 @@ void Window::swapBuffers()
     SDL_GL_SwapWindow(window);
 }
 
-void Window::cleanup()
+void Window::shutdown()
 {
     LOG_DBG("Window::cleanup()");
     SDL_DestroyWindow(window);

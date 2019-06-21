@@ -193,6 +193,10 @@ struct AllocatorBucket: public IAllocator
 		_memBlock.dealloc();
 	}
 
+	inline void setNoFallback() {
+		_fallback = nullptr;
+	}
+
     void getFillInfo(u64* allocatedSpace, u64* freeSpace);
 };
 

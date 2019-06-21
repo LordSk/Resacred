@@ -27,7 +27,7 @@ struct SectorInfo
 };
 
 bool resource_init();
-void resource_deinit();
+void resource_shutdown();
 void resource_newFrame();
 
 void resource_requestTextures(const i32* textureIds, const i32 textureCount);

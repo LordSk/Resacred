@@ -773,7 +773,7 @@ bool renderer_init()
 	return r.init();
 }
 
-void renderer_cleanUp()
+void renderer_shutdown()
 {
 	g_rendererPtr->cleanUp();
 }
