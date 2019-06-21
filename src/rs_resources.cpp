@@ -136,12 +136,12 @@ i32 _occupyNextTextureSlot(i32 pakTexId)
         }
     }
 
-	assert(oldestId >= 0);
-	assert(oldestFrameCount > 0);
+	/*assert(oldestId >= 0);
+	assert(oldestFrameCount > 0);*/
 
-	/*if(oldestId == -1) {
+	if(oldestId == -1) {
 		oldestId = fastId;
-	}*/
+	}
 
     destroyTexture(oldestId);
     texSlotOccupied[oldestId] = true;

@@ -188,6 +188,11 @@ struct AllocatorBucket: public IAllocator
         return ((intptr_t)block.ptr >= (intptr_t)_bucketsPtr ||
                 (intptr_t)block.ptr < (intptr_t)_bucketsPtr + (_bucketSize * _bucketMaxCount));
     }
+
+	inline void release() {
+		_memBlock.dealloc();
+	}
+
     void getFillInfo(u64* allocatedSpace, u64* freeSpace);
 };
 
@@ -202,6 +207,7 @@ struct AllocatorPool: IAllocator
     intptr_t _start = 0;
     u32 _elementSize = 0;
     u32 _elementCapacity = 0;
+	IAllocator* _fallback = &MEM_MALLOCATOR;
 
     struct FreeList {
         FreeList* next;

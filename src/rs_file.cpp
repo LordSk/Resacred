@@ -245,37 +245,16 @@ AsyncFileRequest fileAsyncReadAbsolute(const DiskFile* file, i64 start, i64 size
 		i64 start;
 		i64 size;
 		u8* out;
-		Mutex* pMutex;
-		AllocatorPool* pParentPool;
 		AtomicCounter* pCounter;
-		MemBlock block;
 	};
 
-	static AllocatorPool g_jobDataPool;
-	static bool once = true;
-	if(once) {
-		once = false;
-		MemBlock block = MEM_ALLOC(sizeof(JobData) * 1024);
-		g_jobDataPool.init(block, sizeof(JobData));
-	}
+	JobData jd = JobData{file, start, size, out, counter};
 
-	static Mutex mutex;
-	mutex.lock();
-	MemBlock jdBlock = g_jobDataPool.ALLOC(sizeof(JobData));
-	JobData* jd = (JobData*)jdBlock.ptr;
-	mutex.unlock();
-	assert(jdBlock.isValid());
-
-	*jd = JobData{file, start, size, out, &mutex, &g_jobDataPool, counter, jdBlock};
-
-	jobRun(jd, [](void* pData) {
+	jobRunEx(&jd, sizeof(JobData), [](void* pData) {
 		JobData data = *(JobData*)pData;
 
 		fileReadFromPos(data.file, data.start, data.size, data.out);
 
-		data.pMutex->lock();
-		data.pParentPool->dealloc(data.block);
-		data.pMutex->unlock();
 		data.pCounter->decrement();
 	}, counter);
 

@@ -471,6 +471,10 @@ void AllocatorPool::init(MemBlock block, u32 elementSize, u8 alignment)
 MemBlock AllocatorPool::__alloc(const char* filename, i32 line, u64 size, u8 alignment)
 {
     if(!_freeListTop) {
+		if(_fallback) {
+			LOG_MEM("[AllocatorPool] %s:%d allocator full, using fallback instead", filename, line);
+			return _fallback->ALLOC(size, alignment);
+		}
         return NULL_MEMBLOCK;
     }
 
@@ -478,6 +482,7 @@ MemBlock AllocatorPool::__alloc(const char* filename, i32 line, u64 size, u8 ali
     i32 adjust = alignAdjust(top, alignment);
 
     if(size + adjust > _elementSize) {
+		assert_msg(0, "Size > elementSize");
         return NULL_MEMBLOCK;
     }
 
@@ -503,7 +508,14 @@ MemBlock AllocatorPool::__realloc(const char* filename, i32 line, MemBlock block
 
 void AllocatorPool::__dealloc(const char* filename, i32 line, MemBlock block)
 {
-    if(!block.ptr || !block.notaligned || !owns(block)) return;
+	if(!block.ptr || !block.notaligned) return;
+
+	if(!owns(block)) {
+		if(_fallback) {
+			_fallback->dealloc(block);
+		}
+		return;
+	}
 
     intptr_t ptr = (intptr_t)block.notaligned;
     if((ptr - _start) % _elementSize != 0) {
