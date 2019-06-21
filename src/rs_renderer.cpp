@@ -526,6 +526,10 @@ bool init()
 	bgfxInit.resolution.height = client.height;
 	bgfxInit.resolution.reset = BGFX_RESET_NONE; // no vsync
 	bgfxInit.platformData = pd;
+#ifndef CONF_DEBUG
+	bgfxInit.debug = false;
+	bgfxInit.profile = false;
+#endif
 	bgfx::init(bgfxInit);
 
 	bgfx::setDebug(BGFX_DEBUG_TEXT);

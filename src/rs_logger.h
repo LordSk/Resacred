@@ -62,6 +62,9 @@ inline Logger& getGlobalLogger()
 #define LOG_SUCC(format, ...) getGlobalLogger().logf(LOG_COLOR_SUCCESS,\
     __FILE__, __LINE__, format, ##__VA_ARGS__)
 
+#define LOG_THREAD(format, ...) getGlobalLogger().logf(LOG_COLOR_CYAN,\
+	__FILE__, __LINE__, format, ##__VA_ARGS__)
+
 #ifndef NDEBUG
     #define LOG_DBG(format, ...) getGlobalLogger().logf(LOG_COLOR_WARN,\
         __FILE__, __LINE__, format, ##__VA_ARGS__)

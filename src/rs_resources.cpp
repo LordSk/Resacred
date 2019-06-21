@@ -2,7 +2,6 @@
 #include "rs_renderer.h"
 #include "rs_file.h"
 #include "rs_game.h"
-#include "lucy.h"
 #include "rs_jobs.h"
 
 #include <bgfx/bgfx.h>
@@ -262,8 +261,9 @@ struct ThreadTempStorage
 
 	ThreadTempStorage()
 	{
-		allocator.init(MEM_MALLOCATOR.ALLOC(Megabyte(20)));
+		allocator.init(MEM_MALLOCATOR.ALLOC(Megabyte(5)));
 		allocator.setNoFallback();
+		LOG("ThreadTempStorage thid=%x", threadGetId());
 	}
 
 	~ThreadTempStorage()
@@ -319,10 +319,6 @@ DiskFile fileSectors;
 i32 sectorCount = 0;
 MemBlock sectorDataBlock;
 AllocatorRing sectorRingAlloc;
-
-Array<i32,64> _pakTexIdUpload;
-Array<u8*,64> _dataUpload;
-Array<PakTextureInfo,64> _texInfoUpload;
 
 MemBlock floorData;
 FloorEntry* floors;
@@ -433,74 +429,11 @@ bool init()
 		}
 	}, &finished);
 
-	//lucy::wait(finished); // wait for all jobs to finish
 	jobWait(&finished);
 
 	if(jobsSuccessfullCount.get() != 7) {
 		return false;
 	}
-#if 0
-	lucy::SignalHandle finished = lucy::INVALID_HANDLE;
-	jobsSuccessfullCount.reset();
-
-	lucy::run(this, [](void* data) {
-		ResourceManager& rThis = *(ResourceManager*)data;
-		if(rThis.loadTexturePak()) {
-			rThis.jobsSuccessfullCount.increment();
-		}
-	}, &finished);
-
-	lucy::run(this, [](void* data) {
-		ResourceManager& rThis = *(ResourceManager*)data;
-		if(rThis.loadTileTextureIds()) {
-			rThis.jobsSuccessfullCount.increment();
-		}
-	}, &finished);
-
-	lucy::run(this, [](void* data) {
-		ResourceManager& rThis = *(ResourceManager*)data;
-		if(rThis.loadSectorKeyx()) {
-			rThis.jobsSuccessfullCount.increment();
-		}
-	}, &finished);
-
-	lucy::run(this, [](void* data) {
-		ResourceManager& rThis = *(ResourceManager*)data;
-		if(rThis.loadFloorData()) {
-			rThis.jobsSuccessfullCount.increment();
-		}
-	}, &finished);
-
-	lucy::run(this, [](void* data) {
-		ResourceManager& rThis = *(ResourceManager*)data;
-		if(pak_mixedRead(&rThis.mixed)) {
-			rThis.jobsSuccessfullCount.increment();
-		}
-	}, &finished);
-
-	lucy::run(this, [](void* data) {
-		ResourceManager& rThis = *(ResourceManager*)data;
-		if(pak_staticRead("../sacred_data/Static.pak", &rThis.statics)) {
-			rThis.jobsSuccessfullCount.increment();
-		}
-	}, &finished);
-
-	lucy::run(this, [](void* data) {
-		ResourceManager& rThis = *(ResourceManager*)data;
-		if(pak_itemRead("../sacred_data/items.pak", &rThis.itemTypes)) {
-			rThis.jobsSuccessfullCount.increment();
-		}
-	}, &finished);
-
-	//lucy::wait(finished); // wait for all jobs to finish
-	while(jobsSuccessfullCount.get() != 7) {
-		_mm_pause();
-	}
-
-	if(jobsSuccessfullCount.get() != 7) {
-		return false;
-	}
-#endif
 #endif
 
 	LOG_SUCC("Resource> initialized (%.5fs)", timeDurSince(t0));
@@ -738,27 +671,30 @@ void newFrame()
         }
     }
 
-    _pakTexIdUpload.clearPOD();
-    _dataUpload.clearPOD();
-    _texInfoUpload.clearPOD();
+	static Array<i32,64> pakTexIdUpload;
+	static Array<u8*,64> dataUpload;
+	static Array<PakTextureInfo,64> texInfoUpload;
+	pakTexIdUpload.clearPOD();
+	dataUpload.clearPOD();
+	texInfoUpload.clearPOD();
 
-    // decompress texture if necessary and upload them to the gpu (if requested)
+	// upload to the gpu (if requested)
 	for(i32 i = 0; i < textureCount; ++i) {
-        if((LoadStatus)textureDiskLoadStatus[i].get() == LoadStatus::PROCESSED && textureGpuUpload[i]) {
-            _pakTexIdUpload.pushPOD(&i);
-			_dataUpload.pushPOD((u8**)&textureFileCache[i].ptr);
-            _texInfoUpload.pushPOD(&textureInfo[i]);
+		if(textureGpuUpload[i] && (LoadStatus)textureDiskLoadStatus[i].get() == LoadStatus::PROCESSED) {
+			pakTexIdUpload.pushPOD(&i);
+			dataUpload.pushPOD((u8**)&textureFileCache[i].ptr);
+			texInfoUpload.pushPOD(&textureInfo[i]);
             textureGpuUpload[i] = 0;
         }
     }
 
-    const i32 toUploadCount = _pakTexIdUpload.count();
+	const i32 toUploadCount = pakTexIdUpload.count();
     if(toUploadCount > 0) {
-        gpu.uploadTextures(_pakTexIdUpload.data(), _texInfoUpload.data(), _dataUpload.data(), toUploadCount);
+		gpu.uploadTextures(pakTexIdUpload.data(), texInfoUpload.data(), dataUpload.data(), toUploadCount);
     }
 }
 
-MemBlock evictTextureAllocNewBlock(i64 size)
+MemBlock evictTextureAndAllocNewOne(i64 size)
 {
     //LOG_DBG("Resource> evictTexture(%lld)", size);
 
@@ -805,8 +741,8 @@ void requestTextures(const i32* pakTextureUIDs, const i32 requestCount)
 		   !textureFileCache[texUID].isValid()) {
 			textureDiskLoadStatus[texUID].set((i32)LoadStatus::FILE_LOADING);
 
-            i32 size = textureFileSize[texUID] + sizeof(PakTextureHeader);
-            assert(size > 0);
+			i32 fileSize = textureFileSize[texUID] + sizeof(PakTextureHeader);
+			assert(fileSize > 0);
 
 			struct TextureFileLoadAndProcessJob {
 				const DiskFile* file;
@@ -820,7 +756,7 @@ void requestTextures(const i32* pakTextureUIDs, const i32 requestCount)
 			TextureFileLoadAndProcessJob jd = {
 				&fileTexturePak,
 				textureFileOffset[texUID],
-				size,
+				fileSize,
 				&textureDiskLoadStatus[texUID],
 				this,
 				texUID
@@ -829,16 +765,16 @@ void requestTextures(const i32* pakTextureUIDs, const i32 requestCount)
 			jobRunEx(&jd, sizeof(jd), [](void* pData) {
 				TextureFileLoadAndProcessJob data = *(TextureFileLoadAndProcessJob*)pData;
 				ResourceManager& rThis = *data.pResMngr;
+				const i32 texUID = data.texUID;
 
 				auto& ts = getThreadTempStorage();
-				MemBlock extractedBlock = ts.allocator.ALLOC(Megabyte(5));
+				MemBlock extractedBlock = ts.allocator.ALLOC(Megabyte(3));
 				assert(extractedBlock.isValid());
 
 				MemBlock fileBuffer = ts.allocator.ALLOC(data.fileBufferSize);
 				assert(fileBuffer.isValid());
 
 				fileReadFromPos(data.file, data.start, data.fileBufferSize, (u8*)fileBuffer.ptr);
-				data.pCounter->decrement();
 
 				i32 width, height, type, textureSize;
 				char name[32];
@@ -846,13 +782,15 @@ void requestTextures(const i32* pakTextureUIDs, const i32 requestCount)
 				pak_textureRead((char*)fileBuffer.ptr, data.fileBufferSize, &width, &height, &type, (u8*)extractedBlock.ptr, &textureSize, name);
 				assert(textureSize < extractedBlock.size);
 
-				const i32 texUID = data.texUID;
+				//LOG("thid=%x width=%d height=%d type=%d size=%d name=%s", threadGetId(), width, height, type, textureSize, name);
+
 				rThis.textureFileCacheMutex.lock();
 
 				rThis.textureFileCache[texUID] = rThis.textureFileCacheAllocator.ALLOC(textureSize);
-				if(!rThis.textureFileCache[texUID].ptr) {
+				if(!rThis.textureFileCache[texUID].isValid()) {
+					//assert(0); // possible data race here, fix
 					// evict old texture data
-					rThis.textureFileCache[texUID] = rThis.evictTextureAllocNewBlock(textureSize);
+					rThis.textureFileCache[texUID] = rThis.evictTextureAndAllocNewOne(textureSize);
 				}
 
 				rThis.textureFileCacheMutex.unlock();
@@ -870,12 +808,8 @@ void requestTextures(const i32* pakTextureUIDs, const i32 requestCount)
 				#endif
 
 				data.pCounter->decrement();
+				data.pCounter->decrement();
 			}, nullptr);
-
-			// FIXME: remove this
-			while(textureDiskLoadStatus[texUID].get() != (i32)LoadStatus::PROCESSED) {
-				_mm_pause();
-			}
         }
 	}
 }

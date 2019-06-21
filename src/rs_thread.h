@@ -119,6 +119,7 @@ typedef unsigned long(*ThreadFuncType)(void*);
 ThreadHandle threadCreate(ThreadFuncType func, void* pUserData);
 void threadClose(ThreadHandle thread);
 void threadWaitForClose(ThreadHandle* threads, i32 count = 1);
+void threadWaitForCloseTimeout(ThreadHandle *threads, i32 count, i32 milliseconds);
 void threadSleep(i32 milliseconds);
 i32 threadGetId();
 i32 threadGetLogicalProcessorCount();

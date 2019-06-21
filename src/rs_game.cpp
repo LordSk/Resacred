@@ -1110,7 +1110,7 @@ unsigned long thread_game(void*)
 {
 	LOG("thread_game started [%x]", threadGetId());
 
-    LOG("Game> initialization...");
+	LOG("Game> initialization...");
     Window& client = *get_clientWindow();
 
 	// NOTE: must be called on this thread (bgfx::init and bgfx::frame need to be on the same thread)
@@ -1152,7 +1152,7 @@ unsigned long thread_game(void*)
 		client.dbgUiNewFrame();
 
 		ImGui::ShowDemoWindow();
-		resources_debugUi();
+		//resources_debugUi();
 		game.ui_textureBrowser();
 		game.ui_frameGraph();
 
@@ -1167,7 +1167,7 @@ unsigned long thread_game(void*)
 	ImGui::DestroyContext();
 	resource_shutdown();
 	renderer_shutdown();
-	game.shutdown();	
+	game.shutdown();
 
 	/*dbgDrawInit();
 

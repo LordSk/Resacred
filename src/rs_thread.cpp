@@ -24,7 +24,26 @@ void threadClose(ThreadHandle thread)
 void threadWaitForClose(ThreadHandle *threads, i32 count)
 {
 #ifdef _WIN32
+	bool isOneAlive = false;
+	for(i32 i = 0; i < count; i++) {
+		DWORD result = WaitForSingleObject(threads[i], 0);
+
+		if(result != WAIT_OBJECT_0) {
+			isOneAlive = true;
+			break;
+		}
+	}
+	if(!isOneAlive) {
+		return;
+	}
     WaitForMultipleObjects(count, threads, true, INFINITE);
+#endif
+}
+
+void threadWaitForCloseTimeout(ThreadHandle *threads, i32 count, i32 milliseconds)
+{
+#ifdef _WIN32
+	WaitForMultipleObjects(count, threads, true, milliseconds);
 #endif
 }
 
