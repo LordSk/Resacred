@@ -80,6 +80,7 @@ void Window::addInputCallback(Window::Proc_InputCallback callback, void* userDat
 
 void Window::dbgUiNewFrame()
 {
+	ProfileFunction();
 #ifdef CONF_ENABLE_UI
 	ImGui_ImplSDL2_NewFrame(window);
 	ImGui::NewFrame();

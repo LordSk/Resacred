@@ -1,6 +1,8 @@
 #include "rs_jobs.h"
 #include "rs_array.h"
 #include <stdio.h>
+#include <Tracy.hpp>
+#include <common/TracySystem.hpp>
 
 struct Job
 {
@@ -16,8 +18,8 @@ struct JobSystem
 	void* threads[64];
 	i32 workerCount = 0;
 	i32 nextJobId = 0;
-	Mutex queueMutex;
-	Mutex tempAllocMutex;
+	TracyLockable(Mutex, queueMutex);
+	TracyLockable(Mutex, tempAllocMutex);
 	Array<Job, 1024> queue;
 	ConditionVariable queueCv;
 	AllocatorBucket tempAlloc;
@@ -40,7 +42,7 @@ unsigned long workerThread(void* pData)
 	while(js.running) {
 		js.queueMutex.lock();
 		//LOG_THREAD("wid=%d tid=%x SLEEPING", wtd.id, tid);
-		js.queueCv.SleepUntilWokenUp(&js.queueMutex);
+		js.queueCv.SleepUntilWokenUp((Mutex*)&js.queueMutex);
 		//LOG_THREAD("wid=%d tid=%x WOKEN UP", wtd.id, tid);
 
 		if(!js.running) {
@@ -59,7 +61,10 @@ unsigned long workerThread(void* pData)
 
 			//LOG_THREAD("wid=%d tid=%x jobId=%d> Job start...", wtd.id, tid, task.id);
 
-			task.func(task.pUserData);
+			{
+				ProfileBlock("Task exec");
+				task.func(task.pUserData);
+			}
 
 			if(task.pSignal) {
 				task.pSignal->decrement();
@@ -108,34 +113,36 @@ void jobSystemInit(i32 workerCount)
 
 #ifdef _WIN32
 #pragma pack(push, 8)
-			struct ThreadName
-			{
-				DWORD  type;
-				LPCSTR name;
-				DWORD  id;
-				DWORD  flags;
-			};
+		struct ThreadName
+		{
+			DWORD  type;
+			LPCSTR name;
+			DWORD  id;
+			DWORD  flags;
+		};
 #pragma pack(pop)
-			char nameBuff2[256];
-			_snprintf(nameBuff2, arr_count(nameBuff2), "WorkerThread %d", i);
-			ThreadName tn;
-			tn.type  = 0x1000;
-			tn.name  = nameBuff2;
-			tn.id    = GetThreadId(js.threads[i]);
-			tn.flags = 0;
+		char nameBuff2[256];
+		_snprintf(nameBuff2, arr_count(nameBuff2), "WorkerThread %d", i);
+		ThreadName tn;
+		tn.type  = 0x1000;
+		tn.name  = nameBuff2;
+		tn.id    = GetThreadId(js.threads[i]);
+		tn.flags = 0;
 
-			__try
-			{
-				RaiseException(0x406d1388
-						, 0
-						, sizeof(tn)/4
-						, reinterpret_cast<ULONG_PTR*>(&tn)
-						);
-			}
-			__except(EXCEPTION_EXECUTE_HANDLER)
-			{
-			}
+		__try
+		{
+			RaiseException(0x406d1388
+					, 0
+					, sizeof(tn)/4
+					, reinterpret_cast<ULONG_PTR*>(&tn)
+					);
+		}
+		__except(EXCEPTION_EXECUTE_HANDLER)
+		{
+		}
 #endif
+
+		tracy::SetThreadName(std::thread::native_handle_type(js.threads[i]), nameBuff2);
 	}
 
 	js.tempAlloc.init(MEM_MALLOCATOR.ALLOC(Megabyte(10)), 1024);

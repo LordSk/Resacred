@@ -51,6 +51,7 @@ MemBlock Mallocator::__alloc(const char* filename, i32 line, u64 size, u8 alignm
     block.notaligned = ptr;
     block.size = size - adjust;
     block.allocator = this;
+	TracyAlloc(ptr, size);
     return block;
 }
 
@@ -83,6 +84,7 @@ void Mallocator::__dealloc(const char* filename, i32 line, MemBlock block)
     LOG_MEM("[Mallocator] %s:%d dealloc(%#x, %d)", filename, line, block.ptr, block.size);
     free(block.notaligned);
     --_allocCount;
+	TracyFree(block.notaligned);
 }
 
 void AllocatorStack::init(MemBlock block)
@@ -272,7 +274,7 @@ MemBlock AllocatorBucket::__alloc(const char* filename, i32 line, u64 size, u8 a
                 i32 adjust = alignAdjust((intptr_t)block.notaligned, alignment * shouldAlign);
                 block.ptr = (void*)((intptr_t)block.notaligned + adjust);
                 block.size = _bucketSize - (alignment * shouldAlign);
-                memset(block.ptr, 0, block.size);
+				memset(block.ptr, 0, block.size);
                 return block;
             }
         }
@@ -301,7 +303,7 @@ MemBlock AllocatorBucket::__alloc(const char* filename, i32 line, u64 size, u8 a
                     i32 adjust = alignAdjust((intptr_t)block.notaligned, alignment * shouldAlign);
                     block.ptr = (void*)((intptr_t)block.notaligned + adjust);
                     block.size = (_bucketSize * chainGoal) - (alignment * shouldAlign);
-                    memset(block.ptr, 0, block.size);
+					memset(block.ptr, 0, block.size);
                     return block;
                 }
             }

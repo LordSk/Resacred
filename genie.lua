@@ -79,7 +79,9 @@ solution "Resacred"
 		"CONF_ENABLE_UI",
 		"_ITERATOR_DEBUG_LEVEL=0",
 		--"BGFX_CONFIG_MULTITHREADED=0",
-		"NOMINMAX"
+		"NOMINMAX",
+		"TRACY_ENABLE",
+		"__STDC_FORMAT_MACROS"
     }
 	
 	-- disable exception related warnings
@@ -95,13 +97,15 @@ project "Resacred_client"
 	files {
 		"src/**.h",
 		"src/**.cpp",
+		"tracy/TracyClient.cpp"
 	}
 	
 	includedirs {
 		SDL2_include,
 		ZLIB_include,
 		bgfx_include,
-		bx_compat
+		bx_compat,
+		"tracy"
 	}
 	
 	links {

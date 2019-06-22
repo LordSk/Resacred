@@ -1,6 +1,7 @@
 #pragma once
 #include <stdint.h>
 #include <assert.h>
+#include <Tracy.hpp>
 
 #ifdef _WIN32
     #define CONF_WINDOWS
@@ -318,3 +319,20 @@ void qsort(T* data, u32 count, TCompareFuncType<T> compareFunc)
         }
     }
 }
+
+#ifdef TRACY_ENABLE
+inline u32 __tracy_functionGetColor(const char* pFuncStr) {
+	u32 baseColor = hash32_fnv1a(pFuncStr, strlen(pFuncStr));
+	((u8*)&baseColor)[0] /= 2;
+	((u8*)&baseColor)[1] /= 2;
+	((u8*)&baseColor)[2] /= 2;
+	((u8*)&baseColor)[3] /= 2;
+	return baseColor;
+}
+
+#define ProfileFunction() ZoneScopedC(__tracy_functionGetColor(__FILE__ __FUNCTION__))
+#define ProfileBlock(name) ZoneScopedNC(name, __tracy_functionGetColor(name __FILE__))
+#else
+#define ProfileFunction()
+#define ProfileBlock(name)
+#endif

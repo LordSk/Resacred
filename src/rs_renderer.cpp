@@ -521,6 +521,7 @@ bool init()
 
 	bgfx::Init bgfxInit;
 	//bgfxInit.type = bgfx::RendererType::Count; // Automatically choose a renderer.
+	//bgfxInit.type = bgfx::RendererType::Noop; // no renderer
 	bgfxInit.type = bgfx::RendererType::Direct3D12;
 	bgfxInit.resolution.width = client.width;
 	bgfxInit.resolution.height = client.height;
@@ -806,11 +807,14 @@ VramInfo renderer_getVramInfo()
 
 void renderer_renderDbgUi()
 {
+	ProfileFunction();
+
 	ImGui::Render();
 	g_rendererPtr->imguiSetup.render(ImGui::GetDrawData());
 }
 
 void renderer_frame()
 {
+	ProfileFunction();
 	bgfx::frame();
 }

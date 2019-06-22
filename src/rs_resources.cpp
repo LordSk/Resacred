@@ -99,6 +99,8 @@ void destroyTexture(i32 texSlot)
 
 void newFrame()
 {
+	ProfileFunction();
+
     // find unused textures and destroy them
     for(i32 i = 0; i < MAX_GPU_TEXTURES; ++i) {
         if(texSlotOccupied[i]) {
@@ -123,7 +125,7 @@ i32 _occupyNextTextureSlot(i32 pakTexId)
         }
     }
 
-    LOG_WARN("ResourceGpu> Warning, requesting a lot of textures quickly");
+	//LOG_WARN("ResourceGpu> Warning, requesting a lot of textures quickly");
 
     i32 oldestFrameCount = 0;
     i32 oldestId = -1;
@@ -341,6 +343,8 @@ AtomicCounter jobsSuccessfullCount;
 
 bool init()
 {
+	ProfileFunction();
+
     gpu.init();
 
 	textureFileCacheAllocator.init(MEM_MALLOCATOR.ALLOC(TEXTURE_CACHE_SIZE), 2048);
@@ -442,6 +446,8 @@ bool init()
 
 bool loadTexturePak()
 {
+	ProfileFunction();
+
 	if(!fileOpenToRead("../sacred_data/texture.pak", &fileTexturePak)) {
 		return false;
 	}
@@ -487,6 +493,8 @@ bool loadTexturePak()
 
 bool loadTileTextureIds()
 {
+	ProfileFunction();
+
     FileBuffer fb = fileReadWhole("../sacred_data/tiles.pak");
     if(fb.error != FileError::NO_FILE_ERROR) {
         return false;
@@ -519,6 +527,8 @@ bool loadTileTextureIds()
 
 bool loadSectorKeyx()
 {
+	ProfileFunction();
+
     FileBuffer fbKeyx = fileReadWhole("../sacred_data/sectors.keyx");
     if(fbKeyx.error != FileError::NO_FILE_ERROR) {
         return false;
@@ -588,6 +598,7 @@ bool loadSectorKeyx()
 
 SectorxData* loadSectorData(i32 sectorId)
 {
+	ProfileFunction();
 	// FIXME: reenable
 	/*
     assert(sectorId > 0 && sectorId < sectorCount);
@@ -622,6 +633,8 @@ const SectorInfo& getSectorInfo(i32 sectorId)
 
 bool loadFloorData()
 {
+	ProfileFunction();
+
     FileBuffer fb = fileReadWhole("../sacred_data/Floor.PAK");
     if(fb.error != FileError::NO_FILE_ERROR) {
         return false;
@@ -661,6 +674,8 @@ void shutdown()
 
 void newFrame()
 {
+	ProfileFunction();
+
     gpu.newFrame();
     resetTempAllocator();
 
@@ -679,12 +694,14 @@ void newFrame()
 	texInfoUpload.clearPOD();
 
 	// upload to the gpu (if requested)
-	for(i32 i = 0; i < textureCount; ++i) {
+	i32 toUploadMax = 10000;
+	for(i32 i = 0; i < textureCount && toUploadMax > 0; ++i) {
 		if(textureGpuUpload[i] && (LoadStatus)textureDiskLoadStatus[i].get() == LoadStatus::PROCESSED) {
 			pakTexIdUpload.pushPOD(&i);
 			dataUpload.pushPOD((u8**)&textureFileCache[i].ptr);
 			texInfoUpload.pushPOD(&textureInfo[i]);
             textureGpuUpload[i] = 0;
+			toUploadMax--;
         }
     }
 

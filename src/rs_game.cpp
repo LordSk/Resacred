@@ -434,6 +434,7 @@ void loadSectorsIfNeeded()
 
 void requestTexBrowserTextures()
 {
+	ProfileFunction();
     for(int i = 0; i < PAGE_TEXTURES_COUNT; ++i) {
         texBrowser_texIds[i] = i + (pageId * PAGE_TEXTURES_COUNT) + 1;
     }
@@ -462,6 +463,8 @@ void ui_videoInfo()
 
 void ui_frameGraph()
 {
+	ProfileFunction();
+
     static f32 rdrFtStack[1000] = {0};
     static f32 gameFtStack[1000] = {0};
     memmove(rdrFtStack + 1, rdrFtStack, sizeof(rdrFtStack) - sizeof(rdrFtStack[0]));
@@ -470,6 +473,8 @@ void ui_frameGraph()
 	const bgfx::Stats* pStats = bgfx::getStats();
 	rdrFtStack[0] = (pStats->gpuTimeEnd - pStats->gpuTimeBegin)/(double)pStats->gpuTimerFreq * 1000.0;
     gameFtStack[0] = frameTime * 1000.0;
+	TracyPlot("Game frameTime", gameFtStack[0]);
+	TracyPlot("Render frametime", rdrFtStack[0]);
 
 	//if(!dbgShowFrameGraph) return;
 
@@ -520,6 +525,8 @@ void ui_all()
 
 void ui_textureBrowser()
 {
+	ProfileFunction();
+
 #if 1
     ImGui::Begin("Textures");
     ImGui::SliderInt("##page", &pageId, 0, resource_getTextureCount()/PAGE_TEXTURES_COUNT - 1);
@@ -1019,6 +1026,8 @@ void receiveInput(const SDL_Event& event)
 
 void processInput()
 {
+	ProfileFunction();
+
     if(ImGui::GetIO().WantCaptureMouse) {
         return;
     }
@@ -1159,8 +1168,9 @@ unsigned long thread_game(void*)
 		renderer_renderDbgUi();
 		renderer_frame();
 
-		client.swapBuffers();
 		game.frameTime = timeDurSince(t0);
+
+		FrameMark;
 	}
 
 	LOG("Game> cleaning up...");
