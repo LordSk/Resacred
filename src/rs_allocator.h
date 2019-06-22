@@ -167,7 +167,7 @@ struct AllocatorBucket: public IAllocator
 {
     MemBlock _memBlock = NULL_MEMBLOCK;
     void* _bucketsPtr = nullptr;
-    u8* _bytefield = nullptr;
+	u8* _occupied = nullptr;
     u32 _bucketSize = 1;
     u32 _bucketMaxCount = 0;
     u8 _bucketAlignment = 0;

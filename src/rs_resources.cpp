@@ -149,12 +149,8 @@ i32 _occupyNextTextureSlot(i32 pakTexId)
     return oldestId;
 }
 
-void requestTextures(const i32* inPakTextureIds, bgfx::TextureHandle* outGpuTexHandles, const i32 requestCount)
+void findTexturesOrSlotThem(const i32* inPakTextureIds, bgfx::TextureHandle* outGpuTexHandles, u8* out_pFound, const i32 requestCount)
 {
-	for(i32 r = 0; r < requestCount; ++r) {
-		outGpuTexHandles[r] = gpuTexDefault;
-	}
-
     // assign already loaded/loading textures
     for(i32 r = 0; r < requestCount; ++r) {
         const i32 pakTexId = inPakTextureIds[r];
@@ -174,14 +170,16 @@ void requestTextures(const i32* inPakTextureIds, bgfx::TextureHandle* outGpuTexH
 
         if(!found) {
             const i32 newId = _occupyNextTextureSlot(pakTexId);
-			outGpuTexHandles[r] = texGpuId[newId];
             texGpuId[newId] = gpuTexDefault;
+			outGpuTexHandles[r] = texGpuId[newId];
             texDiskId[newId] = pakTexId;
             texFramesNotRequested[newId] = 1;
             // TODO: it increments here but decrements in ResourceManager?
             // choose one
 			texLoaded[newId].reset();
         }
+
+		out_pFound[r] = found;
 	}
 }
 
@@ -263,7 +261,7 @@ struct ThreadTempStorage
 
 	ThreadTempStorage()
 	{
-		allocator.init(MEM_MALLOCATOR.ALLOC(Megabyte(5)));
+		allocator.init(MEM_MALLOCATOR.ALLOC(Megabyte(10)));
 		allocator.setNoFallback();
 		LOG("ThreadTempStorage thid=%x", threadGetId());
 	}
@@ -694,7 +692,7 @@ void newFrame()
 	texInfoUpload.clearPOD();
 
 	// upload to the gpu (if requested)
-	i32 toUploadMax = 10000;
+	i32 toUploadMax = 4;
 	for(i32 i = 0; i < textureCount && toUploadMax > 0; ++i) {
 		if(textureGpuUpload[i] && (LoadStatus)textureDiskLoadStatus[i].get() == LoadStatus::PROCESSED) {
 			pakTexIdUpload.pushPOD(&i);
@@ -707,6 +705,7 @@ void newFrame()
 
 	const i32 toUploadCount = pakTexIdUpload.count();
     if(toUploadCount > 0) {
+		//LOG("ReourceManager> uploading textures to gpu: %d", toUploadCount);
 		gpu.uploadTextures(pakTexIdUpload.data(), texInfoUpload.data(), dataUpload.data(), toUploadCount);
     }
 }
@@ -720,8 +719,8 @@ MemBlock evictTextureAndAllocNewOne(i64 size)
         i32 oldestTexture = -1;
 
         for(i32 i = 0; i < textureCount; ++i) {
-            if((LoadStatus)textureDiskLoadStatus[i].get() == LoadStatus::PROCESSED &&
-               textureAge[i] > oldestTextureAge) {
+			if((LoadStatus)textureDiskLoadStatus[i].get() == LoadStatus::NONE || ((LoadStatus)textureDiskLoadStatus[i].get() == LoadStatus::PROCESSED &&
+			   textureAge[i] > oldestTextureAge)) {
                 oldestTextureAge = textureAge[i];
                 oldestTexture = i;
             }
@@ -737,22 +736,27 @@ MemBlock evictTextureAndAllocNewOne(i64 size)
 
         // try to alloc new texture
 		MemBlock b = textureFileCacheAllocator.ALLOC(size);
-        if(b.ptr) {
-            //LOG_DBG("Resource> textures evicted = %d", tries+1);
-            return b;
-        }
+		if(b.isValid()) {
+			//LOG_DBG("Resource> textures evicted = %d", tries+1);
+			return b;
+		}
     }
 
-    assert(0);
-    return NULL_MEMBLOCK;
+	LOG_ERR("ERROR: could not evict oldest texture, cache seems too small");
+	assert_msg(0, "ERROR: could not evict oldest texture, cache seems too small");
+	return NULL_MEMBLOCK;
 }
 
-void requestTextures(const i32* pakTextureUIDs, const i32 requestCount)
+void requestTextureFileLoad(const i32* pakTextureUIDs, u8* pSkip, const i32 requestCount)
 {
 	for(i32 i = 0; i < requestCount; ++i) {
         const i32 texUID = pakTextureUIDs[i];
         assert(texUID > 0 && texUID < textureCount);
         textureAge[texUID] = 0;
+
+		if(pSkip && pSkip[i]) {
+			continue;
+		}
 
         if((LoadStatus)textureDiskLoadStatus[texUID].get() == LoadStatus::NONE &&
 		   !textureFileCache[texUID].isValid()) {
@@ -785,7 +789,7 @@ void requestTextures(const i32* pakTextureUIDs, const i32 requestCount)
 				const i32 texUID = data.texUID;
 
 				auto& ts = getThreadTempStorage();
-				MemBlock extractedBlock = ts.allocator.ALLOC(Megabyte(3));
+				MemBlock extractedBlock = ts.allocator.ALLOC(Megabyte(5));
 				assert(extractedBlock.isValid());
 
 				MemBlock fileBuffer = ts.allocator.ALLOC(data.fileBufferSize);
@@ -833,12 +837,20 @@ void requestTextures(const i32* pakTextureUIDs, const i32 requestCount)
 
 void requestGpuTextures(const i32* pakTextureUIDs, bgfx::TextureHandle* out_gpuHandles, const i32 requestCount)
 {
-    gpu.requestTextures(pakTextureUIDs, out_gpuHandles, requestCount);
+	MemBlock foundBlock = MEM_CONTEXT.tempAllocator->ALLOC(requestCount * sizeof(u8));
+	assert(foundBlock.isValid());
+	u8* found = (u8*)foundBlock.ptr;
 
-    requestTextures(pakTextureUIDs, requestCount);
+	gpu.findTexturesOrSlotThem(pakTextureUIDs, out_gpuHandles, found, requestCount);
+	requestTextureFileLoad(pakTextureUIDs, found, requestCount);
+
     for(i32 i = 0; i < requestCount; ++i) {
-        textureGpuUpload[pakTextureUIDs[i]] = 1;
+		if(!found[i]) {
+			textureGpuUpload[pakTextureUIDs[i]] = 1;
+		}
     }
+
+	MEM_DEALLOC(foundBlock);
 }
 
 void debugUi()
@@ -884,7 +896,7 @@ void resource_newFrame()
 
 void resource_requestTextures(const i32* textureIds, const i32 textureCount)
 {
-	s_ResourceManager.requestTextures(textureIds, textureCount);
+	s_ResourceManager.requestTextureFileLoad(textureIds, nullptr, textureCount);
 }
 
 void resource_requestGpuTextures(const i32* textureUIDs, bgfx::TextureHandle* out_gpuHandles, const i32 textureCount)

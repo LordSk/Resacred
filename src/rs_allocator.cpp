@@ -232,7 +232,7 @@ void AllocatorBucket::init(MemBlock fromBlock, u64 bucketSize, u8 alignment)
 		}
 
 		if(bytefield.isValid() && fsBlocks.isValid()) {
-			_bytefield = (u8*)bytefield.ptr;
+			_occupied = (u8*)bytefield.ptr;
 			_bucketsPtr = fsBlocks.ptr;
 			break;
 		}
@@ -251,6 +251,8 @@ void AllocatorBucket::init(MemBlock fromBlock, u64 bucketSize, u8 alignment)
 
 MemBlock AllocatorBucket::__alloc(const char* filename, i32 line, u64 size, u8 alignment)
 {
+	ProfileFunction();
+
     assert(size > 0);
 
     LOG_MEM("[AllocatorBucket] %s:%d ALLOC(size=%d align=%d bucketAlign=%d)",
@@ -266,8 +268,8 @@ MemBlock AllocatorBucket::__alloc(const char* filename, i32 line, u64 size, u8 a
     // small allocation
     if(size <= _bucketSize) {
         for(u32 i = 0; i < _bucketMaxCount; ++i) {
-            if(_bytefield[i] == 0) {
-                _bytefield[i] = 1;
+			if(_occupied[i] == 0) {
+				_occupied[i] = 1;
                 MemBlock block;
                 block.allocator = this;
                 block.notaligned = (void*)((intptr_t)_bucketsPtr + (_bucketSize * i));
@@ -286,15 +288,15 @@ MemBlock AllocatorBucket::__alloc(const char* filename, i32 line, u64 size, u8 a
         const i32 chainGoal = ceil(size / (f64)_bucketSize);
 
         for(i32 i = 0; i < _bucketMaxCount; ++i) {
-            if(_bytefield[i]) {
+			if(_occupied[i]) {
                 chain = 0;
                 chainStartBid = i+1;
             }
-            else if(_bytefield[i] == 0) {
+			else if(_occupied[i] == 0) {
                 chain++;
                 if(chain == chainGoal) {
                     for(u32 j = 0; j < chainGoal; ++j) {
-                        _bytefield[i-j] = 1;
+						_occupied[i-j] = 1;
                     }
 
                     MemBlock block;
@@ -320,6 +322,8 @@ MemBlock AllocatorBucket::__alloc(const char* filename, i32 line, u64 size, u8 a
 
 MemBlock AllocatorBucket::__realloc(const char* filename, i32 line, MemBlock block, u64 size, u8 alignment)
 {
+	ProfileFunction();
+
     assert(size > 0);
     assert(size != block.size);
 
@@ -346,7 +350,7 @@ MemBlock AllocatorBucket::__realloc(const char* filename, i32 line, MemBlock blo
         i32 diff = bucketCount - newBucketCount;
 
         for(i32 i = diff-1; i >= 0; --i) {
-            _bytefield[bid + i] = 0;
+			_occupied[bid + i] = 0;
         }
 
         // if alignment changed, slide data
@@ -365,14 +369,14 @@ MemBlock AllocatorBucket::__realloc(const char* filename, i32 line, MemBlock blo
         const i32 chainGoal = ceil(size / (f64)_bucketSize);
 
         for(u32 i = bid+bucketCount; i < _bucketMaxCount; ++i) {
-            if(_bytefield[i]) {
+			if(_occupied[i]) {
                 break;
             }
-            else if(_bytefield[i] == 0) {
+			else if(_occupied[i] == 0) {
                 chain++;
                 if(chain == chainGoal) {
                     for(u32 j = 0; j < chainGoal; ++j) {
-                        _bytefield[bid+j] = 1;
+						_occupied[bid+j] = 1;
                     }
 
                     // if alignment changed, slide data
@@ -401,6 +405,8 @@ MemBlock AllocatorBucket::__realloc(const char* filename, i32 line, MemBlock blo
 
 void AllocatorBucket::__dealloc(const char* filename, i32 line, MemBlock block)
 {
+	ProfileFunction();
+
 	if(!block.ptr || !block.notaligned || block.size == 0) {
         return;
     }
@@ -418,13 +424,13 @@ void AllocatorBucket::__dealloc(const char* filename, i32 line, MemBlock block)
 
     if(uaSize <= _bucketSize) {
         i32 bid = ((intptr_t)block.notaligned - (intptr_t)_bucketsPtr) / _bucketSize;
-        _bytefield[bid] = 0;
+		_occupied[bid] = 0;
     }
     else {
         i32 bucketCount = uaSize / _bucketSize;
         i32 bid = ((intptr_t)block.notaligned - (intptr_t)_bucketsPtr) / _bucketSize;
         for(i32 i = 0; i < bucketCount; ++i) {
-            _bytefield[bid + i] = 0;
+			_occupied[bid + i] = 0;
         }
     }
 }
@@ -437,7 +443,7 @@ void AllocatorBucket::getFillInfo(u64* allocatedSpace, u64* freeSpace)
     u64 freeSpaced_ = 0;
 
     for(u32 i = 0; i < count; ++i) {
-        const u8 b = _bytefield[i];
+		const u8 b = _occupied[i];
         allocatedSpace_ += bucketSize * b;
         freeSpaced_ += bucketSize * (!b);
     }
@@ -678,6 +684,9 @@ MemoryContext::MemoryContext()
 
     tempStackAllocator.init(block);
     tempAllocator = &tempStackAllocator;
+#ifdef CONF_DEBUG
+	tempAllocator->setNoFallback(); // no fallback in debug mode
+#endif
 
     LOG_MEM("[MemoryContext] initialized (thid=%d temp_stack_size=%d)",
             threadGetId(), SACRED_TEMP_STACK_SIZE);

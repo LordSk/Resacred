@@ -145,7 +145,10 @@ void jobSystemInit(i32 workerCount)
 		tracy::SetThreadName(std::thread::native_handle_type(js.threads[i]), nameBuff2);
 	}
 
-	js.tempAlloc.init(MEM_MALLOCATOR.ALLOC(Megabyte(10)), 1024);
+	js.tempAlloc.init(MEM_MALLOCATOR.ALLOC(Megabyte(10)), 128);
+#ifdef CONF_DEBUG
+	js.tempAlloc.setNoFallback();
+#endif
 }
 
 void jobSystemShutdown()

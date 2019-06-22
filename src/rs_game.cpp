@@ -549,7 +549,7 @@ void ui_textureBrowser()
         i32 diskTexId = texBrowser_texIds[i];
 
 #ifdef CONF_DEBUG
-        ImGui::Text("%s (%d/%d) #%d", texInfo[diskTexId].name,
+		ImGui::Text("%.19s (%d/%d) #%d", texInfo[diskTexId].name,
                     texInfo[diskTexId].width,
                     texInfo[diskTexId].height,
                     diskTexId);
