@@ -20,6 +20,8 @@
 #include "shaders/fs_imgui_image.bin.h"
 #include "shaders/vs_ocornut_imgui.bin.h"
 #include "shaders/vs_imgui_image.bin.h"
+#include "shaders/vs_tile.bin.h"
+#include "shaders/fs_tile.bin.h"
 
 GLuint createTexture2D(const TextureDesc2D& desc)
 {
@@ -271,107 +273,43 @@ struct ImGuiSetup
 
 struct TileShader
 {
-    GLuint program;
-    i32 uProjMatrix;
-    i32 uViewMatrix;
-    i32 uModelMatrix;
-    i32 uDiffuse;
-    i32 uAlphaMask;
-    GLuint vao;
-    GLuint vbo;
+	bgfx::ProgramHandle program;
+	bgfx::UniformHandle uDiffuse;
+	bgfx::UniformHandle uAlphaMask;
+	bgfx::VertexDecl decl;
 
-    void loadAndCompile()
+	void load()
     {
-        OGL_DBG_GROUP_BEGIN(TileShader);
+		static const bgfx::EmbeddedShader s_embeddedShaders[] =
+		{
+			BGFX_EMBEDDED_SHADER(vs_tile),
+			BGFX_EMBEDDED_SHADER(fs_tile),
 
-        // ui shader
-        constexpr const char* vertexShader = R"FOO(
-            #version 330 core
-            layout(location = 0) in vec3 position;
-            layout(location = 1) in vec2 uv;
-            layout(location = 2) in vec2 am_uv;
-            layout(location = 3) in vec4 color;
-            uniform mat4 uProjMatrix;
-            uniform mat4 uViewMatrix;
-            uniform mat4 uModelMatrix;
+			BGFX_EMBEDDED_SHADER_END()
+		};
 
-            out vec2 vert_uv;
-            out vec2 vert_am_uv;
-            flat out int vert_isAlphaMasked;
-            out vec4 vert_color;
+		bgfx::RendererType::Enum type = bgfx::getRendererType();
+		program = bgfx::createProgram(
+					bgfx::createEmbeddedShader(s_embeddedShaders, type, "vs_tile"),
+					bgfx::createEmbeddedShader(s_embeddedShaders, type, "fs_tile"),
+					true);
 
-            void main()
-            {
-                vert_uv = uv;
-                vert_am_uv = am_uv;
-                vert_isAlphaMasked = int(am_uv.x != -1);
-                vert_color = color;
-                gl_Position = uProjMatrix * uViewMatrix * uModelMatrix * vec4(position, 1.0);
-            }
-            )FOO";
+		uDiffuse = bgfx::createUniform("s_diffuse", bgfx::UniformType::Sampler);
+		uAlphaMask = bgfx::createUniform("s_alphaMask", bgfx::UniformType::Sampler);
 
-        constexpr const char* fragmentShader = R"FOO(
-            #version 330 core
-            uniform sampler2D uDiffuse;
-            uniform sampler2D uAlphaMask;
-
-            in vec2 vert_uv;
-            in vec2 vert_am_uv;
-            flat in int vert_isAlphaMasked;
-            in vec4 vert_color;
-            out vec4 fragmentColor;
-
-            void main()
-            {
-                vec4 diff = texture(uDiffuse, vert_uv);
-                vec4 mask = texture(uAlphaMask, vert_am_uv);
-                fragmentColor = diff * vert_color;
-                fragmentColor.a = (1.0-vert_isAlphaMasked) * diff.a + (vert_isAlphaMasked * mask.a);
-            }
-            )FOO";
-
-        i32 vertexShaderLen = strlen(vertexShader);
-        i32 fragmentShaderLen = strlen(fragmentShader);
-
-        GLShaderFile shaderFiles[2] = {
-            {vertexShader, vertexShaderLen, GL_VERTEX_SHADER},
-            {fragmentShader, fragmentShaderLen, GL_FRAGMENT_SHADER}
-        };
-
-        program = glMakeShader(shaderFiles, 2);
-
-        static i32* locations[] = {&uProjMatrix, &uViewMatrix, &uModelMatrix, &uDiffuse, &uAlphaMask};
-        static const char* uniformNames[] = {"uProjMatrix", "uViewMatrix", "uModelMatrix",
-                                             "uDiffuse", "uAlphaMask"};
-        glUseProgram(program);
-        getUniformLocations(program, uniformNames, locations, IM_ARRAYSIZE(locations));
-
-        glGenVertexArrays(1, &vao);
-        glBindVertexArray(vao);
-        glGenBuffers(1, &vbo);
-        bindArrayBuffer(vbo);
-
-        enum Location {
-            POSITION = 0,
-            UV,
-            AM_UV,
-            COLOR,
-        };
-
-        i32 indices[] = {POSITION, UV, AM_UV, COLOR};
-        enableVertexAttribArrays(indices, sizeof(indices)/sizeof(Location));
-
-        vertexAttribPointer(Location::POSITION, 3, GL_FLOAT, GL_FALSE, sizeof(TileVertex),
-                                (GLvoid*)OFFSETOF(TileVertex, x));
-        vertexAttribPointer(Location::UV, 2, GL_FLOAT, GL_FALSE, sizeof(TileVertex),
-                                (GLvoid*)OFFSETOF(TileVertex, u));
-        vertexAttribPointer(Location::AM_UV, 2, GL_FLOAT, GL_FALSE, sizeof(TileVertex),
-                                (GLvoid*)OFFSETOF(TileVertex, amu));
-        vertexAttribPointer(Location::COLOR, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(TileVertex),
-                                (GLvoid*)OFFSETOF(TileVertex, color));
-
-        OGL_DBG_GROUP_END(TileShader);
+		decl.begin()
+			.add(bgfx::Attrib::Position,  2, bgfx::AttribType::Float)
+			.add(bgfx::Attrib::TexCoord0, 2, bgfx::AttribType::Float)
+			.add(bgfx::Attrib::TexCoord1, 2, bgfx::AttribType::Float)
+		.end();
     }
+
+	void unload()
+	{
+		bgfx::destroy(program);
+		bgfx::destroy(uDiffuse);
+		bgfx::destroy(uAlphaMask);
+	}
 };
 
 
@@ -495,7 +433,7 @@ ImGuiSetup imguiSetup;
 bool initialized = false;
 Mutex queueMutex;
 
-TileShader shader_tile;
+TileShader shaderTile;
 DbgColorShader shader_dbgColor;
 
 RendererFrameData frameData[2];
@@ -540,9 +478,9 @@ bool init()
 
 	imguiSetup.init();
 
-	/*shader_tile.loadAndCompile();
-    // TODO: make a bunch of buffers for each sector and update only on loading
-    glBindBuffer(GL_ARRAY_BUFFER, shader_tile.vbo);
+	shaderTile.load();
+	/*// TODO: make a bunch of buffers for each sector and update only on loading
+	glBindBuffer(GL_ARRAY_BUFFER, shaderTile.vbo);
     glBufferData(GL_ARRAY_BUFFER, sizeof(TileVertex) * gpuTileVertexCount, nullptr,
                  GL_STATIC_DRAW);
 
@@ -588,17 +526,19 @@ void frameDoSectorRender(const RendererFrameData& frame)
 {
     if(frame.tvOff_base < 0) return; // TODO: remove this
 
+	//FIXME: reenable
+#if 0
     OGL_DBG_GROUP_BEGIN(SectorRender);
 
-    glUseProgram(shader_tile.program);
-    glUniform1i(shader_tile.uDiffuse, 0);
-    glUniform1i(shader_tile.uAlphaMask, 1);
-    glUniformMatrix4fv(shader_tile.uProjMatrix, 1, GL_FALSE, frame.matCamProj.data);
-    glUniformMatrix4fv(shader_tile.uViewMatrix, 1, GL_FALSE, frame.viewIsIso ? frame.matCamViewIso.data:
+	glUseProgram(shaderTile.program);
+	glUniform1i(shaderTile.uDiffuse, 0);
+	glUniform1i(shaderTile.uAlphaMask, 1);
+	glUniformMatrix4fv(shaderTile.uProjMatrix, 1, GL_FALSE, frame.matCamProj.data);
+	glUniformMatrix4fv(shaderTile.uViewMatrix, 1, GL_FALSE, frame.viewIsIso ? frame.matCamViewIso.data:
                                                                                frame.matCamViewOrtho.data);
-    glUniformMatrix4fv(shader_tile.uModelMatrix, 1, GL_FALSE, frame.matSectorTileModel.data);
+	glUniformMatrix4fv(shaderTile.uModelMatrix, 1, GL_FALSE, frame.matSectorTileModel.data);
 
-    bindArrayBuffer(shader_tile.vbo);
+	bindArrayBuffer(shaderTile.vbo);
 
     // upload vertex data to gpu
     const i32 tileVertexDataCount = frame.tileVertexData.count();
@@ -614,7 +554,7 @@ void frameDoSectorRender(const RendererFrameData& frame)
                         tileVertexData);
     }
 
-    glBindVertexArray(shader_tile.vao);
+	glBindVertexArray(shaderTile.vao);
 
     blendModeOpaque();
 
@@ -634,8 +574,8 @@ void frameDoSectorRender(const RendererFrameData& frame)
         glDrawArrays(GL_TRIANGLES, i, 6);
     }
 
-    glUniformMatrix4fv(shader_tile.uViewMatrix, 1, GL_FALSE, frame.matCamViewOrtho.data);
-    glUniformMatrix4fv(shader_tile.uModelMatrix, 1, GL_FALSE, frame.matSectorMixedModel.data);
+	glUniformMatrix4fv(shaderTile.uViewMatrix, 1, GL_FALSE, frame.matCamViewOrtho.data);
+	glUniformMatrix4fv(shaderTile.uModelMatrix, 1, GL_FALSE, frame.matSectorMixedModel.data);
 
     const i32 mixedEnd = tileVertexDataCount;
     for(i32 i = floorEnd; i < mixedEnd; i += 6) {
@@ -644,6 +584,7 @@ void frameDoSectorRender(const RendererFrameData& frame)
     }
 
     OGL_DBG_GROUP_END(SectorRender);
+#endif
 }
 
 void frameDoDbgObjects(const RendererFrameData& frame)
@@ -730,6 +671,7 @@ void cleanUp()
 {
     LOG_DBG("Renderer> cleaning up...");
 	imguiSetup.cleanUp();
+	shaderTile.unload();
 	bgfx::shutdown();
 }
 
