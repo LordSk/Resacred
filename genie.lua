@@ -80,7 +80,7 @@ solution "Resacred"
 		"_ITERATOR_DEBUG_LEVEL=0",
 		--"BGFX_CONFIG_MULTITHREADED=0",
 		"NOMINMAX",
-		"TRACY_ENABLE",
+		--"TRACY_ENABLE",
 		"__STDC_FORMAT_MACROS"
     }
 	

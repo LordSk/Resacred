@@ -125,8 +125,6 @@ i32 _occupyNextTextureSlot(i32 pakTexId)
         }
     }
 
-	//LOG_WARN("ResourceGpu> Warning, requesting a lot of textures quickly");
-
     i32 oldestFrameCount = 0;
     i32 oldestId = -1;
     for(i32 i = 0; i < MAX_GPU_TEXTURES; ++i) {
@@ -141,6 +139,7 @@ i32 _occupyNextTextureSlot(i32 pakTexId)
 	assert(oldestFrameCount > 0);*/
 
 	if(oldestId == -1) {
+		LOG_DBG("ResourceGpu> Warning, requesting a lot of textures quickly");
 		oldestId = fastId;
 	}
 
@@ -332,7 +331,6 @@ PakMixedFileData mixed;
 
 enum class LoadStatus: i32 {
 	NONE = 0,
-	PROCESSED,
 	FILE_LOADED,
 	FILE_LOADING,
 };
@@ -679,7 +677,7 @@ void newFrame()
 
     // texture age in frames
     for(i32 i = 0; i < textureCount; ++i) {
-        if((LoadStatus)textureDiskLoadStatus[i].get() == LoadStatus::PROCESSED) {
+		if((LoadStatus)textureDiskLoadStatus[i].get() == LoadStatus::FILE_LOADED) {
             textureAge[i]++;
         }
     }
@@ -694,7 +692,7 @@ void newFrame()
 	// upload to the gpu (if requested)
 	i32 toUploadMax = 4;
 	for(i32 i = 0; i < textureCount && toUploadMax > 0; ++i) {
-		if(textureGpuUpload[i] && (LoadStatus)textureDiskLoadStatus[i].get() == LoadStatus::PROCESSED) {
+		if(textureGpuUpload[i] && (LoadStatus)textureDiskLoadStatus[i].get() == LoadStatus::FILE_LOADED) {
 			pakTexIdUpload.pushPOD(&i);
 			dataUpload.pushPOD((u8**)&textureFileCache[i].ptr);
 			texInfoUpload.pushPOD(&textureInfo[i]);
@@ -710,8 +708,9 @@ void newFrame()
     }
 }
 
-MemBlock evictTextureAndAllocNewOne(i64 size)
+MemBlock evictTextureFileCacheAndAllocNewOne(i64 size)
 {
+	ProfileFunction();
     //LOG_DBG("Resource> evictTexture(%lld)", size);
 
     for(i32 tries = 0; tries < 100; ++tries) {
@@ -719,8 +718,9 @@ MemBlock evictTextureAndAllocNewOne(i64 size)
         i32 oldestTexture = -1;
 
         for(i32 i = 0; i < textureCount; ++i) {
-			if((LoadStatus)textureDiskLoadStatus[i].get() == LoadStatus::NONE || ((LoadStatus)textureDiskLoadStatus[i].get() == LoadStatus::PROCESSED &&
-			   textureAge[i] > oldestTextureAge)) {
+			if((LoadStatus)textureDiskLoadStatus[i].get() == LoadStatus::FILE_LOADED &&
+			   textureAge[i] > oldestTextureAge) {
+				assert(textureFileCache[i].isValid());
                 oldestTextureAge = textureAge[i];
                 oldestTexture = i;
             }
@@ -811,7 +811,7 @@ void requestTextureFileLoad(const i32* pakTextureUIDs, u8* pSkip, const i32 requ
 				if(!rThis.textureFileCache[texUID].isValid()) {
 					//assert(0); // possible data race here, fix
 					// evict old texture data
-					rThis.textureFileCache[texUID] = rThis.evictTextureAndAllocNewOne(textureSize);
+					rThis.textureFileCache[texUID] = rThis.evictTextureFileCacheAndAllocNewOne(textureSize);
 				}
 
 				rThis.textureFileCacheMutex.unlock();
@@ -828,8 +828,7 @@ void requestTextureFileLoad(const i32* pakTextureUIDs, u8* pSkip, const i32 requ
 					memmove(info.name, name, 32);
 				#endif
 
-				data.pCounter->decrement();
-				data.pCounter->decrement();
+				data.pCounter->decrement(); // LoadStatus::FILE_LOADED
 			}, nullptr);
         }
 	}
@@ -855,11 +854,11 @@ void requestGpuTextures(const i32* pakTextureUIDs, bgfx::TextureHandle* out_gpuH
 
 void debugUi()
 {
-	gpu.debugUi();
+	//gpu.debugUi();
 
     ImGui::Begin("Resources memory");
 
-	ImGui::Image(gpu.gpuTexDefault, ImVec2(256, 256));
+	//::Image(gpu.gpuTexDefault, ImVec2(256, 256));
 
     u64 allocatedSpace, freeSpace;
 	textureFileCacheAllocator.getFillInfo(&allocatedSpace, &freeSpace);
@@ -867,6 +866,14 @@ void debugUi()
     ImGui::Text("Texture allocator");
     ImGui::Text("(%lld Ko / %lld Ko)", allocatedSpace/1024, (allocatedSpace+freeSpace)/1024);
     ImGui::ProgressBar((f32)allocatedSpace/(allocatedSpace+freeSpace));
+
+	/*ImGui::BeginChild("cache_texture_list");
+	for(i32 i = 0; i < textureCount; ++i) {
+		ImVec4 textColor(1, 1, 1, 1);
+		ImGui::TextColored(textColor, "[%4d] load=%d age=%d", i,
+			(LoadStatus)textureDiskLoadStatus[i].get(), textureAge[i]);
+	}
+	ImGui::End();*/
 
     ImGui::End();
 }

@@ -1,7 +1,7 @@
 #include "rs_jobs.h"
 #include "rs_array.h"
+#include "imgui.h"
 #include <stdio.h>
-#include <Tracy.hpp>
 #include <common/TracySystem.hpp>
 
 struct Job
@@ -205,4 +205,24 @@ void jobWait(AtomicCounter *pFinishSignal)
 	while(pFinishSignal->get() != 0) {
 		_mm_pause();
 	}
+}
+
+void jobSystemDebugUi()
+{
+	const JobSystem& js = *g_pJobSystem;
+
+	ImGui::Begin("Job system");
+	ImGui::Text("Count = %d", js.queue.count());
+	ImGui::ProgressBar(js.queue.count() / 500);
+
+	ImGui::BeginChild("job_list");
+
+	for(int i = 0; i < js.queue.count(); i++) {
+		char buff[256];
+		sprintf(buff, "id: %d func: %llx", js.queue[i].id, (i64)js.queue[i].func);
+		ImGui::Selectable(buff);
+	}
+
+	ImGui::EndChild();
+	ImGui::End();
 }

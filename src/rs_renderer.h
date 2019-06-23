@@ -237,5 +237,5 @@ f64 renderer_getFrameTime();
 VramInfo renderer_getVramInfo();
 void renderer_pushFrame(const RendererFrameData& frameData);
 
-void renderer_renderDbgUi();
+void renderer_drawDbgUi();
 void renderer_frame();

@@ -8,6 +8,7 @@
 #include "stb_image.h"
 #include "rs_resources.h"
 #include "rs_dbg_draw.h"
+#include "rs_jobs.h"
 
 #include <bgfx/bgfx.h>
 
@@ -1160,12 +1161,13 @@ unsigned long thread_game(void*)
 
 		client.dbgUiNewFrame();
 
-		ImGui::ShowDemoWindow();
-		//resources_debugUi();
+		//ImGui::ShowDemoWindow();
+		resources_debugUi();
 		game.ui_textureBrowser();
 		game.ui_frameGraph();
+		jobSystemDebugUi();
 
-		renderer_renderDbgUi();
+		renderer_drawDbgUi();
 		renderer_frame();
 
 		game.frameTime = timeDurSince(t0);

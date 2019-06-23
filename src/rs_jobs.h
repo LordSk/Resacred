@@ -11,3 +11,5 @@ i32 jobRun(void* pUserData, JobFunc func, AtomicCounter* pFinishSignal);
 // will deallocate passed data on completion
 i32 jobRunEx(void* pUserData, i32 sizeOfData, JobFunc func, AtomicCounter* pFinishSignal);
 void jobWait(AtomicCounter* pFinishSignal);
+
+void jobSystemDebugUi();

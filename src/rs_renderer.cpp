@@ -805,7 +805,7 @@ VramInfo renderer_getVramInfo()
     return g_rendererPtr->vramInfo;
 }
 
-void renderer_renderDbgUi()
+void renderer_drawDbgUi()
 {
 	ProfileFunction();
 
