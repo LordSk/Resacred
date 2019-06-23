@@ -274,8 +274,8 @@ struct ImGuiSetup
 struct TileShader
 {
 	bgfx::ProgramHandle program;
-	bgfx::UniformHandle uDiffuse;
-	bgfx::UniformHandle uAlphaMask;
+	bgfx::UniformHandle sDiffuse;
+	bgfx::UniformHandle sAlphaMask;
 	bgfx::VertexDecl decl;
 
 	void load()
@@ -294,8 +294,8 @@ struct TileShader
 					bgfx::createEmbeddedShader(s_embeddedShaders, type, "fs_tile"),
 					true);
 
-		uDiffuse = bgfx::createUniform("s_diffuse", bgfx::UniformType::Sampler);
-		uAlphaMask = bgfx::createUniform("s_alphaMask", bgfx::UniformType::Sampler);
+		sDiffuse = bgfx::createUniform("s_diffuse", bgfx::UniformType::Sampler);
+		sAlphaMask = bgfx::createUniform("s_alphaMask", bgfx::UniformType::Sampler);
 
 		decl.begin()
 			.add(bgfx::Attrib::Position,  2, bgfx::AttribType::Float)
@@ -307,8 +307,8 @@ struct TileShader
 	void unload()
 	{
 		bgfx::destroy(program);
-		bgfx::destroy(uDiffuse);
-		bgfx::destroy(uAlphaMask);
+		bgfx::destroy(sDiffuse);
+		bgfx::destroy(sAlphaMask);
 	}
 };
 
@@ -458,9 +458,9 @@ bool init()
 	pd.nwh = wmInfo.info.win.window;
 
 	bgfx::Init bgfxInit;
-	//bgfxInit.type = bgfx::RendererType::Count; // Automatically choose a renderer.
+	bgfxInit.type = bgfx::RendererType::Count; // Automatically choose a renderer.
 	//bgfxInit.type = bgfx::RendererType::Noop; // no renderer
-	bgfxInit.type = bgfx::RendererType::Direct3D12;
+	//bgfxInit.type = bgfx::RendererType::Direct3D12;
 	bgfxInit.resolution.width = client.width;
 	bgfxInit.resolution.height = client.height;
 	bgfxInit.resolution.reset = BGFX_RESET_NONE; // no vsync

@@ -329,10 +329,12 @@ Array<PakItemType> itemTypes;
 
 PakMixedFileData mixed;
 
-enum class LoadStatus: i32 {
+struct LoadStatus {
+	enum : i32 {
 	NONE = 0,
 	FILE_LOADED,
 	FILE_LOADING,
+	};
 };
 
 AtomicCounter jobsSuccessfullCount;
@@ -595,20 +597,21 @@ bool loadSectorKeyx()
 SectorxData* loadSectorData(i32 sectorId)
 {
 	ProfileFunction();
-	// FIXME: reenable
-	/*
+
     assert(sectorId > 0 && sectorId < sectorCount);
 
     const i32 fileOffset = sectorInfo[sectorId].fileOffset;
     const i32 compSize = sectorInfo[sectorId].compressedSize;
     const i32 uncompSize = sectorInfo[sectorId].uncompressedSize;
 
-    u8* fileBuffer = fileRingAlloc(compSize);
+	MemBlock fileBuffBlock = getThreadTempStorage().allocator.ALLOC(compSize);
+	assert(fileBuffBlock.isValid());
+
     MemBlock outputBlock = sectorRingAlloc.ALLOC(uncompSize);
-    assert(outputBlock.ptr);
+	assert(outputBlock.isValid());
     SectorxData* output = (SectorxData*)outputBlock.ptr;
 
-    deflateSectorData(&fileSectors, fileOffset, compSize, uncompSize, fileBuffer, (u8*)output);
+	deflateSectorData(&fileSectors, fileOffset, compSize, uncompSize, (u8*)fileBuffBlock.ptr, (u8*)output);
 
 #if 0
     char path[256];
@@ -616,9 +619,9 @@ SectorxData* loadSectorData(i32 sectorId)
     fileWriteBuffer(path, (const char*)output, uncompSize);
 #endif
 
+	MEM_DEALLOC(fileBuffBlock);
+
     return output;
-	*/
-	return nullptr;
 }
 
 const SectorInfo& getSectorInfo(i32 sectorId)
@@ -677,7 +680,7 @@ void newFrame()
 
     // texture age in frames
     for(i32 i = 0; i < textureCount; ++i) {
-		if((LoadStatus)textureDiskLoadStatus[i].get() == LoadStatus::FILE_LOADED) {
+		if(textureDiskLoadStatus[i].get() == LoadStatus::FILE_LOADED) {
             textureAge[i]++;
         }
     }
@@ -690,9 +693,9 @@ void newFrame()
 	texInfoUpload.clearPOD();
 
 	// upload to the gpu (if requested)
-	i32 toUploadMax = 4;
+	i32 toUploadMax = 8;
 	for(i32 i = 0; i < textureCount && toUploadMax > 0; ++i) {
-		if(textureGpuUpload[i] && (LoadStatus)textureDiskLoadStatus[i].get() == LoadStatus::FILE_LOADED) {
+		if(textureGpuUpload[i] && textureDiskLoadStatus[i].get() == LoadStatus::FILE_LOADED) {
 			pakTexIdUpload.pushPOD(&i);
 			dataUpload.pushPOD((u8**)&textureFileCache[i].ptr);
 			texInfoUpload.pushPOD(&textureInfo[i]);
@@ -718,7 +721,7 @@ MemBlock evictTextureFileCacheAndAllocNewOne(i64 size)
         i32 oldestTexture = -1;
 
         for(i32 i = 0; i < textureCount; ++i) {
-			if((LoadStatus)textureDiskLoadStatus[i].get() == LoadStatus::FILE_LOADED &&
+			if(textureDiskLoadStatus[i].get() == LoadStatus::FILE_LOADED &&
 			   textureAge[i] > oldestTextureAge) {
 				assert(textureFileCache[i].isValid());
                 oldestTextureAge = textureAge[i];
@@ -758,7 +761,7 @@ void requestTextureFileLoad(const i32* pakTextureUIDs, u8* pSkip, const i32 requ
 			continue;
 		}
 
-        if((LoadStatus)textureDiskLoadStatus[texUID].get() == LoadStatus::NONE &&
+		if(textureDiskLoadStatus[texUID].get() == LoadStatus::NONE &&
 		   !textureFileCache[texUID].isValid()) {
 			textureDiskLoadStatus[texUID].set((i32)LoadStatus::FILE_LOADING);
 
